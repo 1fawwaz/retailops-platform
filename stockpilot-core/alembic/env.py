@@ -1,4 +1,5 @@
 import os
+import sys
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -7,7 +8,11 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+SERVICE_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(SERVICE_ROOT))
+load_dotenv(SERVICE_ROOT / ".env")
+
+from models import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -23,8 +28,7 @@ if not database_url:
     raise RuntimeError("DATABASE_URL is not set. Copy .env.example to .env and fill it in.")
 config.set_main_option("sqlalchemy.url", database_url)
 
-# Schema models don't exist yet (Stage 1 Task 1). No autogenerate target.
-target_metadata = None
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
