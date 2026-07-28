@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^(stockpilot-core|retailops-ai)/
+      - id: ruff-format
+        files: ^(stockpilot-core|retailops-ai)/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.0
+    hooks:
+      - id: mypy
+        name: mypy (stockpilot-core)
+        files: ^stockpilot-core/
+        args: [--config-file=stockpilot-core/pyproject.toml]
+        additional_dependencies: []
+      - id: mypy
+        name: mypy (retailops-ai)
+        files: ^retailops-ai/
+        args: [--config-file=retailops-ai/pyproject.toml]
+        additional_dependencies: []
