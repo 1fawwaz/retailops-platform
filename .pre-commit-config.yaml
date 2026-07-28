@@ -15,9 +15,17 @@ repos:
         name: mypy (stockpilot-core)
         files: ^stockpilot-core/
         args: [--config-file=stockpilot-core/pyproject.toml]
-        additional_dependencies: []
+        additional_dependencies:
+          - sqlalchemy==2.0.51
+          - alembic==1.18.5
+          - psycopg[binary]==3.3.4
+          - python-dotenv==1.2.2
       - id: mypy
         name: mypy (retailops-ai)
         files: ^retailops-ai/
         args: [--config-file=retailops-ai/pyproject.toml]
-        additional_dependencies: []
+        additional_dependencies:
+          - sqlalchemy==2.0.51
+          - alembic==1.18.5
+          - psycopg[binary]==3.3.4
+          - python-dotenv==1.2.2

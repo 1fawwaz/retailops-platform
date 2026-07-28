@@ -3,7 +3,12 @@ name = "retailops-ai"
 version = "0.1.0"
 description = "LangGraph multi-agent layer that reasons over StockPilot's HTTP API."
 requires-python = "==3.11.*"
-dependencies = []
+dependencies = [
+    "sqlalchemy==2.0.51",
+    "alembic==1.18.5",
+    "psycopg[binary]==3.3.4",
+    "python-dotenv==1.2.2",
+]
 
 [project.optional-dependencies]
 dev = [
