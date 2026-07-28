@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import pandas as pd
-from sqlalchemy import Engine
+from sqlalchemy import Engine, update
+from sqlalchemy.orm import Session
+
+from models.category import Category
+from models.product import Product
 
 SALES_TRANSACTION_COLUMN_MAP = {
     "Invoice": "invoice",
@@ -42,3 +46,28 @@ def insert_sales_transactions(engine: Engine, cleaned_df: pd.DataFrame) -> int:
         chunksize=5000,
     )
     return len(to_load)
+
+
+def insert_categories(session: Session, cluster_labels: dict[int, str]) -> dict[int, int]:
+    """Insert one row per distinct label (in cluster_id order). Returns
+    cluster_id -> categories.id.
+    """
+    cluster_to_category_id: dict[int, int] = {}
+    for cluster_id in sorted(cluster_labels):
+        category = Category(name=cluster_labels[cluster_id])
+        session.add(category)
+        session.flush()
+        cluster_to_category_id[cluster_id] = category.id
+    session.commit()
+    return cluster_to_category_id
+
+
+def update_product_categories(session: Session, sku_to_category_id: dict[str, int]) -> int:
+    updates = [
+        {"sku": sku, "category_id": category_id} for sku, category_id in sku_to_category_id.items()
+    ]
+    if not updates:
+        return 0
+    session.execute(update(Product), updates)
+    session.commit()
+    return len(updates)

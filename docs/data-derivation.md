@@ -85,7 +85,66 @@ in a product master built from real transactions).
 
 ## #category-clustering
 
-TODO — added when step (c) lands.
+`scripts/etl/categories.py` assigns each product a category via TF-IDF + KMeans
+over `products.description`, entirely `provenance="derived"` -- nothing here
+comes from the source dataset.
+
+**Method:** TF-IDF vectorize descriptions (`stop_words="english"`, `min_df=3`,
+`max_df=0.5` -- standard preprocessing thresholds, not business values) over the
+4,908 products that have a non-null description (64 have none and are left
+uncategorized -- there's no text to cluster on). KMeans with `random_state=42`
+(the single seed in `scripts/etl/random_seed.py`) and `n_init=10`.
+
+**Choosing k:** the spec calls for 8-12 clusters. Compared silhouette scores
+across the full range on the real data:
+
+| k | silhouette |
+|---|---|
+| 8 | 0.0192 |
+| 9 | 0.0208 |
+| 10 | 0.0231 |
+| **11** | **0.0243** (chosen) |
+| 12 | 0.0231 |
+
+Honest caveat: these are all low absolute scores. Retail product descriptions are
+short, and TF-IDF over them produces a high-dimensional sparse space where
+KMeans clusters overlap heavily -- this is a real characteristic of the data, not
+a bug. k=11 is the best of a weak field, not a clean separation. One large
+"general" cluster acting as a catch-all for items without strong distinguishing
+vocabulary is expected, and a random sample of categorized products confirms
+occasional imprecise-looking assignments (e.g. a glass bracelet landing in
+"Heart-Themed Decor") alongside mostly sensible ones. This is disclosed here
+rather than presented as more precise than it is.
+
+**Hand-labelling:** for k=11, inspected each cluster's top TF-IDF terms (by
+centroid weight) and 8 sample descriptions, then picked a label a human would
+recognize. The mapping is committed as its own file,
+`scripts/etl/category_mapping.json`, separate from the clustering code, so the
+one-time manual labelling decision is auditable without reading Python:
+
+| Cluster | Label | Size |
+|---|---|---|
+| 0 | General Home & Gifts | 2,635 |
+| 1 | Bags & Totes | 446 |
+| 2 | Metal Signs & Decor | 118 |
+| 3 | Pink-Themed Gifts & Decor | 431 |
+| 4 | Christmas & Vintage Decor | 183 |
+| 5 | Assorted Packs & Novelties | 251 |
+| 6 | Artificial Flowers & Jewelry | 130 |
+| 7 | Candle Holders & Greeting Cards | 167 |
+| 8 | Glassware & Glass Decor | 228 |
+| 9 | Heart-Themed Decor | 199 |
+| 10 | Gift Sets & Bundles | 120 |
+
+**Reproducibility pitfall caught and fixed:** KMeans' k-means++ initialization is
+sensitive to input row order even with a fixed `random_state` -- the first
+version of `step_c_categories()` queried products without `ORDER BY sku`, which
+gave a *different* (and visibly wrong-looking: one cluster absorbing 2,810 of
+4,908 products with clearly mismatched labels) clustering than the one used to
+write the mapping above. Fixed by querying `ORDER BY sku` *and* having
+`assign_categories()` sort by `sku` internally, so correctness doesn't depend on
+every caller remembering to order the query. Covered by
+`test_cluster_assignment_is_independent_of_input_row_order`.
 
 ## #cost-price
 
