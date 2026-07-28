@@ -71,6 +71,18 @@ committing code that can't run yet, or committing with the constraint dropped,
 which is worse. This is a write-ordering detail, not a deviation from what step
 (a)/(b) each conceptually produce.
 
+## Product master
+
+`scripts/etl/product_master.py` groups the cleaned transaction log by `StockCode`
+and picks each SKU's most common non-null `Description` (ties broken by first
+occurrence in the data, for determinism). Result: **4,972 distinct products** --
+fewer than the raw file's 5,305 distinct StockCodes, because 333 SKUs vanish
+entirely during cleaning (13 admin codes, 2 test codes, and 318 more that turned
+out to have *only* cancelled or non-positive-quantity rows in the entire dataset
+-- spot-checked directly: e.g. SKU `85105` has exactly one raw row, `Quantity=-3`,
+no cancellation prefix, no description. A SKU with zero valid sales has no place
+in a product master built from real transactions).
+
 ## #category-clustering
 
 TODO — added when step (c) lands.
