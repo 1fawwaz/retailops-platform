@@ -28,6 +28,7 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "httpx2==2.9.1",
+    "pandas-stubs==3.0.3.260530",
 ]
 
 [tool.ruff]

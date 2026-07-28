@@ -33,6 +33,7 @@ repos:
           - pyjwt==2.13.0
           - python-multipart==0.0.32
           - email-validator==2.3.0
+          - pandas-stubs==3.0.3.260530
       - id: mypy
         name: mypy (retailops-ai)
         files: ^retailops-ai/
