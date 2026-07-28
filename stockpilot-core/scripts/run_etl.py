@@ -27,11 +27,13 @@ from scripts.etl.load import (  # noqa: E402
     insert_stock_movements,
     insert_suppliers,
     update_product_categories,
+    update_product_reorder_fields,
     update_product_suppliers,
     update_product_unit_costs,
 )
 from scripts.etl.product_master import build_product_master  # noqa: E402
 from scripts.etl.random_seed import create_rng  # noqa: E402
+from scripts.etl.reorder import compute_daily_demand_stats, compute_reorder_points  # noqa: E402
 from scripts.etl.stock_ledger import replay_stock_ledger  # noqa: E402
 from scripts.etl.suppliers import (  # noqa: E402
     N_SUPPLIERS,
@@ -137,7 +139,17 @@ def step_e_suppliers(rng: np.random.Generator) -> None:
         session.close()
 
 
+STOCK_LEDGER_BATCH_SIZE = 500
+
+
 def step_f_stock_ledger() -> None:
+    """Processes and inserts in batches of SKUs rather than building one
+    ~2.3M-row result in memory before a single bulk insert -- the first
+    attempt at this step was killed partway through (likely memory pressure
+    from holding every SKU's full daily history at once); batching bounds
+    peak memory and gives incremental progress instead of an all-or-nothing
+    multi-million-row insert.
+    """
     print("Step (f): stock ledger")
     engine = get_engine()
     with engine.connect() as conn:
@@ -150,20 +162,61 @@ def step_f_stock_ledger() -> None:
         str(sku): int(supplier_id)
         for sku, supplier_id in zip(products_df["sku"], products_df["supplier_id"], strict=True)
     }
+    all_skus = sorted(sku_to_supplier_id)
 
-    result = replay_stock_ledger(transactions_df, sku_to_supplier_id)
-    print(f"  stock_movements: {len(result.stock_movements)}")
-    print(f"  stock_levels: {len(result.stock_levels)}")
-    print(f"  purchase_orders: {len(result.purchase_orders)}")
+    total_movements = 0
+    total_levels = 0
+    total_purchase_orders = 0
 
-    po_inserted = insert_purchase_orders(engine, result.purchase_orders)
-    print(f"  purchase_orders_inserted: {po_inserted}")
+    for start in range(0, len(all_skus), STOCK_LEDGER_BATCH_SIZE):
+        batch_skus = set(all_skus[start : start + STOCK_LEDGER_BATCH_SIZE])
+        batch_transactions = transactions_df[transactions_df["sku"].isin(batch_skus)]
+        batch_supplier_map = {sku: sku_to_supplier_id[sku] for sku in batch_skus}
 
-    movements_inserted = insert_stock_movements(engine, result.stock_movements)
-    print(f"  stock_movements_inserted: {movements_inserted}")
+        result = replay_stock_ledger(batch_transactions, batch_supplier_map)
 
-    levels_inserted = insert_stock_levels(engine, result.stock_levels)
-    print(f"  stock_levels_inserted: {levels_inserted}")
+        total_purchase_orders += insert_purchase_orders(engine, result.purchase_orders)
+        total_movements += insert_stock_movements(engine, result.stock_movements)
+        total_levels += insert_stock_levels(engine, result.stock_levels)
+
+        print(
+            f"  batch {start // STOCK_LEDGER_BATCH_SIZE + 1}: "
+            f"{len(batch_skus)} skus, running totals -- "
+            f"movements={total_movements} levels={total_levels} pos={total_purchase_orders}"
+        )
+
+    print(f"  stock_movements_inserted: {total_movements}")
+    print(f"  stock_levels_inserted: {total_levels}")
+    print(f"  purchase_orders_inserted: {total_purchase_orders}")
+
+
+def step_g_reorder() -> None:
+    print("Step (g): reorder_point and safety_stock")
+    engine = get_engine()
+    with engine.connect() as conn:
+        transactions_df = pd.read_sql(
+            text("SELECT sku, invoice_date, quantity FROM sales_transactions"), conn
+        )
+        products_df = pd.read_sql(text("SELECT sku, supplier_id FROM products"), conn)
+        suppliers_df = pd.read_sql(text("SELECT id, lead_time_days FROM suppliers"), conn)
+
+    supplier_lead_times = {
+        int(supplier_id): int(lead_time_days)
+        for supplier_id, lead_time_days in zip(
+            suppliers_df["id"], suppliers_df["lead_time_days"], strict=True
+        )
+    }
+
+    demand_stats_df = compute_daily_demand_stats(transactions_df)
+    reorder_df = compute_reorder_points(demand_stats_df, products_df, supplier_lead_times)
+    print(f"  products_with_reorder_fields: {len(reorder_df)}")
+
+    session = get_session_factory()()
+    try:
+        updated = update_product_reorder_fields(session, reorder_df)
+        print(f"  products_updated: {updated}")
+    finally:
+        session.close()
 
 
 def main() -> None:
@@ -175,6 +228,7 @@ def main() -> None:
     step_d_cost_price(rng)
     step_e_suppliers(rng)
     step_f_stock_ledger()
+    step_g_reorder()
 
 
 if __name__ == "__main__":

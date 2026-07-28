@@ -140,3 +140,18 @@ def insert_purchase_orders(engine: Engine, rows: list[dict[str, object]]) -> int
         "purchase_orders", engine, if_exists="append", index=False, method="multi", chunksize=5000
     )
     return len(rows)
+
+
+def update_product_reorder_fields(session: Session, reorder_df: pd.DataFrame) -> int:
+    """reorder_df needs columns sku, reorder_point, safety_stock."""
+    updates = [
+        {"sku": str(sku), "reorder_point": int(rp), "safety_stock": int(ss)}
+        for sku, rp, ss in zip(
+            reorder_df["sku"], reorder_df["reorder_point"], reorder_df["safety_stock"], strict=True
+        )
+    ]
+    if not updates:
+        return 0
+    session.execute(update(Product), updates)
+    session.commit()
+    return len(updates)

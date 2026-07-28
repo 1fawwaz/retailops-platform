@@ -292,4 +292,31 @@ something step (f) attempts.
 
 ## #reorder-point
 
-TODO — added when step (g) lands.
+`scripts/etl/reorder.py` computes `products.reorder_point` and
+`products.safety_stock` (`provenance="derived"`) from observed demand
+variability and each SKU's assigned supplier's lead time -- the standard
+inventory-theory formulas:
+
+```
+safety_stock   = ceil(Z x demand_std_dev x sqrt(lead_time_days))
+reorder_point  = ceil(avg_daily_demand x lead_time_days) + safety_stock
+```
+
+`Z = 1.65` (~95% one-tailed service level) is a standard statistical constant
+for this formula, not a business threshold pulled from config -- it plays the
+same role here that a significance level plays in a confidence interval.
+
+`avg_daily_demand` and `demand_std_dev` are computed the same way step (f)
+computes daily demand: per SKU, over its own observed date range (first sale
+to last sale), with gap days counted as zero demand rather than excluded --
+consistent with how the opening balance and purchase-order buffer were sized,
+so the same "typical day" means the same thing everywhere in this pipeline.
+Both fields are floored at zero and rounded up to whole units (you can't
+reorder a fraction of a unit).
+
+This is the piece that's supposed to catch what step (f) doesn't: step (f)'s
+buffer only accounts for the *average*, which is why it needed ~65 purchase
+orders per SKU to backfill bursty demand reactively. `safety_stock` here
+explicitly prices in *how bursty* (`demand_std_dev`) each SKU actually is, so
+a downstream reorder recommendation (Stage 1 Task 4, not built yet) can hold
+enough buffer to not need constant reactive backfilling in the first place.
