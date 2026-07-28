@@ -20,6 +20,10 @@ repos:
           - alembic==1.18.5
           - psycopg[binary]==3.3.4
           - python-dotenv==1.2.2
+          - pandas==3.0.5
+          - numpy==2.4.6
+          - openpyxl==3.1.5
+          - pytest==9.1.1
       - id: mypy
         name: mypy (retailops-ai)
         files: ^retailops-ai/
