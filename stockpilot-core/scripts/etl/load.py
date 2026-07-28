@@ -113,3 +113,30 @@ def update_product_suppliers(session: Session, sku_to_supplier_id: dict[str, int
     session.execute(update(Product), updates)
     session.commit()
     return len(updates)
+
+
+def insert_stock_movements(engine: Engine, rows: list[dict[str, object]]) -> int:
+    if not rows:
+        return 0
+    pd.DataFrame(rows).to_sql(
+        "stock_movements", engine, if_exists="append", index=False, method="multi", chunksize=5000
+    )
+    return len(rows)
+
+
+def insert_stock_levels(engine: Engine, rows: list[dict[str, object]]) -> int:
+    if not rows:
+        return 0
+    pd.DataFrame(rows).to_sql(
+        "stock_levels", engine, if_exists="append", index=False, method="multi", chunksize=5000
+    )
+    return len(rows)
+
+
+def insert_purchase_orders(engine: Engine, rows: list[dict[str, object]]) -> int:
+    if not rows:
+        return 0
+    pd.DataFrame(rows).to_sql(
+        "purchase_orders", engine, if_exists="append", index=False, method="multi", chunksize=5000
+    )
+    return len(rows)

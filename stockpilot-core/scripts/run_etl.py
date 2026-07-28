@@ -21,7 +21,10 @@ from scripts.etl.cost_price import compute_unit_costs, sample_margin_factors  # 
 from scripts.etl.load import (  # noqa: E402
     insert_categories,
     insert_products,
+    insert_purchase_orders,
     insert_sales_transactions,
+    insert_stock_levels,
+    insert_stock_movements,
     insert_suppliers,
     update_product_categories,
     update_product_suppliers,
@@ -29,6 +32,7 @@ from scripts.etl.load import (  # noqa: E402
 )
 from scripts.etl.product_master import build_product_master  # noqa: E402
 from scripts.etl.random_seed import create_rng  # noqa: E402
+from scripts.etl.stock_ledger import replay_stock_ledger  # noqa: E402
 from scripts.etl.suppliers import (  # noqa: E402
     N_SUPPLIERS,
     assign_suppliers,
@@ -133,6 +137,35 @@ def step_e_suppliers(rng: np.random.Generator) -> None:
         session.close()
 
 
+def step_f_stock_ledger() -> None:
+    print("Step (f): stock ledger")
+    engine = get_engine()
+    with engine.connect() as conn:
+        transactions_df = pd.read_sql(
+            text("SELECT sku, invoice_date, quantity FROM sales_transactions"), conn
+        )
+        products_df = pd.read_sql(text("SELECT sku, supplier_id FROM products"), conn)
+
+    sku_to_supplier_id = {
+        str(sku): int(supplier_id)
+        for sku, supplier_id in zip(products_df["sku"], products_df["supplier_id"], strict=True)
+    }
+
+    result = replay_stock_ledger(transactions_df, sku_to_supplier_id)
+    print(f"  stock_movements: {len(result.stock_movements)}")
+    print(f"  stock_levels: {len(result.stock_levels)}")
+    print(f"  purchase_orders: {len(result.purchase_orders)}")
+
+    po_inserted = insert_purchase_orders(engine, result.purchase_orders)
+    print(f"  purchase_orders_inserted: {po_inserted}")
+
+    movements_inserted = insert_stock_movements(engine, result.stock_movements)
+    print(f"  stock_movements_inserted: {movements_inserted}")
+
+    levels_inserted = insert_stock_levels(engine, result.stock_levels)
+    print(f"  stock_levels_inserted: {levels_inserted}")
+
+
 def main() -> None:
     rng = create_rng()
 
@@ -141,6 +174,7 @@ def main() -> None:
     step_c_categories()
     step_d_cost_price(rng)
     step_e_suppliers(rng)
+    step_f_stock_ledger()
 
 
 if __name__ == "__main__":

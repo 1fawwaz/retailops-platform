@@ -230,7 +230,65 @@ same input-order-independence reason as `assign_categories` -- see
 
 ## #stock-ledger
 
-TODO — added when step (f) lands.
+`scripts/etl/stock_ledger.py` replays each SKU's cleaned sales chronologically
+to produce a daily stock-on-hand history. Entirely `provenance="derived"` for
+the numbers (`stock_movements.quantity_delta`, `stock_levels.quantity_on_hand`);
+sale-driven movements carry `provenance="observed"` at the row level since the
+underlying event (a real sale happened that day) is directly from the source
+data, while opening balances and injected purchase orders carry `"derived"`.
+
+**Per SKU, independently:**
+
+1. Aggregate sales into a daily total quantity sold over the SKU's own
+   observed date range (first sale to last sale).
+   `avg_daily_demand = total observed quantity / number of days in that range`
+   (gap days with no sales count as zero demand, not excluded).
+2. **Opening balance**: `max(10, ceil(2 x avg_daily_demand))` -- a documented
+   formula, not a random draw; "seed" here means "establish a starting value,"
+   there's no RNG in this step. Recorded as a `stock_movements` row
+   (`movement_type="opening_balance"`) dated the SKU's first sale date.
+3. Walk day by day from first to last sale date inclusive (including gap days).
+   Each day: subtract that day's sold quantity (if any) from a running
+   balance, recording a `stock_movements` row (`movement_type="sale"`,
+   `provenance="observed"`) when there was a sale.
+4. **Whenever the running balance would go negative**, inject a
+   `purchase_orders` row sized to cover the deficit plus one more day's
+   `avg_daily_demand` as a buffer, dated the same day (`order_date =
+   expected_arrival_date` -- this reactively backfills a historical gap, it is
+   not a forward-looking lead-time-aware procurement simulation), with
+   `status="received"` and the SKU's assigned supplier (step e). Recorded as a
+   `stock_movements` row (`movement_type="purchase_order"`,
+   `provenance="derived"`).
+5. Record a `stock_levels` row (`quantity_on_hand` = the running balance after
+   any injected purchase order) for every day in the range -- so `stock_levels`
+   never goes negative by construction, verified by
+   `test_stock_levels_never_go_negative` and confirmed directly against the
+   live database (see below).
+
+`stock_movements.reference` is left null throughout: a movement's (sku,
+movement_date, movement_type) already uniquely identifies which
+`purchase_orders` row it corresponds to when relevant, so a separate string
+cross-reference wasn't worth the added bookkeeping of inserting purchase
+orders first just to backfill their ids into the movement rows.
+
+**Measured** (replaying all 4,960 products' cleaned transaction history):
+858,568 `stock_movements`, 2,292,303 `stock_levels` rows, 320,795
+`purchase_orders`. Verified directly against the live database, not just the
+row counts the script printed: zero rows in `stock_levels` have
+`quantity_on_hand < 0`; for a spot-checked SKU (`85123A`), `sum(quantity_delta)`
+across all its `stock_movements` equals its final `stock_levels.quantity_on_hand`
+exactly (24 = 24).
+
+**Honest note on purchase order frequency:** ~65 purchase orders per SKU on
+average (range 1-349 across SKUs, smoothly distributed by SKU volume, not a
+uniform pattern that would suggest a bug). This is a direct consequence of
+sizing the opening balance and reorder buffer off *average* daily demand alone
+-- real transaction volume in this dataset is bursty (a handful of large
+wholesale-sized orders on otherwise-quiet days), and a buffer that only covers
+one more average day gets consumed again quickly by the next spike. This is
+expected given step (f)'s deliberately simple formula; accounting for demand
+*variability* is exactly what step (g)'s safety stock formula is for, not
+something step (f) attempts.
 
 ## #reorder-point
 
