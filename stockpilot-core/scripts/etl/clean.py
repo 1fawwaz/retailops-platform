@@ -29,7 +29,20 @@ ADMIN_STOCK_CODES = {
     "C2",
     "BANK CHARGES",
     "GIFT",
+    # Found while sanity-checking step (d)'s derived unit_cost: these three
+    # produced unit_cost=0.00 because their entire observed history is
+    # administrative, not merchandise.
+    "22016",  # 3 rows: 2 null description, 1 "Dotcomgiftshop Gift Voucher
+    # £100.00" -- a gift voucher, not a physical product
+    "23595",  # 1 row, Description "adjustment"
+    "35600A",  # 1 row, Description "Found by jackie"
 }
+
+# The Dotcomgiftshop Gift Voucher family (gift_0001_10 through gift_0001_90):
+# financial instruments, not merchandise, regardless of what garbled text
+# appears in Description on any given row (some rows are null, one says
+# "to push order througha s stock was").
+GIFT_VOUCHER_STOCKCODE_PREFIX = "gift_"
 
 
 def load_raw(path: Path = RAW_DATA_PATH) -> pd.DataFrame:
@@ -58,7 +71,10 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     counts["dropped_test_rows"] = int(is_test_row.sum())
     df = df.loc[~is_test_row]
 
-    is_admin_code = df["StockCode"].astype(str).isin(ADMIN_STOCK_CODES)
+    stockcode_str = df["StockCode"].astype(str)
+    is_admin_code = stockcode_str.isin(
+        ADMIN_STOCK_CODES
+    ) | stockcode_str.str.lower().str.startswith(GIFT_VOUCHER_STOCKCODE_PREFIX)
     counts["dropped_admin_codes"] = int(is_admin_code.sum())
     df = df.loc[~is_admin_code]
 

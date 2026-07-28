@@ -92,6 +92,37 @@ def test_clean_drops_admin_codes_but_keeps_real_lookalikes() -> None:
     assert set(cleaned["StockCode"]) == {"A1", "PADS"}
 
 
+def test_clean_drops_gift_voucher_stockcode_family() -> None:
+    df = pd.DataFrame(
+        [
+            _row("536365", "A1", "Widget", 1),
+            _row("536374", "gift_0001_20", "Dotcomgiftshop Gift Voucher £20.00", 1),
+            _row("536375", "gift_0001_80", None, 1),
+        ]
+    )
+
+    cleaned, counts = clean(df)
+
+    assert counts["dropped_admin_codes"] == 2
+    assert set(cleaned["StockCode"]) == {"A1"}
+
+
+def test_clean_drops_specific_administrative_skus_found_in_the_data() -> None:
+    df = pd.DataFrame(
+        [
+            _row("536365", "A1", "Widget", 1),
+            _row("536376", "22016", "Dotcomgiftshop Gift Voucher £100.00", 1),
+            _row("536377", "23595", "adjustment", 1),
+            _row("536378", "35600A", "Found by jackie", 1),
+        ]
+    )
+
+    cleaned, counts = clean(df)
+
+    assert counts["dropped_admin_codes"] == 3
+    assert set(cleaned["StockCode"]) == {"A1"}
+
+
 def test_clean_reports_remaining_rows() -> None:
     df = pd.DataFrame([_row("536365", "A1", "Widget", 1) for _ in range(3)])
 

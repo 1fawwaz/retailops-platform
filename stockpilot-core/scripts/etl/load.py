@@ -71,3 +71,12 @@ def update_product_categories(session: Session, sku_to_category_id: dict[str, in
     session.execute(update(Product), updates)
     session.commit()
     return len(updates)
+
+
+def update_product_unit_costs(session: Session, sku_to_unit_cost: dict[str, float]) -> int:
+    updates = [{"sku": sku, "unit_cost": unit_cost} for sku, unit_cost in sku_to_unit_cost.items()]
+    if not updates:
+        return 0
+    session.execute(update(Product), updates)
+    session.commit()
+    return len(updates)

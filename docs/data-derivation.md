@@ -42,6 +42,15 @@ transaction log:
    | `C2` | CARRIAGE | Shipping charge |
    | `BANK CHARGES` | Bank Charges | Financial charge |
    | `GIFT` | (null) | Single anomalous row, no real description, zero price |
+   | `22016` | Dotcomgiftshop Gift Voucher £100.00 | Gift voucher, not merchandise (found retroactively -- see below) |
+   | `23595` | adjustment | Its only row; 100% administrative (found retroactively) |
+   | `35600A` | Found by jackie | Its only row; 100% administrative (found retroactively) |
+
+   Plus the whole **`gift_0001_*` StockCode family** (Dotcomgiftshop Gift Voucher,
+   denominations £10-£90) is dropped by prefix match (`StockCode` starts with
+   `gift_`, case-insensitive) rather than by exact code, since some of its rows
+   have a null or garbled `Description` (e.g. "to push order througha s stock was")
+   that a text-based filter wouldn't catch.
 
    **Deliberately kept** despite looking similar at a glance: `PADS` (19 rows, one
    consistent description "PADS TO MATCH ALL CUSHIONS", a real near-free bundled
@@ -49,8 +58,24 @@ transaction log:
    "BOYS/GIRLS PARTY BAG" — despite some rows having a missing or placeholder
    description).
 
+   **Retroactive correction:** `22016`, `23595`, `35600A`, and the `gift_0001_*`
+   family were *not* caught by the original step (a) pass -- they surfaced while
+   sanity-checking step (d)'s derived `unit_cost`, where 14 products came out to
+   `unit_cost = 0.00`. Most of those were genuinely near-free items consistent
+   with their observed prices (e.g. `PADS`), but a few were gift vouchers and
+   pure administrative notes that never belonged in the product catalog at all.
+   Confirmed each was 100% non-merchandise before excluding it (e.g. `23595` and
+   `35600A` each have exactly one cleaned row, and that row's description is the
+   administrative note, not a product name) rather than pattern-matching on
+   description text alone, which risked dropping real transactions that merely
+   had an occasional bad description on an otherwise-legitimate SKU (e.g. dozens
+   of real product codes have a stray "amazon" or "adjustment" row alongside many
+   rows with a real description -- `product_master.py`'s most-common-description
+   logic already handles that correctly by picking the real description as the
+   mode, so those rows were deliberately left alone).
+
 Measured counts (via `scripts/run_etl.py`, cascading -- each filter applies to
-whatever survived the previous one):
+whatever survived the previous one; includes the retroactive correction above):
 
 | Step | Rows dropped | Rows remaining |
 |---|---|---|
@@ -59,7 +84,7 @@ whatever survived the previous one):
 | Drop non-positive quantity | 3,457 | 1,044,420 |
 | Drop null StockCode | 0 | 1,044,420 |
 | Drop test rows | 15 | 1,044,405 |
-| Drop admin codes | 4,588 | 1,039,817 |
+| Drop admin codes (incl. retroactive fixes) | 4,692 | 1,039,713 |
 
 **Note on write ordering:** step (a) itself only cleans the data in memory and
 reports counts — it does not write to the database yet. `sales_transactions.sku`
@@ -75,13 +100,14 @@ which is worse. This is a write-ordering detail, not a deviation from what step
 
 `scripts/etl/product_master.py` groups the cleaned transaction log by `StockCode`
 and picks each SKU's most common non-null `Description` (ties broken by first
-occurrence in the data, for determinism). Result: **4,972 distinct products** --
-fewer than the raw file's 5,305 distinct StockCodes, because 333 SKUs vanish
-entirely during cleaning (13 admin codes, 2 test codes, and 318 more that turned
-out to have *only* cancelled or non-positive-quantity rows in the entire dataset
--- spot-checked directly: e.g. SKU `85105` has exactly one raw row, `Quantity=-3`,
+occurrence in the data, for determinism). Result: **4,960 distinct products**
+(after the retroactive cleaning correction below; originally 4,972) -- fewer
+than the raw file's 5,305 distinct StockCodes, because SKUs vanish entirely
+during cleaning: admin/gift-voucher codes, test codes, and SKUs that turned out
+to have *only* cancelled or non-positive-quantity rows in the entire dataset --
+spot-checked directly: e.g. SKU `85105` has exactly one raw row, `Quantity=-3`,
 no cancellation prefix, no description. A SKU with zero valid sales has no place
-in a product master built from real transactions).
+in a product master built from real transactions.
 
 ## #category-clustering
 
@@ -148,7 +174,38 @@ every caller remembering to order the query. Covered by
 
 ## #cost-price
 
-TODO — added when step (d) lands.
+`scripts/etl/cost_price.py` computes `products.unit_cost` (`provenance="derived"`,
+descends from `observed` sale prices via a `derived` margin, so stays `derived`
+per the "never upgrade provenance" rule):
+
+```
+unit_cost(sku) = median(unit_price observed for sku across sales_transactions)
+                 x margin_factor(category of sku)
+```
+
+**margin_factor** is sampled **once per category** (not per SKU) from
+`Uniform(0.55, 0.80)`, using the single seeded `Generator`
+(`scripts/etl/random_seed.create_rng()`) threaded through the whole pipeline run
+-- categories are iterated in ascending `category_id` order so the draw sequence,
+and therefore the result, is fully determined by `RANDOM_SEED`.
+
+**Coverage:** a product only gets a `unit_cost` if it has *both* a category (a
+margin_factor basis, from step c) and at least one sales transaction (a price to
+apply it to). Products with neither are left with `unit_cost = null` rather than
+given an invented fallback -- there's no real derivation basis for them, and
+`Product.unit_cost` is nullable precisely for this reason. Measured: 4,898 of
+4,960 products got a `unit_cost` (the other 62 have no description, so no
+category, from step c).
+
+**Honest residual:** 9 products come out to `unit_cost = 0.00` because their
+*entire* observed transaction history has `unit_price = 0` (median of all-zero
+prices is zero). Spot-checked each one directly -- all are real, named products
+(e.g. "CERAMIC CAKE TEAPOT WITH CHERRY", "CRYSTAL DRAGONFLY PHONE CHARM", `PADS`)
+that were apparently always given away free or heavily discounted to zero in
+every recorded transaction, not administrative artifacts (those were removed in
+the cleaning correction above). `unit_cost = 0` is the mathematically correct
+output of the documented formula given that input, not a bug, so this is
+disclosed rather than patched with an arbitrary floor.
 
 ## #supplier-assignment
 
