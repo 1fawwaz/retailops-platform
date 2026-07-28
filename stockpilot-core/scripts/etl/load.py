@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from models.category import Category
 from models.product import Product
+from models.supplier import Supplier
 
 SALES_TRANSACTION_COLUMN_MAP = {
     "Invoice": "invoice",
@@ -75,6 +76,38 @@ def update_product_categories(session: Session, sku_to_category_id: dict[str, in
 
 def update_product_unit_costs(session: Session, sku_to_unit_cost: dict[str, float]) -> int:
     updates = [{"sku": sku, "unit_cost": unit_cost} for sku, unit_cost in sku_to_unit_cost.items()]
+    if not updates:
+        return 0
+    session.execute(update(Product), updates)
+    session.commit()
+    return len(updates)
+
+
+def insert_suppliers(session: Session, roster_df: pd.DataFrame) -> list[int]:
+    """Inserts roster_df (columns: name, lead_time_days, reliability_score) in
+    row order. Returns the resulting supplier ids in that same order, so index
+    i in the roster maps to result[i].
+    """
+    supplier_ids: list[int] = []
+    for name, lead_time_days, reliability_score in zip(
+        roster_df["name"], roster_df["lead_time_days"], roster_df["reliability_score"], strict=True
+    ):
+        supplier = Supplier(
+            name=str(name),
+            lead_time_days=int(lead_time_days),
+            reliability_score=float(reliability_score),
+        )
+        session.add(supplier)
+        session.flush()
+        supplier_ids.append(supplier.id)
+    session.commit()
+    return supplier_ids
+
+
+def update_product_suppliers(session: Session, sku_to_supplier_id: dict[str, int]) -> int:
+    updates = [
+        {"sku": sku, "supplier_id": supplier_id} for sku, supplier_id in sku_to_supplier_id.items()
+    ]
     if not updates:
         return 0
     session.execute(update(Product), updates)

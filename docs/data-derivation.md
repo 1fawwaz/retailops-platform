@@ -209,7 +209,24 @@ disclosed rather than patched with an arbitrary floor.
 
 ## #supplier-assignment
 
-TODO — added when step (e) lands.
+`scripts/etl/suppliers.py` invents a supplier roster and assigns exactly one
+supplier to every product. Entirely `provenance="derived"` -- this dataset has
+no real supplier data at all.
+
+**Roster:** 15 suppliers (spec range: 12-20), named plainly `Supplier 01`
+through `Supplier 15` -- not invented company names, so nothing here could be
+mistaken for a real business. Each gets, drawn from the shared seeded
+`Generator` in roster order:
+- `lead_time_days`: `randint(3, 21)` inclusive (the spec's exact range).
+- `reliability_score`: `Uniform(0.85, 0.99)` -- the spec doesn't give a range
+  for this one; chosen to read as a plausible on-time-delivery rate for a
+  business that's actually still operating (a supplier below ~85% reliability
+  wouldn't stay a supplier long).
+
+**Assignment:** every product gets exactly one supplier, chosen uniformly at
+random from the roster (`randint(0, 15)` per SKU, SKUs sorted first for the
+same input-order-independence reason as `assign_categories` -- see
+`test_assign_suppliers_is_independent_of_input_order`).
 
 ## #stock-ledger
 

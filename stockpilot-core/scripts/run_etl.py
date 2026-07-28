@@ -22,11 +22,18 @@ from scripts.etl.load import (  # noqa: E402
     insert_categories,
     insert_products,
     insert_sales_transactions,
+    insert_suppliers,
     update_product_categories,
+    update_product_suppliers,
     update_product_unit_costs,
 )
 from scripts.etl.product_master import build_product_master  # noqa: E402
 from scripts.etl.random_seed import create_rng  # noqa: E402
+from scripts.etl.suppliers import (  # noqa: E402
+    N_SUPPLIERS,
+    assign_suppliers,
+    generate_supplier_roster,
+)
 
 
 def step_a_clean() -> pd.DataFrame:
@@ -103,6 +110,29 @@ def step_d_cost_price(rng: np.random.Generator) -> None:
         session.close()
 
 
+def step_e_suppliers(rng: np.random.Generator) -> None:
+    print("Step (e): suppliers")
+    engine = get_engine()
+    with engine.connect() as conn:
+        skus = pd.read_sql(text("SELECT sku FROM products"), conn)["sku"].tolist()
+
+    roster_df = generate_supplier_roster(rng)
+
+    session = get_session_factory()()
+    try:
+        supplier_ids = insert_suppliers(session, roster_df)
+        print(f"  suppliers_inserted: {len(supplier_ids)}")
+
+        sku_to_supplier_index = assign_suppliers(skus, N_SUPPLIERS, rng)
+        sku_to_supplier_id = {
+            sku: supplier_ids[index] for sku, index in sku_to_supplier_index.items()
+        }
+        updated = update_product_suppliers(session, sku_to_supplier_id)
+        print(f"  products_updated: {updated}")
+    finally:
+        session.close()
+
+
 def main() -> None:
     rng = create_rng()
 
@@ -110,6 +140,7 @@ def main() -> None:
     step_b_product_master(cleaned_df)
     step_c_categories()
     step_d_cost_price(rng)
+    step_e_suppliers(rng)
 
 
 if __name__ == "__main__":
