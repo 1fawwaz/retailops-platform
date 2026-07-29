@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from api.routers import analytics, auth, inventory, products, suppliers
+from api.routers import analytics, auth, forecast, inventory, products, suppliers
 
 app = FastAPI(title="StockPilot Core")
 
@@ -9,6 +9,7 @@ app.include_router(products.router)
 app.include_router(suppliers.router)
 app.include_router(inventory.router)
 app.include_router(analytics.router)
+app.include_router(forecast.router)
 
 
 @app.get("/health")

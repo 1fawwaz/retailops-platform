@@ -1,0 +1,32 @@
+{
+  "trained_at": "2026-07-29T05:58:12.110983+00:00",
+  "training_window": {
+    "start": "2009-12-01",
+    "end": "2011-11-11"
+  },
+  "test_window": {
+    "start": "2011-11-12",
+    "end": "2011-12-09"
+  },
+  "n_skus_evaluated": 4801,
+  "min_train_days": 42,
+  "horizon_days_backtest": 28,
+  "seasonal_period": 7,
+  "moving_average_window": 28,
+  "models": {
+    "seasonal_naive": {
+      "mae": 6.0136429910435325,
+      "mape": 246.9707212417142
+    },
+    "moving_average": {
+      "mae": 5.18517613252341,
+      "mape": 158.87923604922432
+    },
+    "gbm": {
+      "mae": 6.078124819524803,
+      "mape": 250.02410838375212
+    }
+  },
+  "selected_model": "moving_average",
+  "selected_model_residual_std": 42.133981151232916
+}

@@ -10,8 +10,8 @@ import json
 from pathlib import Path
 
 import pandas as pd
-from sklearn.cluster import KMeans  # type: ignore[import-untyped]  # scikit-learn ships no stubs
-from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import-untyped]
+from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 from scripts.etl.random_seed import RANDOM_SEED
 
