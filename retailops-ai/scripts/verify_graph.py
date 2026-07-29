@@ -1,5 +1,6 @@
-"""Stage 3 Task 3.2 milestone check: the graph runs end to end and the
-retrieval agents provably run concurrently -- show timings.
+"""Stage 3 Task 3.2/3.3 milestone check: the graph runs end to end, the
+retrieval agents provably run concurrently -- show timings -- and the
+replan loop demonstrably triggers a second, targeted retrieval round.
 
 Requires a running stockpilot-core instance (STOCKPILOT_BASE_URL), a
 real GEMINI_API_KEY, and retailops-ai's own Postgres database migrated
@@ -9,12 +10,17 @@ Planner/Report/Decision Engine (role="planner"/"decision") are NOT
 called live here, for the same reason scripts/verify_agents.py excludes
 them: this API key's free tier has a hard zero quota for that model
 family (confirmed via a live 429 RESOURCE_EXHAUSTED with limit=0). This
-script patches only those two roles' calls to llm.providers.gemini.generate
-with an immediate canned response so the graph's full topology can still
-run start to finish against a real database -- the three retrieval
-agents (role="retriever") make real Gemini calls and real StockPilot
-tool calls, completely unpatched. The milestone this task cares about
-(retrieval-agent concurrency) is entirely inside that unpatched section.
+script patches those two roles' calls to llm.providers.gemini.generate
+AND generate_structured (the replan judgement, Task 3.3, also runs on
+the "planner" role) with an immediate canned response so the graph's
+full topology can still run start to finish against a real database --
+the three retrieval agents (role="retriever") make real Gemini calls
+and real StockPilot tool calls, completely unpatched. The milestones
+this task cares about (retrieval-agent concurrency, the replan loop
+firing) are entirely inside that unpatched section: the mocked replan
+judgement deliberately says "insufficient, retry forecast" on its first
+call so the second, targeted round's forecast re-invocation is also a
+real live call, not just the first round's.
 
 A second, tighter constraint surfaced while writing this script: this
 key's free tier also caps gemini-3.5-flash (the retriever role) at
@@ -58,8 +64,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from langchain_core.messages import AIMessage  # noqa: E402
 
 from agents.base import build_agents  # noqa: E402
+from agents.replan import ReplanJudgement  # noqa: E402
 from clients.stockpilot import StockPilotClient  # noqa: E402
 from database import get_session_factory  # noqa: E402
+from llm.providers.gemini import StructuredResult  # noqa: E402
 from llm.providers.gemini import generate as real_generate  # noqa: E402
 from model_config import get_model_config  # noqa: E402
 from orchestration.graph import RETRIEVAL_AGENT_NAMES, build_execution_graph  # noqa: E402
@@ -70,6 +78,8 @@ from orchestration.state import new_execution_state  # noqa: E402
 from settings import get_settings  # noqa: E402
 
 QUERY = "Which products are low on stock, and what does demand forecasting say about them?"
+
+_replan_calls = {"count": 0}
 
 
 def _patched_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
@@ -83,6 +93,32 @@ def _patched_generate(*, model: str, messages: list[Any], tools: Any = None) -> 
     return AIMessage(
         content=f"[mocked -- quota-blocked model '{model}'] acknowledged.",
         usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+    )
+
+
+def _patched_generate_structured(
+    *, model: str, messages: list[Any], response_schema: Any
+) -> StructuredResult[Any]:
+    # Only the replan judgement (agents/replan.py::ReplanJudgement) calls
+    # generate_structured() anywhere in this graph, and it always runs on
+    # the zero-quota "planner" role -- see the module docstring. The first
+    # call says insufficient and names "forecast" for a targeted retry, so
+    # the SECOND fan-out's forecast call is also a real live Gemini +
+    # StockPilot call, not just the first round's.
+    _replan_calls["count"] += 1
+    if _replan_calls["count"] == 1:
+        judgement = ReplanJudgement(
+            sufficient=False,
+            missing=["a closer look at demand forecasting for the flagged SKUs"],
+            next_action="forecast agent, targeted retrieval",
+            agents_to_retry=["forecast"],
+        )
+    else:
+        judgement = ReplanJudgement(
+            sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
+        )
+    return StructuredResult(
+        parsed=judgement, usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
     )
 
 
@@ -109,25 +145,34 @@ def main() -> None:
         graph = build_execution_graph(agents, session_factory, execution_id)
         state = new_execution_state(execution_id=execution_id, query=QUERY, budgets=budgets)
 
-        with patch("agents.base.generate", side_effect=_patched_generate):
+        with (
+            patch("agents.base.generate", side_effect=_patched_generate),
+            patch("agents.base.generate_structured", side_effect=_patched_generate_structured),
+        ):
             result = graph.invoke(state)
 
     print(f"final_answer: {result['final_answer']}\n")
 
-    print("timings (relative to the earliest node start):")
+    print(f"replan_history ({len(result['replan_history'])} round(s)):")
+    for judgement in result["replan_history"]:
+        print(f"  iteration={judgement['iteration']} sufficient={judgement['sufficient']}")
+        print(f"    missing: {judgement['missing']}")
+        print(f"    next_action: {judgement['next_action']}")
+
+    print("\ntimings (relative to the earliest node start):")
     graph_start = min(t["start"] for t in result["timings"].values())
     for name, window in sorted(result["timings"].items(), key=lambda kv: kv[1]["start"]):
         print(
-            f"  {name:<10} start={window['start'] - graph_start:6.3f}s  "
+            f"  {name:<16} start={window['start'] - graph_start:6.3f}s  "
             f"end={window['end'] - graph_start:6.3f}s"
         )
 
-    retrieval_windows = {name: result["timings"][name] for name in RETRIEVAL_AGENT_NAMES}
+    round_1_windows = {name: result["timings"][f"{name}_1"] for name in RETRIEVAL_AGENT_NAMES}
     overlap_found = any(
-        retrieval_windows[a]["start"] < retrieval_windows[b]["end"]
-        and retrieval_windows[b]["start"] < retrieval_windows[a]["end"]
-        for a in retrieval_windows
-        for b in retrieval_windows
+        round_1_windows[a]["start"] < round_1_windows[b]["end"]
+        and round_1_windows[b]["start"] < round_1_windows[a]["end"]
+        for a in round_1_windows
+        for b in round_1_windows
         if a != b
     )
 
@@ -147,18 +192,30 @@ def main() -> None:
 
     print(f"\nagent_steps rows: {len(agent_steps)}")
     for step in agent_steps:
-        print(f"  {step.agent_name:<10} model={step.model_id} status={step.status}")
+        print(
+            f"  {step.agent_name:<10} iteration={step.iteration} model={step.model_id} "
+            f"status={step.status}"
+        )
     print(f"tool_calls rows: {len(tool_calls)}")
+
+    forecast_iterations = sorted(s.iteration for s in agent_steps if s.agent_name == "forecast")
 
     failures = []
     if set(result["agent_results"]) != {"inventory", "forecast", "analytics", "report", "decision"}:
         failures.append(f"Unexpected agent_results keys: {set(result['agent_results'])}")
     if result["final_answer"] is None:
         failures.append("final_answer was not set")
-    if len(agent_steps) != 6:
-        failures.append(f"Expected 6 agent_steps rows, got {len(agent_steps)}")
+    if len(result["replan_history"]) != 2:
+        failures.append(f"Expected 2 replan rounds, got {len(result['replan_history'])}")
+    if forecast_iterations != [1, 2]:
+        failures.append(
+            f"Expected forecast to run in iterations [1, 2] (the replan loop's targeted "
+            f"retry), got {forecast_iterations}"
+        )
     if not overlap_found:
-        failures.append(f"No timing overlap found among retrieval agents: {retrieval_windows}")
+        failures.append(
+            f"No timing overlap found among round-1 retrieval agents: {round_1_windows}"
+        )
 
     if failures:
         print("\nFAILURES:")
@@ -168,10 +225,13 @@ def main() -> None:
 
     print(
         "\nMilestone verified: the full graph topology (entry -> planner -> "
-        "parallel retrieval fan-out -> report -> decision -> end) ran end to "
-        "end, and the three retrieval agents' timing windows genuinely "
-        "overlap -- real concurrent execution, not just sequential calls "
-        "that happen to be fast."
+        "parallel retrieval fan-out -> replan -> [targeted retry] -> report -> "
+        "decision -> end) ran end to end; round 1's three retrieval agents' "
+        "timing windows genuinely overlap -- real concurrent execution, not "
+        "just sequential calls that happen to be fast -- and the replan loop "
+        "demonstrably triggered a second, targeted round (forecast re-ran in "
+        "iteration 2 with real Gemini and real StockPilot calls), with the "
+        "Planner's sufficiency reasoning visible in replan_history."
     )
 
 

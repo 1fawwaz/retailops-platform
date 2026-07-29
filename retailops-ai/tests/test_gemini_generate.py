@@ -198,13 +198,17 @@ def test_generate_calls_the_sdk_and_returns_an_ai_message() -> None:
     fake_client.models.generate_content.assert_called_once()
 
 
-def test_generate_structured_returns_the_parsed_pydantic_instance() -> None:
+def test_generate_structured_returns_the_parsed_pydantic_instance_and_usage() -> None:
     class Sentiment(BaseModel):
         label: str
 
     fake_client = MagicMock()
     fake_client.models.generate_content.return_value = SimpleNamespace(
-        parsed=Sentiment(label="positive"), text='{"label": "positive"}'
+        parsed=Sentiment(label="positive"),
+        text='{"label": "positive"}',
+        usage_metadata=SimpleNamespace(
+            prompt_token_count=7, candidates_token_count=3, thoughts_token_count=0
+        ),
     )
 
     with patch("llm.providers.gemini.genai.Client", return_value=fake_client):
@@ -214,7 +218,8 @@ def test_generate_structured_returns_the_parsed_pydantic_instance() -> None:
             response_schema=Sentiment,
         )
 
-    assert result == Sentiment(label="positive")
+    assert result.parsed == Sentiment(label="positive")
+    assert result.usage_metadata == {"input_tokens": 7, "output_tokens": 3, "total_tokens": 10}
 
 
 def test_generate_structured_raises_if_sdk_did_not_return_the_schema_type() -> None:

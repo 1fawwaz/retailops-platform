@@ -1,12 +1,16 @@
-"""Stage 3 Task 3.2: the LangGraph orchestration graph connecting the six
-agents built in Task 3.1.
+"""Stage 3 Task 3.2/3.3: the LangGraph orchestration graph connecting the
+six agents built in Task 3.1, including the replan loop (Task 3.3).
 
 Topology (per the spec): entry -> Planner -> PARALLEL fan-out to the
-three retrieval agents (Inventory, Forecast, Analytics) -> Report ->
-Decision Engine -> end. The Validator is deliberately absent -- Task
-3.5 ("Citation validator") is the task that adds it, and CLAUDE.md's
-"no placeholders" rule means it isn't scaffolded here as an empty
-pass-through node ahead of that.
+three retrieval agents (Inventory, Forecast, Analytics) -> Replan
+(the Planner again, judging sufficiency) -> conditional:
+  sufficient, or the iteration cap is reached -> Report -> Decision
+    Engine -> end
+  insufficient and budget remains -> a second, TARGETED fan-out to just
+    the retrieval agent(s) the judgement names -> Replan again (loop)
+The Validator is deliberately absent -- Task 3.5 ("Citation validator")
+is the task that adds it, and CLAUDE.md's "no placeholders" rule means
+it isn't scaffolded here as an empty pass-through node ahead of that.
 
 Confirmed by a standalone throwaway test before writing this file:
 LangGraph's Pregel scheduler runs plain synchronous node functions
@@ -14,25 +18,30 @@ concurrently when they have no dependency edge between them (here, the
 three retrieval agents fanned out from "planner") -- no async rewrite
 of Agent.invoke() or the Gemini provider is needed to get genuine
 wall-clock parallelism. `ExecutionState`'s `agent_results`,
-`tool_ledger`, `provenance_map`, and `timings` fields all carry merge
-reducers (orchestration/state.py) for exactly this reason: three nodes
-write them in the same superstep.
+`tool_ledger`, `provenance_map`, `timings`, and `replan_history` fields
+all carry merge reducers (orchestration/state.py) for exactly this
+reason: three nodes can write them in the same superstep.
 
 Each retrieval node also reads back the `tool_calls` rows written
 during its own `Agent.invoke()` call (tools/stockpilot_tools.py commits
 one row per call) to populate `tool_ledger` and `provenance_map`.
-`agent_step_id` isn't populated on `ToolCall` yet (a known gap, see
-scripts/verify_agents.py's precedent of documenting rather than
-silently working around such gaps), so attribution is done by
-`tool_name` ownership instead: each retrieval agent's tool subset
-(INVENTORY_TOOL_NAMES/FORECAST_TOOL_NAMES/ANALYTICS_TOOL_NAMES in
-agents/base.py) is disjoint by construction, and unlike diffing
-before/after tool_call_id sets, ownership filtering can't misattribute
-a row to a concurrently-running sibling node whose invocation window
-happens to overlap the moment the row was committed. This assumes each
-retrieval agent runs at most once per execution, true today; Task 3.3's
-replan loop, which can re-invoke an agent within the same execution,
-will need to revisit this once agent_step_id is wired up.
+`agent_step_id` isn't populated on `ToolCall` yet (a known gap), so
+attribution combines two filters instead:
+  - `tool_name` ownership -- each retrieval agent's tool subset
+    (INVENTORY_TOOL_NAMES/FORECAST_TOOL_NAMES/ANALYTICS_TOOL_NAMES in
+    agents/base.py) is disjoint by construction, so it rules out ever
+    picking up a CONCURRENTLY-running sibling's row (unlike diffing
+    tool_call_ids before/after with no name filter, which was proven to
+    race across siblings in Task 3.2).
+  - before/after id-diffing WITHIN that owned set -- needed now that
+    Task 3.3 can re-invoke the same retrieval agent across replan
+    rounds: without it, a round-2 query would re-count round-1's rows
+    too, since both share the same owned tool names. Diffing is safe
+    here because a single agent's own successive rounds are never
+    concurrent with each other (round N+1 only starts after round N's
+    replan judgement, which only starts after round N fully finishes) --
+    it only failed in Task 3.2 when applied ACROSS different agents
+    with no name filter to keep them apart in the first place.
 """
 
 from __future__ import annotations
@@ -48,6 +57,7 @@ from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.orm import Session
 
 from agents.base import Agent
+from agents.replan import ReplanJudgement
 from orchestration.models.tool_call import ToolCall
 from orchestration.state import ExecutionState
 
@@ -64,16 +74,39 @@ def _content_str(message: AIMessage) -> str:
     return content if isinstance(content, str) else str(content)
 
 
-def _tool_calls_by_name(
+def _owned_tool_call_ids(
     session_factory: Callable[[], Session],
     execution_id: uuid.UUID,
     owned_tool_names: set[str],
+) -> set[uuid.UUID]:
+    if not owned_tool_names:
+        return set()
+    session = session_factory()
+    try:
+        rows = (
+            session.query(ToolCall.tool_call_id)
+            .filter(
+                ToolCall.execution_id == execution_id,
+                ToolCall.tool_name.in_(owned_tool_names),
+            )
+            .all()
+        )
+        return {row.tool_call_id for row in rows}
+    finally:
+        session.close()
+
+
+def _new_owned_tool_calls(
+    session_factory: Callable[[], Session],
+    execution_id: uuid.UUID,
+    owned_tool_names: set[str],
+    before_ids: set[uuid.UUID],
 ) -> list[ToolCall]:
     if not owned_tool_names:
         return []
     session = session_factory()
     try:
-        return (
+        rows = (
             session.query(ToolCall)
             .filter(
                 ToolCall.execution_id == execution_id,
@@ -81,6 +114,7 @@ def _tool_calls_by_name(
             )
             .all()
         )
+        return [row for row in rows if row.tool_call_id not in before_ids]
     finally:
         session.close()
 
@@ -108,15 +142,32 @@ def _make_retrieval_node(
     owned_tool_names = {tool.name for tool in agent.tools}
 
     def node(state: ExecutionState) -> dict[str, object]:
+        iteration = len(state["replan_history"]) + 1
         prompt = state["query"]
-        if state["plan"]:
+        if state["replan_history"]:
+            latest = state["replan_history"][-1]
+            missing_raw = latest.get("missing")
+            missing = [str(m) for m in missing_raw] if isinstance(missing_raw, list) else []
+            next_action = str(latest.get("next_action", ""))
+            prompt = (
+                f"{prompt}\n\nThe Planner judged the evidence so far insufficient "
+                f"and asked for this targeted follow-up: {next_action}\n"
+                f"Specifically missing: {'; '.join(missing) if missing else 'unspecified'}"
+            )
+        elif state["plan"]:
             prompt = f"{prompt}\n\nPlanner's guidance:\n{state['plan']}"
 
+        before_ids = _owned_tool_call_ids(session_factory, execution_id, owned_tool_names)
+
         started = time.monotonic()
-        response = agent.invoke(prompt, session_factory=session_factory, execution_id=execution_id)
+        response = agent.invoke(
+            prompt, session_factory=session_factory, execution_id=execution_id, iteration=iteration
+        )
         ended = time.monotonic()
 
-        new_calls = _tool_calls_by_name(session_factory, execution_id, owned_tool_names)
+        new_calls = _new_owned_tool_calls(
+            session_factory, execution_id, owned_tool_names, before_ids
+        )
         provenance: dict[str, str] = {}
         ledger: list[dict[str, str | int | None]] = []
         for call in new_calls:
@@ -135,10 +186,78 @@ def _make_retrieval_node(
             "agent_results": {agent.name: _content_str(response)},
             "tool_ledger": ledger,
             "provenance_map": provenance,
-            "timings": {agent.name: {"start": started, "end": ended}},
+            "timings": {f"{agent.name}_{iteration}": {"start": started, "end": ended}},
         }
 
     return node
+
+
+def _make_replan_node(
+    agent: Agent, session_factory: Callable[[], Session], execution_id: uuid.UUID
+) -> NodeFn:
+    """The Planner, re-invoked to judge sufficiency (Task 3.3) -- a
+    tool-less structured-output call (invoke_structured), not the free
+    text of the initial plan. `iteration` is derived from how many
+    judgements exist already, not tracked as a separate state field:
+    the replan_history this judgement is about to be appended to is
+    exactly the round it's evaluating.
+    """
+
+    def node(state: ExecutionState) -> dict[str, object]:
+        iteration = len(state["replan_history"]) + 1
+        max_iterations = state["budgets"].get("max_tool_iterations", 1)
+
+        sections = [f"Original question:\n{state['query']}"]
+        if state["plan"]:
+            sections.append(f"Initial plan:\n{state['plan']}")
+        for name in RETRIEVAL_AGENT_NAMES:
+            result = state["agent_results"].get(name)
+            if result:
+                sections.append(f"{name.capitalize()} agent findings:\n{result}")
+        sections.append(
+            f"This is your sufficiency judgement after retrieval round {iteration} "
+            f"of at most {max_iterations}. Judge whether the evidence above is "
+            "sufficient to answer the original question. If it is not, say exactly "
+            "what's missing and name which retrieval agent(s) should run again with "
+            "a more targeted ask."
+        )
+        prompt = "\n\n".join(sections)
+
+        started = time.monotonic()
+        judgement = agent.invoke_structured(
+            prompt,
+            ReplanJudgement,
+            session_factory=session_factory,
+            execution_id=execution_id,
+            iteration=iteration,
+        )
+        ended = time.monotonic()
+
+        record: dict[str, object] = {**judgement.model_dump(), "iteration": iteration}
+        return {
+            "replan_history": [record],
+            "timings": {f"replan_{iteration}": {"start": started, "end": ended}},
+        }
+
+    return node
+
+
+def _route_after_replan(state: ExecutionState) -> str | list[str]:
+    """sufficient, or the iteration cap already reached -> Report.
+    Otherwise -> a targeted fan-out to just the agent(s) named in the
+    judgement (falling back to all three if the model said insufficient
+    but somehow named none, so the loop can't stall on a malformed
+    judgement).
+    """
+    judgement = state["replan_history"][-1]
+    max_iterations = state["budgets"].get("max_tool_iterations", 1)
+    iteration_evaluated = len(state["replan_history"])
+    if judgement["sufficient"] or iteration_evaluated >= max_iterations:
+        return "report"
+    agents_to_retry_raw = judgement.get("agents_to_retry")
+    if isinstance(agents_to_retry_raw, list) and agents_to_retry_raw:
+        return [str(a) for a in agents_to_retry_raw]
+    return list(RETRIEVAL_AGENT_NAMES)
 
 
 def _make_synthesis_node(
@@ -208,6 +327,10 @@ def build_execution_graph(
             cast(Any, _make_retrieval_node(agents[name], session_factory, execution_id)),
         )
     builder.add_node(
+        "replan",
+        cast(Any, _make_replan_node(agents["planner"], session_factory, execution_id)),
+    )
+    builder.add_node(
         "report",
         cast(
             Any,
@@ -225,7 +348,8 @@ def build_execution_graph(
     builder.add_edge(START, "planner")
     for name in RETRIEVAL_AGENT_NAMES:
         builder.add_edge("planner", name)
-        builder.add_edge(name, "report")
+        builder.add_edge(name, "replan")
+    builder.add_conditional_edges("replan", _route_after_replan, ["report", *RETRIEVAL_AGENT_NAMES])
     builder.add_edge("report", "decision")
     builder.add_edge("decision", END)
 

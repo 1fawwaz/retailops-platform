@@ -13,6 +13,14 @@ Engine's output.
 each needs a reducer telling LangGraph how to merge concurrent partial
 updates instead of raising a conflict -- confirmed necessary and
 sufficient by a throwaway concurrency test before writing this file.
+
+Task 3.3 adds `replan_history`: one entry per replan round, each the
+Planner's structured sufficiency judgement (agents/replan.py) plus the
+`iteration` number the graph attaches. It does double duty as the
+persisted trace record the spec requires AND the thing the graph's own
+conditional routing reads to decide sufficient-vs-retry -- no separate
+routing-only field needed, since `len(replan_history)` after a replan
+node runs is exactly the round it just evaluated.
 """
 
 from __future__ import annotations
@@ -45,6 +53,7 @@ class ExecutionState(TypedDict):
     errors: Annotated[list[str], operator.add]
     budgets: dict[str, int]
     timings: Annotated[dict[str, dict[str, float]], _merge_timings]
+    replan_history: Annotated[list[dict[str, object]], operator.add]
     final_answer: str | None
 
 
@@ -65,5 +74,6 @@ def new_execution_state(
         errors=[],
         budgets=budgets,
         timings={},
+        replan_history=[],
         final_answer=None,
     )

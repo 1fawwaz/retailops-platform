@@ -13,8 +13,9 @@ args_schema via parameters_json_schema (verified live against the real
 API rather than assumed -- google-genai's SDK accepts a raw JSON Schema
 dict there, no hand-rolled JSON-Schema-to-Gemini-Schema conversion
 needed). generate_structured() similarly passes a Pydantic class
-directly as response_schema and returns response.parsed, already
-validated as that type by the SDK.
+directly as response_schema and returns a StructuredResult wrapping
+response.parsed (already validated as that type by the SDK) alongside
+token usage.
 
 Gemini's "thinking" models return a `thought_signature` on function-call
 and text parts; it's preserved via AIMessage.additional_kwargs and
@@ -29,7 +30,8 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterator
-from typing import TypeVar
+from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 from google import genai
 from google.genai import types
@@ -42,6 +44,19 @@ from settings import get_settings
 T = TypeVar("T", bound=BaseModel)
 
 THOUGHT_SIGNATURES_KEY = "thought_signatures"
+
+
+@dataclass(frozen=True)
+class StructuredResult(Generic[T]):
+    """generate_structured()'s return value. A bare parsed Pydantic
+    instance would lose token usage, and callers that need to persist a
+    full trace record (CLAUDE.md invariant 2: prompt/completion tokens
+    per agent_steps row) can't do that from response.parsed alone.
+    """
+
+    parsed: T
+    usage_metadata: dict[str, int]
+
 
 _thread_local = threading.local()
 
@@ -147,6 +162,19 @@ def _tool_to_gemini(tool: StructuredTool) -> types.Tool:
     )
 
 
+def _usage_metadata(response: types.GenerateContentResponse) -> dict[str, int]:
+    usage = response.usage_metadata
+    prompt_tokens = (usage.prompt_token_count or 0) if usage else 0
+    completion_tokens = (
+        ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)) if usage else 0
+    )
+    return {
+        "input_tokens": prompt_tokens,
+        "output_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+
+
 def _response_to_ai_message(response: types.GenerateContentResponse) -> AIMessage:
     candidate = response.candidates[0] if response.candidates else None
     parts = (
@@ -173,23 +201,13 @@ def _response_to_ai_message(response: types.GenerateContentResponse) -> AIMessag
             if part.thought_signature:
                 thought_signatures[call_id] = part.thought_signature
 
-    usage = response.usage_metadata
-    prompt_tokens = (usage.prompt_token_count or 0) if usage else 0
-    completion_tokens = (
-        ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)) if usage else 0
-    )
-
     return AIMessage(
         content="".join(text_parts),
         tool_calls=tool_calls,
         additional_kwargs={THOUGHT_SIGNATURES_KEY: thought_signatures}
         if thought_signatures
         else {},
-        usage_metadata={
-            "input_tokens": prompt_tokens,
-            "output_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
+        usage_metadata=_usage_metadata(response),
     )
 
 
@@ -225,7 +243,7 @@ def generate_structured(
     response_schema: type[T],
     max_output_tokens: int | None = None,
     temperature: float | None = None,
-) -> T:
+) -> StructuredResult[T]:
     """Structured output: response_schema is a Pydantic class, passed
     straight through to the SDK, which returns an already-validated
     instance via response.parsed.
@@ -244,7 +262,7 @@ def generate_structured(
         raise ValueError(
             f"Gemini did not return a valid {response_schema.__name__}: {response.text!r}"
         )
-    return parsed
+    return StructuredResult(parsed=parsed, usage_metadata=_usage_metadata(response))
 
 
 def stream(

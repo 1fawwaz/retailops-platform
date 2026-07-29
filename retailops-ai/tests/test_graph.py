@@ -1,7 +1,8 @@
-"""Stage 3 Task 3.2 milestone: the graph runs the full topology and the
-retrieval agents provably run concurrently, with real timing overlap
-proof captured at the level of the actual graph (not just a raw
-LangGraph toy example).
+"""Stage 3 Task 3.2/3.3 milestones: the graph runs the full topology, the
+retrieval agents provably run concurrently (real timing overlap proof
+captured at the level of the actual graph, not just a raw LangGraph toy
+example), and the replan loop demonstrably triggers a second, targeted
+retrieval round when the Planner judges the evidence insufficient.
 """
 
 from __future__ import annotations
@@ -22,8 +23,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from agents.base import Agent
+from agents.replan import ReplanJudgement
+from llm.providers.gemini import StructuredResult
 from orchestration.graph import build_execution_graph
 from orchestration.models import Base
+from orchestration.models.agent_step import AgentStep
 from orchestration.models.execution import Execution
 from orchestration.models.tool_call import ToolCall
 from orchestration.state import new_execution_state
@@ -96,13 +100,40 @@ def _ai_message(text: str) -> AIMessage:
 
 
 def _dispatch_by_prompt(agents: dict[str, Agent]) -> dict[str, str]:
-    """generate() only receives a model id and a message list, and several
-    agents share a model id (planner/decision both use the "decision"...
-    role; retriever agents share "retriever") -- the system message's text
-    (each agent's own versioned prompt file) is what's actually unique per
-    agent, so tests dispatch on that instead of on `model`.
+    """generate()/generate_structured() only receive a model id and a
+    message list, and several agents share a model id (planner/decision
+    both use the "decision"... role; retriever agents share "retriever")
+    -- the system message's text (each agent's own versioned prompt file)
+    is what's actually unique per agent, so tests dispatch on that
+    instead of on `model`.
     """
     return {agent.prompt.text: name for name, agent in agents.items()}
+
+
+def _judgement_result(
+    *, sufficient: bool, missing: list[str], next_action: str, agents_to_retry: list[str]
+) -> StructuredResult[ReplanJudgement]:
+    return StructuredResult(
+        parsed=ReplanJudgement(
+            sufficient=sufficient,
+            missing=missing,
+            next_action=next_action,
+            agents_to_retry=agents_to_retry,
+        ),
+        usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+    )
+
+
+def _always_sufficient(
+    *, model: str, messages: list[Any], response_schema: Any
+) -> StructuredResult[ReplanJudgement]:
+    """The Task 3.2-era tests only care about the graph's straight-line
+    topology and concurrency, not the replan loop itself -- this keeps
+    them at exactly one retrieval round by always judging "sufficient".
+    """
+    return _judgement_result(
+        sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
+    )
 
 
 def test_graph_runs_full_topology_and_produces_a_final_answer(
@@ -116,7 +147,10 @@ def test_graph_runs_full_topology_and_produces_a_final_answer(
         name = prompt_to_name[messages[0].content]
         return _ai_message(f"{name} answer")
 
-    with patch("agents.base.generate", side_effect=fake_generate):
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
         graph = build_execution_graph(agents, session_factory, execution_id)
         state = new_execution_state(
             execution_id=execution_id,
@@ -136,12 +170,15 @@ def test_graph_runs_full_topology_and_produces_a_final_answer(
     assert result["final_answer"] == "decision answer"
     assert set(result["timings"]) == {
         "planner",
-        "inventory",
-        "forecast",
-        "analytics",
+        "inventory_1",
+        "forecast_1",
+        "analytics_1",
+        "replan_1",
         "report",
         "decision",
     }
+    assert len(result["replan_history"]) == 1
+    assert result["replan_history"][0]["sufficient"] is True
 
 
 def test_retrieval_agents_run_concurrently(session_factory: Callable[[], Session]) -> None:
@@ -155,7 +192,10 @@ def test_retrieval_agents_run_concurrently(session_factory: Callable[[], Session
             time.sleep(0.5)
         return _ai_message(f"{name} answer")
 
-    with patch("agents.base.generate", side_effect=fake_generate):
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
         graph = build_execution_graph(agents, session_factory, execution_id)
         state = new_execution_state(
             execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
@@ -170,7 +210,10 @@ def test_retrieval_agents_run_concurrently(session_factory: Callable[[], Session
     assert elapsed < 1.2
 
     timings = result["timings"]
-    windows = {name: (timings[name]["start"], timings[name]["end"]) for name in RETRIEVAL_NAMES}
+    windows = {
+        name: (timings[f"{name}_1"]["start"], timings[f"{name}_1"]["end"])
+        for name in RETRIEVAL_NAMES
+    }
     overlap_found = any(
         windows[a][0] < windows[b][1] and windows[b][0] < windows[a][1]
         for a in windows
@@ -230,7 +273,10 @@ def test_retrieval_node_populates_tool_ledger_and_provenance_from_real_tool_call
             return tool_call_message
         return _ai_message(f"{name} answer")
 
-    with patch("agents.base.generate", side_effect=fake_generate):
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
         graph = build_execution_graph(agents, session_factory, execution_id)
         state = new_execution_state(
             execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
@@ -245,76 +291,231 @@ def test_retrieval_node_populates_tool_ledger_and_provenance_from_real_tool_call
 def test_retrieval_nodes_do_not_cross_attribute_tool_calls(
     session_factory: Callable[[], Session],
 ) -> None:
-    """Ownership filtering by tool_name -- rather than diffing which
-    tool_call ids existed before/after a node's own invocation, which an
-    earlier version of this test proved races under real concurrent
-    writes against SQLite's single shared StaticPool connection -- must
-    attribute each row correctly even when unrelated tool_calls rows
-    already exist for the same execution_id under a name neither
-    retrieval agent owns.
+    """Two properties at once: ownership filtering by tool_name rules out
+    ever attributing a concurrently-running sibling's row (an earlier
+    version of this test proved plain before/after id-diffing with no
+    name filter races under real concurrent writes); before/after
+    id-diffing WITHIN the owned set rules out re-counting a row that
+    already existed before this node's own invocation -- e.g. a stale
+    row seeded here to stand in for a previous replan round's leftover
+    tool call, or an entirely unowned name neither agent's subset
+    includes.
     """
     execution_id = _new_execution(session_factory)
     session = session_factory()
     try:
-        for name in ("inventory_tool", "forecast_tool", "unowned_tool"):
-            session.add(
-                ToolCall(
-                    execution_id=execution_id,
-                    tool_name=name,
-                    args={"sku": "1"},
-                    raw_response={"sku": "1"},
-                    provenance_map={"sku": "observed"},
-                    latency_ms=5,
-                    status="success",
-                )
+        session.add(
+            ToolCall(
+                execution_id=execution_id,
+                tool_name="unowned_tool",
+                args={},
+                raw_response={},
+                provenance_map={},
+                latency_ms=1,
+                status="success",
             )
+        )
+        session.add(
+            ToolCall(
+                execution_id=execution_id,
+                tool_name="inventory_tool",
+                args={"sku": "stale"},
+                raw_response={"sku": "stale"},
+                provenance_map={"stale_field": "observed"},
+                latency_ms=1,
+                status="success",
+            )
+        )
         session.commit()
     finally:
         session.close()
+
+    def _make_tool(name: str) -> StructuredTool:
+        def _run(sku: str) -> str:
+            write_session = session_factory()
+            try:
+                write_session.add(
+                    ToolCall(
+                        execution_id=execution_id,
+                        tool_name=name,
+                        args={"sku": sku},
+                        raw_response={"sku": sku},
+                        provenance_map={"sku": "observed"},
+                        latency_ms=5,
+                        status="success",
+                    )
+                )
+                write_session.commit()
+            finally:
+                write_session.close()
+            return f"data for {sku}"
+
+        return StructuredTool.from_function(
+            func=_run, name=name, description="d", args_schema=_SkuArgs
+        )
 
     agents = _six_agents(
         inventory=Agent(
             name="inventory",
             role="retriever",
             prompt=load_prompt("inventory"),
-            tools=(
-                StructuredTool.from_function(
-                    func=lambda sku: sku,
-                    name="inventory_tool",
-                    description="d",
-                    args_schema=_SkuArgs,
-                ),
-            ),
+            tools=(_make_tool("inventory_tool"),),
         ),
         forecast=Agent(
             name="forecast",
             role="retriever",
             prompt=load_prompt("forecast"),
-            tools=(
-                StructuredTool.from_function(
-                    func=lambda sku: sku,
-                    name="forecast_tool",
-                    description="d",
-                    args_schema=_SkuArgs,
-                ),
-            ),
+            tools=(_make_tool("forecast_tool"),),
         ),
     )
     prompt_to_name = _dispatch_by_prompt(agents)
 
+    tool_calls_made: dict[str, AIMessage] = {
+        "inventory": AIMessage(
+            content="",
+            tool_calls=[{"name": "inventory_tool", "args": {"sku": "1"}, "id": "c1"}],
+        ),
+        "forecast": AIMessage(
+            content="",
+            tool_calls=[{"name": "forecast_tool", "args": {"sku": "2"}, "id": "c2"}],
+        ),
+    }
+    calls: dict[str, int] = {}
+
     def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
-        # Neither agent actually calls its tool here -- the rows already
-        # in the DB are what's under test, not anything Agent.invoke()
-        # writes during this run.
         name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        if name in tool_calls_made and calls[name] == 1:
+            return tool_calls_made[name]
         return _ai_message(f"{name} answer")
 
-    with patch("agents.base.generate", side_effect=fake_generate):
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
         graph = build_execution_graph(agents, session_factory, execution_id)
         state = new_execution_state(
             execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
         )
         result = graph.invoke(state)
 
-    ledger_names = {entry["tool_name"] for entry in result["tool_ledger"]}
-    assert ledger_names == {"inventory_tool", "forecast_tool"}
+    ledger_names = sorted(entry["tool_name"] for entry in result["tool_ledger"])
+    # Exactly the two NEW, owned calls made during this run -- not the
+    # pre-existing stale inventory_tool row, and not the unowned one.
+    assert ledger_names == ["forecast_tool", "inventory_tool"]
+
+
+def test_replan_loop_triggers_a_second_targeted_retrieval_round(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The Task 3.3 milestone: at least one query must demonstrably
+    trigger a second retrieval round, with the reasoning visible in the
+    trace. First judgement says insufficient and names only "forecast";
+    second says sufficient. Only forecast should run twice.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    calls: dict[str, int] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        return _ai_message(f"{name} answer round {calls[name]}")
+
+    replan_calls = {"count": 0}
+
+    def fake_generate_structured(
+        *, model: str, messages: list[Any], response_schema: Any
+    ) -> StructuredResult[ReplanJudgement]:
+        replan_calls["count"] += 1
+        if replan_calls["count"] == 1:
+            return _judgement_result(
+                sufficient=False,
+                missing=["forecast confidence interval for the flagged SKUs"],
+                next_action="forecast agent, targeted retrieval",
+                agents_to_retry=["forecast"],
+            )
+        return _judgement_result(
+            sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
+        )
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=fake_generate_structured),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert len(result["replan_history"]) == 2
+    assert result["replan_history"][0]["sufficient"] is False
+    assert result["replan_history"][0]["iteration"] == 1
+    assert result["replan_history"][0]["agents_to_retry"] == ["forecast"]
+    assert result["replan_history"][1]["sufficient"] is True
+    assert result["replan_history"][1]["iteration"] == 2
+
+    # Only forecast was named for retry -- inventory/analytics must not
+    # have re-run just because the loop went around again.
+    assert calls["forecast"] == 2
+    assert calls["inventory"] == 1
+    assert calls["analytics"] == 1
+    assert result["agent_results"]["forecast"] == "forecast answer round 2"
+    assert result["final_answer"] == "decision answer round 1"
+
+    verify_session = session_factory()
+    try:
+        steps = verify_session.query(AgentStep).filter(AgentStep.execution_id == execution_id).all()
+    finally:
+        verify_session.close()
+    forecast_iterations = sorted(s.iteration for s in steps if s.agent_name == "forecast")
+    assert forecast_iterations == [1, 2]
+    inventory_iterations = [s.iteration for s in steps if s.agent_name == "inventory"]
+    assert inventory_iterations == [1]
+    replan_iterations = sorted(s.iteration for s in steps if s.agent_name == "planner")
+    # One "planner" agent_steps row for the initial free-text plan (default
+    # iteration=1) plus one per replan judgement (iterations 1 and 2).
+    assert replan_iterations == [1, 1, 2]
+
+
+def test_replan_loop_is_bounded_by_max_tool_iterations(
+    session_factory: Callable[[], Session],
+) -> None:
+    """A persistently-insufficient judgement must not loop forever --
+    once the iteration cap is reached, the loop falls through to
+    Report/Decision anyway ("Bounded by max_tool_iterations" per spec).
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    def fake_generate_structured(
+        *, model: str, messages: list[Any], response_schema: Any
+    ) -> StructuredResult[ReplanJudgement]:
+        return _judgement_result(
+            sufficient=False,
+            missing=["always something more"],
+            next_action="try again",
+            agents_to_retry=["forecast"],
+        )
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=fake_generate_structured),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 2}
+        )
+        result = graph.invoke(state)
+
+    assert len(result["replan_history"]) == 2
+    assert all(judgement["sufficient"] is False for judgement in result["replan_history"])
+    assert result["final_answer"] == "decision answer"

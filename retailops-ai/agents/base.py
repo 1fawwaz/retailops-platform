@@ -10,15 +10,22 @@ the model, execute any tool calls it requests, feed results back,
 repeat up to MAX_TOOL_ROUNDS) -- distinct from the graph-level replan
 loop (Task 3.3), which decides whether to re-invoke retrieval agents
 across a whole execution, not within one agent's own turn.
+
+Agent.invoke_structured() (Task 3.3) is the tool-less counterpart used
+for the Planner's sufficiency judgement: one generate_structured() call,
+no tool loop, since the only caller has no tools to call. Both methods
+accept `iteration`, identifying which replan round (1 = the initial
+fan-out) the call belongs to, persisted on the agent_steps row so a
+single agent's calls across rounds stay distinguishable in the trace.
 """
 
 from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from langchain_core.messages import (
     AIMessage,
@@ -29,11 +36,12 @@ from langchain_core.messages import (
 )
 from langchain_core.messages.tool import ToolCall
 from langchain_core.tools import StructuredTool
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from agents.envelope import envelope
 from clients.stockpilot import StockPilotClient
-from llm.providers.gemini import generate
+from llm.providers.gemini import StructuredResult, generate, generate_structured
 from model_config import get_model_config
 from orchestration.models.agent_step import AgentStep
 from prompts.loader import LoadedPrompt, load_prompt
@@ -41,6 +49,8 @@ from serialization import to_jsonable
 from tools.stockpilot_tools import build_stockpilot_tools
 
 MAX_TOOL_ROUNDS = 4
+
+T = TypeVar("T", bound=BaseModel)
 
 INVENTORY_TOOL_NAMES = (
     "list_products",
@@ -86,11 +96,14 @@ class Agent:
         *,
         session_factory: Callable[[], Session],
         execution_id: uuid.UUID,
+        iteration: int = 1,
     ) -> AIMessage:
         """Runs this agent once: a bounded tool-calling loop against the
         real LLM (or a forced text-only wrap-up if it's still requesting
         tools at the round cap), and persists exactly one agent_steps row
-        for the whole call.
+        for the whole call. `iteration` identifies which replan round
+        (Task 3.3) this call belongs to -- 1 for the initial fan-out,
+        2+ for a later targeted retry of this same agent.
         """
         started = time.monotonic()
         messages: list[BaseMessage] = [
@@ -144,12 +157,68 @@ class Agent:
             status=status,
             error=error,
             latency_ms=latency_ms,
+            iteration=iteration,
         )
 
         if error is not None:
             raise error
         assert response is not None
         return response
+
+    def invoke_structured(
+        self,
+        query: str,
+        response_schema: type[T],
+        *,
+        session_factory: Callable[[], Session],
+        execution_id: uuid.UUID,
+        iteration: int = 1,
+    ) -> T:
+        """A single tool-less structured-output call: no tool-calling
+        loop, since the only caller (the Planner's replan/sufficiency
+        judgement, Task 3.3) is tool-less by design (invariant 1) --
+        there is nothing to loop over. Persists exactly one agent_steps
+        row, same as invoke(), with the parsed structured output as
+        `output["parsed"]` instead of free text.
+        """
+        started = time.monotonic()
+        messages: list[BaseMessage] = [
+            SystemMessage(content=self.prompt.text),
+            HumanMessage(content=query),
+        ]
+        status = "completed"
+        error: Exception | None = None
+        result: StructuredResult[T] | None = None
+
+        try:
+            result = generate_structured(
+                model=self.model_id, messages=messages, response_schema=response_schema
+            )
+        except Exception as exc:  # noqa: BLE001 -- recorded below, then re-raised unchanged
+            status = "failed"
+            error = exc
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+        output: dict[str, Any] = (
+            {"parsed": result.parsed.model_dump(mode="json")} if result is not None else {}
+        )
+        if error is not None:
+            output["error"] = str(error)
+        self._write_agent_step(
+            session_factory=session_factory,
+            execution_id=execution_id,
+            query=query,
+            output=output,
+            usage=result.usage_metadata if result is not None else None,
+            status=status,
+            latency_ms=latency_ms,
+            iteration=iteration,
+        )
+
+        if error is not None:
+            raise error
+        assert result is not None
+        return result.parsed
 
     def _run_tool_call(
         self, tool_call: ToolCall, tools_by_name: dict[str, StructuredTool]
@@ -178,6 +247,7 @@ class Agent:
         status: str,
         error: Exception | None,
         latency_ms: int,
+        iteration: int,
     ) -> None:
         output: dict[str, Any] = {"tool_calls_made": tool_calls_made}
         if response is not None:
@@ -185,13 +255,41 @@ class Agent:
         if error is not None:
             output["error"] = str(error)
         usage = response.usage_metadata if response is not None else None
+        self._write_agent_step(
+            session_factory=session_factory,
+            execution_id=execution_id,
+            query=query,
+            output=output,
+            usage=usage,
+            status=status,
+            latency_ms=latency_ms,
+            iteration=iteration,
+        )
 
+    def _write_agent_step(
+        self,
+        *,
+        session_factory: Callable[[], Session],
+        execution_id: uuid.UUID,
+        query: str,
+        output: dict[str, Any],
+        # langchain_core's AIMessage.usage_metadata is a UsageMetadata
+        # TypedDict (with non-int fields like input_token_details) and
+        # StructuredResult's is a plain dict[str, int] -- Mapping[str, Any]
+        # is the real common shape of the two; only ["input_tokens"] and
+        # ["output_tokens"] (always int in both) are ever read below.
+        usage: Mapping[str, Any] | None,
+        status: str,
+        latency_ms: int,
+        iteration: int,
+    ) -> None:
         session = session_factory()
         try:
             session.add(
                 AgentStep(
                     execution_id=execution_id,
                     agent_name=self.name,
+                    iteration=iteration,
                     input={"query": query},
                     output=output,
                     model_id=self.model_id,

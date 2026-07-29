@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from agents.base import Agent, build_agents
 from clients.stockpilot import StockPilotClient
+from llm.providers.gemini import StructuredResult
 from orchestration.models.agent_step import AgentStep
 from orchestration.models.execution import Execution
 from prompts.loader import load_prompt
@@ -171,6 +172,78 @@ def test_agent_invoke_persists_a_failed_step_and_reraises(db_session: Session) -
     assert step.status == "failed"
     assert step.output is not None
     assert step.output["error"] == "boom"
+
+
+def test_agent_invoke_persists_the_given_iteration(db_session: Session) -> None:
+    agent = Agent(name="planner", role="planner", prompt=load_prompt("planner"))
+    execution_id = _new_execution(db_session)
+
+    with patch("agents.base.generate", return_value=_no_tool_ai_message("the plan is X")):
+        agent.invoke(
+            "q",
+            session_factory=lambda: db_session,
+            execution_id=execution_id,
+            iteration=3,
+        )
+
+    step = db_session.query(AgentStep).one()
+    assert step.iteration == 3
+
+
+class _Judgement(BaseModel):
+    sufficient: bool
+    missing: list[str]
+
+
+def test_agent_invoke_structured_persists_a_completed_step_with_parsed_output(
+    db_session: Session,
+) -> None:
+    agent = Agent(name="planner", role="planner", prompt=load_prompt("planner"))
+    execution_id = _new_execution(db_session)
+    fake_result = StructuredResult(
+        parsed=_Judgement(sufficient=False, missing=["forecast for SKU X"]),
+        usage_metadata={"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+    )
+
+    with patch("agents.base.generate_structured", return_value=fake_result):
+        result = agent.invoke_structured(
+            "is this enough evidence?",
+            _Judgement,
+            session_factory=lambda: db_session,
+            execution_id=execution_id,
+            iteration=2,
+        )
+
+    assert result == _Judgement(sufficient=False, missing=["forecast for SKU X"])
+
+    step = db_session.query(AgentStep).one()
+    assert step.agent_name == "planner"
+    assert step.iteration == 2
+    assert step.status == "completed"
+    assert step.output == {"parsed": {"sufficient": False, "missing": ["forecast for SKU X"]}}
+    assert step.prompt_tokens == 5
+    assert step.completion_tokens == 2
+
+
+def test_agent_invoke_structured_persists_a_failed_step_and_reraises(
+    db_session: Session,
+) -> None:
+    agent = Agent(name="planner", role="planner", prompt=load_prompt("planner"))
+    execution_id = _new_execution(db_session)
+
+    with patch("agents.base.generate_structured", side_effect=RuntimeError("boom")):
+        with pytest.raises(RuntimeError, match="boom"):
+            agent.invoke_structured(
+                "q",
+                _Judgement,
+                session_factory=lambda: db_session,
+                execution_id=execution_id,
+            )
+
+    step = db_session.query(AgentStep).one()
+    assert step.status == "failed"
+    assert step.output == {"error": "boom"}
+    assert step.iteration == 1
 
 
 def test_build_agents_wires_tool_less_agents_correctly(db_session: Session) -> None:
