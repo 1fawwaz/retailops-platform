@@ -29,6 +29,13 @@ orchestration/memory.py and loaded once before the graph starts -- not
 recomputed by any node). Per spec, this memory is passed "to the
 Planner" specifically, not to every agent, so only the planner node
 reads `memory_context`; it isn't threaded any further than that.
+
+Task 3.5 adds `citation_failures`: one entry per Validator attempt
+(orchestration/validator.py), the same double-duty pattern as
+`replan_history` -- persisted trace record AND the thing the graph's
+own conditional routing reads to decide pass/regenerate/give-up, via
+`len(citation_failures)` after a Validator run being exactly the
+attempt it just evaluated.
 """
 
 from __future__ import annotations
@@ -64,6 +71,7 @@ class ExecutionState(TypedDict):
     budgets: dict[str, int]
     timings: Annotated[dict[str, dict[str, float]], _merge_timings]
     replan_history: Annotated[list[dict[str, object]], operator.add]
+    citation_failures: Annotated[list[dict[str, object]], operator.add]
     final_answer: str | None
 
 
@@ -92,5 +100,6 @@ def new_execution_state(
         budgets=budgets,
         timings={},
         replan_history=[],
+        citation_failures=[],
         final_answer=None,
     )

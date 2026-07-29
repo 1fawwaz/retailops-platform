@@ -1,16 +1,17 @@
-"""Stage 3 Task 3.2/3.3: the LangGraph orchestration graph connecting the
-six agents built in Task 3.1, including the replan loop (Task 3.3).
+"""Stage 3 Tasks 3.2/3.3/3.5: the LangGraph orchestration graph
+connecting the six agents built in Task 3.1, including the replan loop
+(Task 3.3) and the citation validator (Task 3.5).
 
 Topology (per the spec): entry -> Planner -> PARALLEL fan-out to the
 three retrieval agents (Inventory, Forecast, Analytics) -> Replan
 (the Planner again, judging sufficiency) -> conditional:
   sufficient, or the iteration cap is reached -> Report -> Decision
-    Engine -> end
+    Engine -> Validator -> conditional:
+      passed, or this was already the 2nd attempt -> end
+      failed on the 1st attempt -> back to Decision Engine, regenerating
+        with the offending values named explicitly (loop)
   insufficient and budget remains -> a second, TARGETED fan-out to just
     the retrieval agent(s) the judgement names -> Replan again (loop)
-The Validator is deliberately absent -- Task 3.5 ("Citation validator")
-is the task that adds it, and CLAUDE.md's "no placeholders" rule means
-it isn't scaffolded here as an empty pass-through node ahead of that.
 
 Confirmed by a standalone throwaway test before writing this file:
 LangGraph's Pregel scheduler runs plain synchronous node functions
@@ -60,8 +61,13 @@ from agents.base import Agent
 from agents.replan import ReplanJudgement
 from orchestration.models.tool_call import ToolCall
 from orchestration.state import ExecutionState
+from orchestration.validator import insufficient_data_message, validate_citations
 
 RETRIEVAL_AGENT_NAMES = ("inventory", "forecast", "analytics")
+# "Fail once -> regenerate. Fail twice -> INSUFFICIENT_DATA" per spec --
+# a fixed cap distinct from budgets["max_tool_iterations"] (which bounds
+# the replan loop, a different mechanism).
+MAX_CITATION_ATTEMPTS = 2
 
 NodeFn = Callable[[ExecutionState], dict[str, object]]
 
@@ -280,6 +286,25 @@ def _make_synthesis_node(
             result = state["agent_results"].get(name)
             if result:
                 sections.append(f"{name.capitalize()} agent findings:\n{result}")
+        if state["citation_failures"]:
+            # Only ever non-empty when this is Decision Engine regenerating
+            # after Task 3.5's Validator rejected its first attempt --
+            # Report always runs before the Validator does, so this is a
+            # no-op for the report node.
+            latest = state["citation_failures"][-1]
+            if not latest["passed"]:
+                failures_raw = latest.get("failures")
+                failure_list = failures_raw if isinstance(failures_raw, list) else []
+                described = "; ".join(
+                    f"{f['token']} ({f['reason']})" for f in failure_list if isinstance(f, dict)
+                )
+                sections.append(
+                    "Your previous answer failed citation validation -- these values "
+                    f"could not be verified against recorded tool data with provenance "
+                    f"carried through: {described}. Rewrite your answer WITHOUT "
+                    "restating those specific values; say plainly that the information "
+                    "isn't available rather than guessing or rephrasing around it."
+                )
         prompt = "\n\n".join(sections)
 
         started = time.monotonic()
@@ -296,6 +321,46 @@ def _make_synthesis_node(
         return update
 
     return node
+
+
+def _make_validator_node(session_factory: Callable[[], Session], execution_id: uuid.UUID) -> NodeFn:
+    """Task 3.5: runs after every Decision Engine draft, before it can
+    ever reach `final_answer`'s intended recipient. Not an Agent (no LLM
+    call -- pure deterministic checking), so it has no agent_steps row of
+    its own; its trace lives entirely in `citation_failures`.
+    """
+
+    def node(state: ExecutionState) -> dict[str, object]:
+        draft = state["final_answer"] or ""
+        attempt = len(state["citation_failures"]) + 1
+        failures = validate_citations(draft, session_factory, execution_id)
+
+        record: dict[str, object] = {
+            "attempt": attempt,
+            "passed": not failures,
+            "failures": [
+                {"token": f.token, "value": f.value, "reason": f.reason} for f in failures
+            ],
+        }
+        update: dict[str, object] = {"citation_failures": [record]}
+        if failures and attempt >= MAX_CITATION_ATTEMPTS:
+            update["final_answer"] = insufficient_data_message(failures)
+        return update
+
+    return node
+
+
+def _route_after_validation(state: ExecutionState) -> str:
+    """Passed -> end. Failed on the final allowed attempt -> end too
+    (the validator node itself already replaced final_answer with the
+    INSUFFICIENT_DATA message). Failed with attempts remaining -> back
+    to Decision Engine to regenerate.
+    """
+    latest = state["citation_failures"][-1]
+    attempt = latest["attempt"]
+    if latest["passed"] or (isinstance(attempt, int) and attempt >= MAX_CITATION_ATTEMPTS):
+        return END
+    return "decision"
 
 
 def build_execution_graph(
@@ -349,6 +414,7 @@ def build_execution_graph(
             _make_synthesis_node(agents["decision"], session_factory, execution_id, is_final=True),
         ),
     )
+    builder.add_node("validator", cast(Any, _make_validator_node(session_factory, execution_id)))
 
     builder.add_edge(START, "planner")
     for name in RETRIEVAL_AGENT_NAMES:
@@ -356,6 +422,7 @@ def build_execution_graph(
         builder.add_edge(name, "replan")
     builder.add_conditional_edges("replan", _route_after_replan, ["report", *RETRIEVAL_AGENT_NAMES])
     builder.add_edge("report", "decision")
-    builder.add_edge("decision", END)
+    builder.add_edge("decision", "validator")
+    builder.add_conditional_edges("validator", _route_after_validation, ["decision", END])
 
     return builder.compile()

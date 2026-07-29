@@ -1,8 +1,10 @@
-"""Stage 3 Task 3.2/3.3 milestones: the graph runs the full topology, the
-retrieval agents provably run concurrently (real timing overlap proof
-captured at the level of the actual graph, not just a raw LangGraph toy
-example), and the replan loop demonstrably triggers a second, targeted
-retrieval round when the Planner judges the evidence insufficient.
+"""Stage 3 Tasks 3.2/3.3/3.5 milestones: the graph runs the full
+topology, the retrieval agents provably run concurrently (real timing
+overlap proof captured at the level of the actual graph, not just a raw
+LangGraph toy example), the replan loop demonstrably triggers a second,
+targeted retrieval round when the Planner judges the evidence
+insufficient, and the citation validator regenerates once then gives up
+with INSUFFICIENT_DATA when a draft answer can't be grounded.
 """
 
 from __future__ import annotations
@@ -418,11 +420,16 @@ def test_replan_loop_triggers_a_second_targeted_retrieval_round(
     prompt_to_name = _dispatch_by_prompt(agents)
 
     calls: dict[str, int] = {}
+    ordinals = ("first", "second", "third")
 
     def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
         name = prompt_to_name[messages[0].content]
         calls[name] = calls.get(name, 0) + 1
-        return _ai_message(f"{name} answer round {calls[name]}")
+        # Words, not digits: Task 3.5's citation validator would otherwise
+        # reject any digit here as an ungrounded fabricated number, since
+        # nothing in this mocked flow ties a literal round count back to
+        # real tool data.
+        return _ai_message(f"{name} answer ({ordinals[calls[name] - 1]} call)")
 
     replan_calls = {"count": 0}
 
@@ -463,8 +470,8 @@ def test_replan_loop_triggers_a_second_targeted_retrieval_round(
     assert calls["forecast"] == 2
     assert calls["inventory"] == 1
     assert calls["analytics"] == 1
-    assert result["agent_results"]["forecast"] == "forecast answer round 2"
-    assert result["final_answer"] == "decision answer round 1"
+    assert result["agent_results"]["forecast"] == "forecast answer (second call)"
+    assert result["final_answer"] == "decision answer (first call)"
 
     verify_session = session_factory()
     try:
@@ -519,3 +526,133 @@ def test_replan_loop_is_bounded_by_max_tool_iterations(
     assert len(result["replan_history"]) == 2
     assert all(judgement["sufficient"] is False for judgement in result["replan_history"])
     assert result["final_answer"] == "decision answer"
+
+
+def _seed_grounded_tool_call(
+    session_factory: Callable[[], Session], execution_id: uuid.UUID
+) -> None:
+    session = session_factory()
+    try:
+        session.add(
+            ToolCall(
+                execution_id=execution_id,
+                tool_name="get_low_stock",
+                args={},
+                raw_response={"sku": "85048", "quantity": 42},
+                provenance_map={"sku": "observed", "quantity": "observed"},
+                latency_ms=5,
+                status="success",
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_citation_validator_passes_a_grounded_answer_on_the_first_attempt(
+    session_factory: Callable[[], Session],
+) -> None:
+    execution_id = _new_execution(session_factory)
+    _seed_grounded_tool_call(session_factory, execution_id)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "decision":
+            return _ai_message("There are 42 units of SKU 85048 in stock.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert len(result["citation_failures"]) == 1
+    assert result["citation_failures"][0]["passed"] is True
+    assert result["final_answer"] == "There are 42 units of SKU 85048 in stock."
+
+
+def test_citation_validator_regenerates_once_then_succeeds(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The spec's "fail once -> regenerate" path: the first draft
+    fabricates a figure; the Validator rejects it and Decision Engine
+    gets a second attempt naming the offending value, which it corrects.
+    """
+    execution_id = _new_execution(session_factory)
+    _seed_grounded_tool_call(session_factory, execution_id)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+    decision_calls = {"count": 0}
+    decision_prompts: list[str] = []
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "decision":
+            decision_calls["count"] += 1
+            decision_prompts.append(str(messages[1].content))
+            if decision_calls["count"] == 1:
+                return _ai_message("Revenue at risk is $99,999 this month.")
+            return _ai_message("There are 42 units of SKU 85048 in stock.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert decision_calls["count"] == 2
+    assert len(result["citation_failures"]) == 2
+    assert result["citation_failures"][0]["passed"] is False
+    assert result["citation_failures"][1]["passed"] is True
+    assert result["final_answer"] == "There are 42 units of SKU 85048 in stock."
+    # The regeneration prompt must name the offending value explicitly.
+    assert "$99,999" in decision_prompts[1]
+    assert "failed citation validation" in decision_prompts[1]
+
+
+def test_citation_validator_gives_up_after_two_failed_attempts(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The spec's "fail twice -> INSUFFICIENT_DATA" path: a persistently
+    fabricating Decision Engine must not get a third attempt.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+    decision_calls = {"count": 0}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "decision":
+            decision_calls["count"] += 1
+            return _ai_message(f"Revenue at risk is ${decision_calls['count'] * 1000}.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert decision_calls["count"] == 2
+    assert len(result["citation_failures"]) == 2
+    assert all(not failure["passed"] for failure in result["citation_failures"])
+    final_answer = result["final_answer"]
+    assert final_answer is not None
+    assert final_answer.startswith("INSUFFICIENT_DATA")

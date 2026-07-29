@@ -172,3 +172,48 @@ def test_run_execution_follow_up_question_sees_the_previous_turn(
     assert [m.role for m in messages] == ["user", "assistant", "user", "assistant"]
     assert len(executions) == 2
     assert all(e.status == "completed" for e in executions)
+
+
+def test_run_execution_persists_citation_failures_on_the_execution_row(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Task 3.5: the Validator has no agent_steps row of its own (it
+    isn't one of the six named agents), so its full history must live
+    somewhere durable -- Execution.errors is where run_execution puts it.
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+    decision_calls = {"count": 0}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "decision":
+            decision_calls["count"] += 1
+            return _ai_message(f"Revenue at risk is ${decision_calls['count'] * 1000}.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+    ):
+        result = run_execution(
+            "How much revenue is at risk?", client=_client(), session_factory=session_factory
+        )
+
+    final_answer = result["final_answer"]
+    assert final_answer is not None
+    assert final_answer.startswith("INSUFFICIENT_DATA")
+
+    session = session_factory()
+    try:
+        execution = session.query(Execution).one()
+    finally:
+        session.close()
+
+    assert execution.status == "completed"
+    assert execution.final_answer is not None and execution.final_answer.startswith(
+        "INSUFFICIENT_DATA"
+    )
+    assert execution.errors is not None
+    citation_failures = execution.errors["citation_failures"]
+    assert len(citation_failures) == 2
+    assert all(not attempt["passed"] for attempt in citation_failures)

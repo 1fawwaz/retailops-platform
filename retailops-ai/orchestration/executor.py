@@ -118,11 +118,21 @@ def run_execution(
 
         db_execution = session.get(Execution, execution_id)
         assert db_execution is not None
+        errors_payload: dict[str, object] = {}
+        if result["errors"]:
+            errors_payload["messages"] = result["errors"]
+        if result["citation_failures"]:
+            # Task 3.5: the Validator's own trace isn't an AgentStep row
+            # (it's not one of the six named agents), so this is where
+            # its full history durably lives beyond the graph's own
+            # ephemeral return value.
+            errors_payload["citation_failures"] = result["citation_failures"]
+
         db_execution.status = "completed" if result["final_answer"] else "failed"
         db_execution.plan = {"text": result["plan"]} if result["plan"] else None
         db_execution.final_answer = result["final_answer"]
         db_execution.provenance_map = result["provenance_map"] or None
-        db_execution.errors = {"messages": result["errors"]} if result["errors"] else None
+        db_execution.errors = errors_payload or None
         db_execution.total_tokens = total_tokens
         db_execution.completed_at = datetime.now(UTC)
         session.commit()
