@@ -46,6 +46,7 @@ from model_config import get_model_config
 from orchestration.models.agent_step import AgentStep
 from prompts.loader import LoadedPrompt, load_prompt
 from serialization import to_jsonable
+from tools.derived_tools import build_derived_tools
 from tools.stockpilot_tools import build_stockpilot_tools
 
 MAX_TOOL_ROUNDS = 4
@@ -62,8 +63,16 @@ INVENTORY_TOOL_NAMES = (
     "get_dead_stock",
     "get_slow_movers",
     "get_inventory_valuation",
+    # Stage 4 Task 4.1: local (non-HTTP) derived tool, tools/derived_tools.py.
+    "rank_stockout_risk",
 )
-FORECAST_TOOL_NAMES = ("forecast_demand", "get_forecast_accuracy")
+FORECAST_TOOL_NAMES = (
+    "forecast_demand",
+    "get_forecast_accuracy",
+    # Stage 4 Task 4.1: local (non-HTTP) derived tools, tools/derived_tools.py.
+    "days_of_cover",
+    "reorder_timing",
+)
 ANALYTICS_TOOL_NAMES = (
     "get_revenue",
     "get_profit",
@@ -313,8 +322,18 @@ def build_agents(
     """One Agent per role, with the three retrieval agents bound to their
     StockPilot tool subset (built fresh for this execution_id, so every
     tool call they make is attributed to this run -- see Task 2.3).
+
+    Stage 4 Task 4.1 adds a second tool source, tools/derived_tools.py's
+    local (non-HTTP) computed tools -- merged into the same name->tool map
+    as the 18 real endpoint tools, so INVENTORY_TOOL_NAMES/FORECAST_TOOL_NAMES
+    can reference either kind interchangeably and every downstream
+    consumer (the graph's tool-ownership attribution, the citation
+    validator) keeps working unchanged.
     """
-    all_tools = build_stockpilot_tools(client, session_factory, execution_id)
+    all_tools = [
+        *build_stockpilot_tools(client, session_factory, execution_id),
+        *build_derived_tools(client, session_factory, execution_id),
+    ]
     tools_by_name = {tool.name: tool for tool in all_tools}
 
     def subset(names: tuple[str, ...]) -> tuple[StructuredTool, ...]:

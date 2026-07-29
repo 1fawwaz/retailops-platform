@@ -134,3 +134,23 @@ class ForecastDemandArgs(BaseModel):
 
 class GetForecastAccuracyArgs(BaseModel):
     pass
+
+
+class RankStockoutRiskArgs(BaseModel):
+    category: str | None = Field(default=None, description="Restrict to one category name.")
+    limit: int = Field(default=100, ge=1, le=1000)
+    offset: int = Field(default=0, ge=0)
+
+
+class DaysOfCoverArgs(BaseModel):
+    sku: str = Field(description="The product SKU to compute days of cover for.")
+    horizon_days: int = Field(
+        default=14, ge=1, le=90, description="Forecast horizon backing the daily demand rate."
+    )
+
+
+class ReorderTimingArgs(BaseModel):
+    sku: str = Field(description="The product SKU to compute reorder timing for.")
+    horizon_days: int = Field(
+        default=14, ge=1, le=90, description="Forecast horizon backing the daily demand rate."
+    )
