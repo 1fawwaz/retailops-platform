@@ -11,6 +11,8 @@ class Settings(BaseSettings):
 
     retailops_database_url: str
     stockpilot_base_url: str
+    stockpilot_username: str
+    stockpilot_password: str
     gemini_api_key: str
 
 

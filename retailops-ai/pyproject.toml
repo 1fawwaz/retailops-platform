@@ -12,6 +12,8 @@ dependencies = [
     "alembic==1.18.5",
     "psycopg[binary]==3.3.4",
     "python-dotenv==1.2.2",
+    "httpx2==2.9.1",
+    "email-validator==2.3.0",
 ]
 
 [project.optional-dependencies]
@@ -21,7 +23,7 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.0.0",
-    "httpx2==2.9.1",
+    "datamodel-code-generator==0.71.0",
 ]
 
 [tool.ruff]

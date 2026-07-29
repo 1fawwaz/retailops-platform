@@ -2,6 +2,8 @@ import os
 
 os.environ.setdefault("RETAILOPS_DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("STOCKPILOT_BASE_URL", "http://localhost:8000")
+os.environ.setdefault("STOCKPILOT_USERNAME", "test@example.com")
+os.environ.setdefault("STOCKPILOT_PASSWORD", "test-password-not-for-production")
 os.environ.setdefault("GEMINI_API_KEY", "test-key-not-for-production")
 
 from collections.abc import Generator  # noqa: E402

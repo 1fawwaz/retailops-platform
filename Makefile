@@ -1,4 +1,4 @@
-.PHONY: setup db-up db-down ingest test eval run-core run-agents
+.PHONY: setup db-up db-down ingest test eval run-core run-agents generate-models
 
 setup:
 	py -3.11 -m venv stockpilot-core/.venv
@@ -31,3 +31,17 @@ run-core:
 
 run-agents:
 	retailops-ai/.venv/Scripts/uvicorn.exe api.main:app --app-dir retailops-ai --reload --port 8001
+
+generate-models:
+	cd retailops-ai && ../retailops-ai/.venv/Scripts/python.exe -m datamodel_code_generator \
+		--input ../contracts/stockpilot-api/versions/v1.json \
+		--input-file-type openapi \
+		--output clients/stockpilot_models.py \
+		--output-model-type pydantic_v2.BaseModel \
+		--target-python-version 3.11 \
+		--use-schema-description \
+		--use-standard-collections \
+		--use-union-operator \
+		--use-annotated \
+		--output-datetime-class datetime
+	retailops-ai/.venv/Scripts/python.exe -m ruff format retailops-ai/clients/stockpilot_models.py
