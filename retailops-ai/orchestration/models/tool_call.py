@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from orchestration.models.base import Base, JsonDict
+from orchestration.models.base import Base, JsonDict, JsonValue
 
 
 class ToolCall(Base):
@@ -23,7 +23,7 @@ class ToolCall(Base):
     agent_step_id: Mapped[int | None] = mapped_column(ForeignKey("agent_steps.id"), index=True)
     tool_name: Mapped[str] = mapped_column(String)
     args: Mapped[JsonDict | None] = mapped_column(JSON)
-    raw_response: Mapped[JsonDict | None] = mapped_column(JSON)
+    raw_response: Mapped[JsonValue | None] = mapped_column(JSON)
     provenance_map: Mapped[JsonDict | None] = mapped_column(JSON)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String)

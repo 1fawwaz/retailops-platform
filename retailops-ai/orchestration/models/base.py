@@ -11,3 +11,6 @@ class Base(DeclarativeBase):
 # responses, provenance maps) are genuinely dynamically shaped JSON by
 # design -- Any is the correct type here, not a shortcut around one.
 JsonDict = dict[str, Any]
+# Raw tool responses can be a single object (get_product) or a list of
+# them (list_products) -- JsonDict alone can't express the list case.
+JsonValue = JsonDict | list[JsonDict]
