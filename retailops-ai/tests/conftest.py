@@ -18,16 +18,16 @@ from orchestration.models import Base  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _clear_gemini_client_cache() -> Generator[None]:
-    """llm.providers.gemini._client() is process-lifetime cached (see its
-    own docstring for why); tests that patch google.genai.Client need the
+    """llm.providers.gemini._client() is cached per thread (see its own
+    docstring for why); tests that patch google.genai.Client need the
     cache cleared first, or they'll silently get an earlier test's stale
     cached instance instead of their own patch.
     """
-    from llm.providers.gemini import _client
+    from llm.providers.gemini import _reset_client_cache
 
-    _client.cache_clear()
+    _reset_client_cache()
     yield
-    _client.cache_clear()
+    _reset_client_cache()
 
 
 @pytest.fixture

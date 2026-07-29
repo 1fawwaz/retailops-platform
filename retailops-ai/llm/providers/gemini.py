@@ -27,8 +27,8 @@ future model swap.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
-from functools import lru_cache
 from typing import TypeVar
 
 from google import genai
@@ -43,17 +43,40 @@ T = TypeVar("T", bound=BaseModel)
 
 THOUGHT_SIGNATURES_KEY = "thought_signatures"
 
+_thread_local = threading.local()
 
-@lru_cache
+
 def _client() -> genai.Client:
-    """Cached: google-genai shares an underlying httpx connection pool
-    across Client instances constructed with the same API key, and
-    closes it when an instance is garbage collected. A fresh, unbound
-    genai.Client() per call gets collected immediately after use and
-    silently breaks every later call in the process -- caching one
-    instance for the process lifetime avoids that.
+    """Cached per thread, not per process. google-genai shares an
+    underlying httpx connection pool across Client instances constructed
+    with the same API key, and closes it when an instance is garbage
+    collected -- a fresh, unbound genai.Client() per call gets collected
+    immediately after use and silently breaks every later call in the
+    process. A single process-wide cached instance (the original fix)
+    avoids that, but introduces a second bug confirmed live once Task
+    3.2's graph started running retrieval agents concurrently: two
+    threads calling .models.generate_content() at the same time on one
+    shared Client fail with "Cannot send a request, as the client has
+    been closed" -- the SDK isn't safe for truly concurrent use of a
+    single instance either. Caching one instance per thread instead
+    avoids both failure modes: each thread's client survives for that
+    thread's lifetime (no premature GC) and is never touched by another
+    thread (no concurrent-use closure).
     """
-    return genai.Client(api_key=get_settings().gemini_api_key)
+    client = getattr(_thread_local, "client", None)
+    if client is None:
+        client = genai.Client(api_key=get_settings().gemini_api_key)
+        _thread_local.client = client
+    return client
+
+
+def _reset_client_cache() -> None:
+    """Test-only: drops the *current thread's* cached client so a test
+    that patches genai.Client gets a fresh instance instead of a
+    previous test's stale one. Tests all run on the main thread, so
+    clearing only the calling thread's slot is sufficient.
+    """
+    _thread_local.client = None
 
 
 def _message_to_content(message: BaseMessage) -> types.Content:
