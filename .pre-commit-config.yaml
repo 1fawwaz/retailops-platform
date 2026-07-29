@@ -52,3 +52,6 @@ repos:
           - httpx2==2.9.1
           - email-validator==2.3.0
           - langchain-core==1.5.2
+          - google-genai==2.14.0
+          - pyyaml==6.0.3
+          - types-PyYAML==6.0.12.20260724

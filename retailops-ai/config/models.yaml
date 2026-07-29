@@ -1,0 +1,17 @@
+# Role -> Gemini model ID. No model name may appear anywhere else in the
+# codebase (CLAUDE.md section 7); code asks for a role, never a literal
+# model string.
+#
+# Verified against the real Gemini model-list endpoint on 2026-07-29
+# (`python scripts/verify_model_config.py`) -- CLAUDE.md's own example
+# config names "gemini-3.1-pro", but that exact ID does not currently
+# exist; only the preview release does. Re-run the verification script
+# after editing this file, and before ever pointing an agent at a new ID.
+roles:
+  planner: gemini-3.1-pro-preview # strongest reasoning; planning and replanning
+  retriever: gemini-3.5-flash # fast, cheap; inventory / forecast / analytics agents
+  decision: gemini-3.1-pro-preview # Decision Engine prose only
+
+budgets:
+  max_tool_iterations: 12
+  max_tokens_per_execution: 60000
