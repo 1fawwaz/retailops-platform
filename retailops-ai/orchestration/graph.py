@@ -123,10 +123,15 @@ def _make_planner_node(
     agent: Agent, session_factory: Callable[[], Session], execution_id: uuid.UUID
 ) -> NodeFn:
     def node(state: ExecutionState) -> dict[str, object]:
+        prompt = state["query"]
+        if state["memory_context"]:
+            # Task 3.4: prior conversation history + rolling task memory,
+            # passed "to the Planner" per spec -- no other node reads
+            # memory_context, so this is the only place it's consumed.
+            prompt = f"{state['memory_context']}\n\nCurrent question:\n{prompt}"
+
         started = time.monotonic()
-        response = agent.invoke(
-            state["query"], session_factory=session_factory, execution_id=execution_id
-        )
+        response = agent.invoke(prompt, session_factory=session_factory, execution_id=execution_id)
         ended = time.monotonic()
         return {
             "plan": _content_str(response),

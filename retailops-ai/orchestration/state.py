@@ -21,6 +21,14 @@ persisted trace record the spec requires AND the thing the graph's own
 conditional routing reads to decide sufficient-vs-retry -- no separate
 routing-only field needed, since `len(replan_history)` after a replan
 node runs is exactly the round it just evaluated.
+
+Task 3.4 adds `conversation_id` (which thread this execution belongs
+to, or None for a standalone one-off run) and `memory_context` (prior
+conversation history + rolling task memory, rendered by
+orchestration/memory.py and loaded once before the graph starts -- not
+recomputed by any node). Per spec, this memory is passed "to the
+Planner" specifically, not to every agent, so only the planner node
+reads `memory_context`; it isn't threaded any further than that.
 """
 
 from __future__ import annotations
@@ -42,7 +50,9 @@ def _merge_timings(
 
 class ExecutionState(TypedDict):
     execution_id: uuid.UUID
+    conversation_id: uuid.UUID | None
     query: str
+    memory_context: str | None
     plan: str | None
     agent_results: Annotated[dict[str, str], _merge_dicts]
     tool_ledger: Annotated[list[dict[str, str | int | None]], operator.add]
@@ -58,7 +68,12 @@ class ExecutionState(TypedDict):
 
 
 def new_execution_state(
-    *, execution_id: uuid.UUID, query: str, budgets: dict[str, int]
+    *,
+    execution_id: uuid.UUID,
+    query: str,
+    budgets: dict[str, int],
+    conversation_id: uuid.UUID | None = None,
+    memory_context: str | None = None,
 ) -> ExecutionState:
     """The all-fields-present initial state every graph run starts from --
     `ExecutionState` has no optional keys, so every caller needs one of
@@ -66,7 +81,9 @@ def new_execution_state(
     """
     return ExecutionState(
         execution_id=execution_id,
+        conversation_id=conversation_id,
         query=query,
+        memory_context=memory_context,
         plan=None,
         agent_results={},
         tool_ledger=[],
