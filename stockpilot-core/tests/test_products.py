@@ -1,6 +1,10 @@
+from datetime import UTC, date, datetime, timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from models.stock_level import StockLevel
+from models.stock_movement import StockMovement
 from services.security import create_access_token
 from services.users import create_user
 
@@ -82,6 +86,44 @@ def test_every_numeric_field_has_provenance_entry(client: TestClient) -> None:
 
     for field in NUMERIC_PRODUCT_FIELDS:
         assert field in body["_provenance"], f"{field} missing a provenance entry"
+
+
+def test_product_detail_includes_current_stock_and_recent_history(
+    client: TestClient, db_session: Session
+) -> None:
+    headers = _auth_headers(client)
+    client.post("/products", json={"sku": "SKU-1"}, headers=headers)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    db_session.add_all(
+        [
+            StockLevel(sku="SKU-1", as_of_date=date.today(), quantity_on_hand=42),
+            StockMovement(
+                sku="SKU-1",
+                movement_date=now - timedelta(days=1),
+                quantity_delta=-2,
+                movement_type="sale",
+                provenance="observed",
+            ),
+            StockMovement(
+                sku="SKU-1",
+                movement_date=now - timedelta(days=200),
+                quantity_delta=50,
+                movement_type="opening_balance",
+                provenance="derived",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/products/SKU-1", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["quantity_on_hand"] == 42
+    assert len(body["movement_history"]) == 1
+    assert body["movement_history"][0]["movement_type"] == "sale"
+    assert body["movement_history"][0]["provenance"] == "observed"
+    assert "quantity_on_hand" in body["_provenance"]
 
 
 def test_read_only_user_can_read_but_not_write(client: TestClient, db_session: Session) -> None:

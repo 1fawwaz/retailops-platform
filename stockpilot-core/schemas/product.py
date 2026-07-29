@@ -49,3 +49,33 @@ PRODUCT_DERIVATION_REF = {
     "reorder_point": "data-derivation.md#reorder-point",
     "safety_stock": "data-derivation.md#reorder-point",
 }
+
+
+class MovementHistoryEntry(BaseModel):
+    """One stock_movements row. Carries its own provenance label rather
+    than the ProvenanceMixin dict, since sale-driven rows are observed
+    while opening-balance / injected-PO rows are derived -- a single
+    static label per field couldn't express that per-row split.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    movement_date: datetime
+    quantity_delta: int
+    movement_type: str
+    provenance: str
+
+
+class ProductDetail(ProductRead):
+    quantity_on_hand: int | None
+    movement_history: list[MovementHistoryEntry]
+
+
+PRODUCT_DETAIL_PROVENANCE = {
+    **PRODUCT_PROVENANCE,
+    "quantity_on_hand": "derived",
+}
+PRODUCT_DETAIL_DERIVATION_REF = {
+    **PRODUCT_DERIVATION_REF,
+    "quantity_on_hand": "data-derivation.md#stock-ledger",
+}

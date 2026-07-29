@@ -42,6 +42,19 @@ def _latest_stock_level_subquery() -> Subquery:
     )
 
 
+def get_current_stock(db: Session, sku: str) -> int | None:
+    """Most recent quantity_on_hand for a single SKU, or None if it has
+    no stock_levels rows yet.
+    """
+    stmt = (
+        select(StockLevel.quantity_on_hand)
+        .where(StockLevel.sku == sku)
+        .order_by(StockLevel.as_of_date.desc())
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
 @dataclass(frozen=True)
 class StockRow:
     sku: str
