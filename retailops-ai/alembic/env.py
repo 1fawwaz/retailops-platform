@@ -1,4 +1,5 @@
 import os
+import sys
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -6,6 +7,8 @@ from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -25,8 +28,9 @@ if not database_url:
     )
 config.set_main_option("sqlalchemy.url", database_url)
 
-# Schema models don't exist yet (Stage 2 Task 2.1). No autogenerate target.
-target_metadata = None
+from orchestration.models import Base  # noqa: E402
+
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
