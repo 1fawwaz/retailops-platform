@@ -30,8 +30,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from clients.stockpilot import StockPilotClient
-from orchestration.models.base import JsonDict, JsonValue
+from orchestration.models.base import JsonDict
 from orchestration.models.tool_call import ToolCall
+from serialization import to_jsonable
 from tools.schemas import (
     ForecastDemandArgs,
     GetAbcArgs,
@@ -54,22 +55,6 @@ from tools.schemas import (
 )
 
 ArgsT = TypeVar("ArgsT", bound=BaseModel)
-
-
-def _to_jsonable(value: object) -> JsonValue | None:
-    if value is None:
-        return None
-    if isinstance(value, BaseModel):
-        result: JsonDict = value.model_dump(mode="json", by_alias=True)
-        return result
-    if isinstance(value, list):
-        return [
-            item.model_dump(mode="json", by_alias=True) if isinstance(item, BaseModel) else item
-            for item in value
-        ]
-    if isinstance(value, dict):
-        return value
-    raise TypeError(f"Cannot serialize tool result of type {type(value)!r}")
 
 
 def _extract_provenance(value: object) -> JsonDict:
@@ -112,7 +97,7 @@ def _build_tool(
                     execution_id=execution_id,
                     tool_name=name,
                     args=args_model.model_dump(mode="json"),
-                    raw_response=(_to_jsonable(result) if error is None else {"error": str(error)}),
+                    raw_response=(to_jsonable(result) if error is None else {"error": str(error)}),
                     provenance_map=_extract_provenance(result) if error is None else {},
                     latency_ms=latency_ms,
                     status="success" if error is None else "error",
