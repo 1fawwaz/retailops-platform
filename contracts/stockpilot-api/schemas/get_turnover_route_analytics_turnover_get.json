@@ -1,0 +1,80 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/TurnoverRow"
+  },
+  "title": "Response Get Turnover Route Analytics Turnover Get",
+  "$defs": {
+    "TurnoverRow": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "units_sold": {
+          "type": "integer",
+          "title": "Units Sold"
+        },
+        "avg_quantity_on_hand": {
+          "type": "number",
+          "title": "Avg Quantity On Hand"
+        },
+        "turnover_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Turnover Ratio"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "category",
+        "units_sold",
+        "avg_quantity_on_hand",
+        "turnover_ratio"
+      ],
+      "title": "TurnoverRow",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "avg_quantity_on_hand": "derived",
+            "turnover_ratio": "derived",
+            "units_sold": "derived"
+          },
+          "avg_quantity_on_hand": 9860.5,
+          "category": "Decorations",
+          "turnover_ratio": 0.43,
+          "units_sold": 4210
+        }
+      ]
+    }
+  }
+}

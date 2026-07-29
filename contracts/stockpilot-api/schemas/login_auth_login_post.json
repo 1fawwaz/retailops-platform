@@ -1,0 +1,29 @@
+{
+  "$ref": "#/$defs/Token",
+  "$defs": {
+    "Token": {
+      "properties": {
+        "access_token": {
+          "type": "string",
+          "title": "Access Token"
+        },
+        "token_type": {
+          "type": "string",
+          "title": "Token Type",
+          "default": "bearer"
+        }
+      },
+      "type": "object",
+      "required": [
+        "access_token"
+      ],
+      "title": "Token",
+      "examples": [
+        {
+          "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "token_type": "bearer"
+        }
+      ]
+    }
+  }
+}

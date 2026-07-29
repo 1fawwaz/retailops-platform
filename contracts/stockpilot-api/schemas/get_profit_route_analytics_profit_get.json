@@ -1,0 +1,80 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/ProfitPeriod"
+  },
+  "title": "Response Get Profit Route Analytics Profit Get",
+  "$defs": {
+    "ProfitPeriod": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "period": {
+          "type": "string",
+          "title": "Period"
+        },
+        "revenue": {
+          "type": "number",
+          "title": "Revenue"
+        },
+        "cost": {
+          "type": "number",
+          "title": "Cost"
+        },
+        "gross_profit": {
+          "type": "number",
+          "title": "Gross Profit"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Margin"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "period",
+        "revenue",
+        "cost",
+        "gross_profit",
+        "margin"
+      ],
+      "title": "ProfitPeriod",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "cost": "derived",
+            "gross_profit": "derived",
+            "margin": "derived",
+            "revenue": "derived"
+          },
+          "cost": 512705.4,
+          "gross_profit": 288397.57,
+          "margin": 0.36,
+          "period": "2011-11",
+          "revenue": 801102.97
+        }
+      ]
+    }
+  }
+}

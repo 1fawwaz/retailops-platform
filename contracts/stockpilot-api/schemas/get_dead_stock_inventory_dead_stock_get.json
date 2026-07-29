@@ -1,0 +1,95 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/DeadStockItem"
+  },
+  "title": "Response Get Dead Stock Inventory Dead Stock Get",
+  "$defs": {
+    "DeadStockItem": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "quantity_on_hand": {
+          "type": "integer",
+          "title": "Quantity On Hand"
+        },
+        "last_movement_date": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Movement Date"
+        },
+        "days_since_movement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Days Since Movement"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "sku",
+        "description",
+        "quantity_on_hand",
+        "last_movement_date",
+        "days_since_movement"
+      ],
+      "title": "DeadStockItem",
+      "examples": [
+        {
+          "_derivation_ref": {
+            "quantity_on_hand": "data-derivation.md#stock-ledger"
+          },
+          "_provenance": {
+            "days_since_movement": "derived",
+            "quantity_on_hand": "derived"
+          },
+          "days_since_movement": 288,
+          "description": "ROUND CAKE TIN VINTAGE GREEN",
+          "last_movement_date": "2025-04-02T00:00:00Z",
+          "quantity_on_hand": 18,
+          "sku": "22841"
+        }
+      ]
+    }
+  }
+}

@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from models.product import Product
 from models.sales_transaction import SalesTransaction
+from services import forecast as forecast_service
 from services.security import create_access_token
 from services.users import create_user
 
@@ -155,3 +157,23 @@ def test_forecast_accuracy_reports_all_models_honestly(
         assert isinstance(body[field], int | float)
         assert field in body["_provenance"]
         assert body["_provenance"][field] == "derived"
+
+
+def test_forecast_endpoints_503_when_model_not_trained(
+    client: TestClient, db_session: Session, tmp_path: Path
+) -> None:
+    headers = _auth_headers(db_session)
+    forecast_service.load_accuracy_report.cache_clear()
+    original_path = forecast_service.ACCURACY_PATH
+    forecast_service.ACCURACY_PATH = tmp_path / "missing.json"
+    try:
+        demand_response = client.post(
+            "/forecast/demand", json={"skus": ["OK-1"], "horizon_days": 7}, headers=headers
+        )
+        accuracy_response = client.get("/forecast/accuracy", headers=headers)
+    finally:
+        forecast_service.ACCURACY_PATH = original_path
+        forecast_service.load_accuracy_report.cache_clear()
+
+    assert demand_response.status_code == 503
+    assert accuracy_response.status_code == 503

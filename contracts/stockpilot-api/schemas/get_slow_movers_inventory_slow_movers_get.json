@@ -1,0 +1,81 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/SlowMoverItem"
+  },
+  "title": "Response Get Slow Movers Inventory Slow Movers Get",
+  "$defs": {
+    "SlowMoverItem": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "quantity_on_hand": {
+          "type": "integer",
+          "title": "Quantity On Hand"
+        },
+        "units_sold": {
+          "type": "integer",
+          "title": "Units Sold"
+        },
+        "avg_daily_demand": {
+          "type": "number",
+          "title": "Avg Daily Demand"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "sku",
+        "description",
+        "quantity_on_hand",
+        "units_sold",
+        "avg_daily_demand"
+      ],
+      "title": "SlowMoverItem",
+      "examples": [
+        {
+          "_derivation_ref": {
+            "quantity_on_hand": "data-derivation.md#stock-ledger"
+          },
+          "_provenance": {
+            "avg_daily_demand": "derived",
+            "quantity_on_hand": "derived",
+            "units_sold": "derived"
+          },
+          "avg_daily_demand": 0.044,
+          "description": "GLASS STAR FROSTED T-LIGHT HOLDER",
+          "quantity_on_hand": 340,
+          "sku": "21730",
+          "units_sold": 4
+        }
+      ]
+    }
+  }
+}

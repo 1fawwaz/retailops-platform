@@ -1,0 +1,106 @@
+{
+  "items": {
+    "$ref": "#/$defs/SkuForecast"
+  },
+  "type": "array",
+  "title": "Response Post Forecast Demand Forecast Demand Post",
+  "$defs": {
+    "SkuForecast": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "predicted_daily_demand": {
+          "type": "number",
+          "title": "Predicted Daily Demand"
+        },
+        "confidence_interval_lower": {
+          "type": "number",
+          "title": "Confidence Interval Lower"
+        },
+        "confidence_interval_upper": {
+          "type": "number",
+          "title": "Confidence Interval Upper"
+        },
+        "model_used": {
+          "type": "string",
+          "title": "Model Used"
+        },
+        "training_window_start": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Training Window Start"
+        },
+        "training_window_end": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Training Window End"
+        },
+        "data_quality": {
+          "type": "string",
+          "title": "Data Quality"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "sku",
+        "predicted_daily_demand",
+        "confidence_interval_lower",
+        "confidence_interval_upper",
+        "model_used",
+        "training_window_start",
+        "training_window_end",
+        "data_quality"
+      ],
+      "title": "SkuForecast",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "confidence_interval_lower": "predicted",
+            "confidence_interval_upper": "predicted",
+            "predicted_daily_demand": "predicted"
+          },
+          "confidence_interval_lower": 0.0,
+          "confidence_interval_upper": 97.19,
+          "data_quality": "ok",
+          "model_used": "moving_average",
+          "predicted_daily_demand": 14.61,
+          "sku": "85048",
+          "training_window_end": "2011-12-09",
+          "training_window_start": "2009-12-01"
+        }
+      ]
+    }
+  }
+}

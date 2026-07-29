@@ -1,0 +1,7 @@
+{
+  "additionalProperties": {
+    "type": "string"
+  },
+  "type": "object",
+  "title": "Response Health Health Get"
+}

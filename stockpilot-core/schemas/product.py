@@ -6,6 +6,22 @@ from schemas.provenance import ProvenanceMixin
 
 
 class ProductCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "sku": "85048",
+                    "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+                    "category_id": 3,
+                    "supplier_id": 7,
+                    "unit_cost": 2.15,
+                    "reorder_point": 120,
+                    "safety_stock": 40,
+                }
+            ]
+        }
+    )
+
     sku: str
     description: str | None = None
     category_id: int | None = None
@@ -16,6 +32,10 @@ class ProductCreate(BaseModel):
 
 
 class ProductUpdate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"unit_cost": 2.25, "reorder_point": 130}]}
+    )
+
     description: str | None = None
     category_id: int | None = None
     supplier_id: int | None = None
@@ -25,7 +45,36 @@ class ProductUpdate(BaseModel):
 
 
 class ProductRead(ProvenanceMixin):
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "sku": "85048",
+                    "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+                    "category_id": 3,
+                    "supplier_id": 7,
+                    "unit_cost": 2.15,
+                    "reorder_point": 120,
+                    "safety_stock": 40,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "_provenance": {
+                        "sku": "observed",
+                        "description": "observed",
+                        "unit_cost": "derived",
+                        "reorder_point": "derived",
+                        "safety_stock": "derived",
+                    },
+                    "_derivation_ref": {
+                        "unit_cost": "data-derivation.md#cost-price",
+                        "reorder_point": "data-derivation.md#reorder-point",
+                        "safety_stock": "data-derivation.md#reorder-point",
+                    },
+                }
+            ]
+        },
+    )
 
     sku: str
     description: str | None
@@ -58,7 +107,19 @@ class MovementHistoryEntry(BaseModel):
     static label per field couldn't express that per-row split.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "movement_date": "2026-01-14T00:00:00Z",
+                    "quantity_delta": -12,
+                    "movement_type": "sale",
+                    "provenance": "observed",
+                }
+            ]
+        },
+    )
 
     movement_date: datetime
     quantity_delta: int
@@ -67,6 +128,48 @@ class MovementHistoryEntry(BaseModel):
 
 
 class ProductDetail(ProductRead):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "sku": "85048",
+                    "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+                    "category_id": 3,
+                    "supplier_id": 7,
+                    "unit_cost": 2.15,
+                    "reorder_point": 120,
+                    "safety_stock": 40,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "quantity_on_hand": 96,
+                    "movement_history": [
+                        {
+                            "movement_date": "2026-01-14T00:00:00Z",
+                            "quantity_delta": -12,
+                            "movement_type": "sale",
+                            "provenance": "observed",
+                        }
+                    ],
+                    "_provenance": {
+                        "sku": "observed",
+                        "description": "observed",
+                        "unit_cost": "derived",
+                        "reorder_point": "derived",
+                        "safety_stock": "derived",
+                        "quantity_on_hand": "derived",
+                    },
+                    "_derivation_ref": {
+                        "unit_cost": "data-derivation.md#cost-price",
+                        "reorder_point": "data-derivation.md#reorder-point",
+                        "safety_stock": "data-derivation.md#reorder-point",
+                        "quantity_on_hand": "data-derivation.md#stock-ledger",
+                    },
+                }
+            ]
+        },
+    )
+
     quantity_on_hand: int | None
     movement_history: list[MovementHistoryEntry]
 

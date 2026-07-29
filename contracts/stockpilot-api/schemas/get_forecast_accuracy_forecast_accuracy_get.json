@@ -1,0 +1,118 @@
+{
+  "$ref": "#/$defs/ForecastAccuracy",
+  "$defs": {
+    "ForecastAccuracy": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "selected_model": {
+          "type": "string",
+          "title": "Selected Model"
+        },
+        "training_window_start": {
+          "type": "string",
+          "format": "date",
+          "title": "Training Window Start"
+        },
+        "training_window_end": {
+          "type": "string",
+          "format": "date",
+          "title": "Training Window End"
+        },
+        "test_window_start": {
+          "type": "string",
+          "format": "date",
+          "title": "Test Window Start"
+        },
+        "test_window_end": {
+          "type": "string",
+          "format": "date",
+          "title": "Test Window End"
+        },
+        "n_skus_evaluated": {
+          "type": "integer",
+          "title": "N Skus Evaluated"
+        },
+        "seasonal_naive_mae": {
+          "type": "number",
+          "title": "Seasonal Naive Mae"
+        },
+        "seasonal_naive_mape": {
+          "type": "number",
+          "title": "Seasonal Naive Mape"
+        },
+        "moving_average_mae": {
+          "type": "number",
+          "title": "Moving Average Mae"
+        },
+        "moving_average_mape": {
+          "type": "number",
+          "title": "Moving Average Mape"
+        },
+        "gbm_mae": {
+          "type": "number",
+          "title": "Gbm Mae"
+        },
+        "gbm_mape": {
+          "type": "number",
+          "title": "Gbm Mape"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "selected_model",
+        "training_window_start",
+        "training_window_end",
+        "test_window_start",
+        "test_window_end",
+        "n_skus_evaluated",
+        "seasonal_naive_mae",
+        "seasonal_naive_mape",
+        "moving_average_mae",
+        "moving_average_mape",
+        "gbm_mae",
+        "gbm_mape"
+      ],
+      "title": "ForecastAccuracy",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "gbm_mae": "derived",
+            "gbm_mape": "derived",
+            "moving_average_mae": "derived",
+            "moving_average_mape": "derived",
+            "n_skus_evaluated": "derived",
+            "seasonal_naive_mae": "derived",
+            "seasonal_naive_mape": "derived"
+          },
+          "gbm_mae": 6.0781,
+          "gbm_mape": 250.02,
+          "moving_average_mae": 5.1852,
+          "moving_average_mape": 158.88,
+          "n_skus_evaluated": 4801,
+          "seasonal_naive_mae": 6.0136,
+          "seasonal_naive_mape": 246.97,
+          "selected_model": "moving_average",
+          "test_window_end": "2011-12-09",
+          "test_window_start": "2011-11-12",
+          "training_window_end": "2011-11-11",
+          "training_window_start": "2009-12-01"
+        }
+      ]
+    }
+  }
+}

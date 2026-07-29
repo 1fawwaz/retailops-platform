@@ -1,0 +1,123 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/StockItem"
+  },
+  "title": "Response Get Low Stock Inventory Low Stock Get",
+  "$defs": {
+    "StockItem": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "quantity_on_hand": {
+          "type": "integer",
+          "title": "Quantity On Hand"
+        },
+        "reorder_point": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reorder Point"
+        },
+        "safety_stock": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Safety Stock"
+        },
+        "as_of_date": {
+          "type": "string",
+          "format": "date",
+          "title": "As Of Date"
+        },
+        "is_low_stock": {
+          "type": "boolean",
+          "title": "Is Low Stock"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "sku",
+        "description",
+        "category",
+        "quantity_on_hand",
+        "reorder_point",
+        "safety_stock",
+        "as_of_date",
+        "is_low_stock"
+      ],
+      "title": "StockItem",
+      "examples": [
+        {
+          "_derivation_ref": {
+            "quantity_on_hand": "data-derivation.md#stock-ledger",
+            "reorder_point": "data-derivation.md#reorder-point",
+            "safety_stock": "data-derivation.md#reorder-point"
+          },
+          "_provenance": {
+            "quantity_on_hand": "derived",
+            "reorder_point": "derived",
+            "safety_stock": "derived"
+          },
+          "as_of_date": "2026-01-15",
+          "category": "Decorations",
+          "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+          "is_low_stock": true,
+          "quantity_on_hand": 96,
+          "reorder_point": 120,
+          "safety_stock": 40,
+          "sku": "85048"
+        }
+      ]
+    }
+  }
+}

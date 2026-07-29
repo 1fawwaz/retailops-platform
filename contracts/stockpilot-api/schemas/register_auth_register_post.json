@@ -1,0 +1,49 @@
+{
+  "$ref": "#/$defs/UserRead",
+  "$defs": {
+    "UserRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "Email"
+        },
+        "is_active": {
+          "type": "boolean",
+          "title": "Is Active"
+        },
+        "is_read_only": {
+          "type": "boolean",
+          "title": "Is Read Only"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "email",
+        "is_active",
+        "is_read_only",
+        "created_at"
+      ],
+      "title": "UserRead",
+      "examples": [
+        {
+          "created_at": "2026-01-01T00:00:00Z",
+          "email": "demo@retailops.local",
+          "id": 1,
+          "is_active": true,
+          "is_read_only": true
+        }
+      ]
+    }
+  }
+}

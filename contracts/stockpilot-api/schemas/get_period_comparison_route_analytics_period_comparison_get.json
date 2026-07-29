@@ -1,0 +1,210 @@
+{
+  "$ref": "#/$defs/PeriodComparison",
+  "$defs": {
+    "PeriodComparison": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "period1_start": {
+          "type": "string",
+          "format": "date",
+          "title": "Period1 Start"
+        },
+        "period1_end": {
+          "type": "string",
+          "format": "date",
+          "title": "Period1 End"
+        },
+        "period1_revenue": {
+          "type": "number",
+          "title": "Period1 Revenue"
+        },
+        "period1_units": {
+          "type": "integer",
+          "title": "Period1 Units"
+        },
+        "period1_cost": {
+          "type": "number",
+          "title": "Period1 Cost"
+        },
+        "period1_gross_profit": {
+          "type": "number",
+          "title": "Period1 Gross Profit"
+        },
+        "period1_margin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Period1 Margin"
+        },
+        "period2_start": {
+          "type": "string",
+          "format": "date",
+          "title": "Period2 Start"
+        },
+        "period2_end": {
+          "type": "string",
+          "format": "date",
+          "title": "Period2 End"
+        },
+        "period2_revenue": {
+          "type": "number",
+          "title": "Period2 Revenue"
+        },
+        "period2_units": {
+          "type": "integer",
+          "title": "Period2 Units"
+        },
+        "period2_cost": {
+          "type": "number",
+          "title": "Period2 Cost"
+        },
+        "period2_gross_profit": {
+          "type": "number",
+          "title": "Period2 Gross Profit"
+        },
+        "period2_margin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Period2 Margin"
+        },
+        "revenue_delta": {
+          "type": "number",
+          "title": "Revenue Delta"
+        },
+        "revenue_delta_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revenue Delta Pct"
+        },
+        "units_delta": {
+          "type": "integer",
+          "title": "Units Delta"
+        },
+        "units_delta_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Units Delta Pct"
+        },
+        "gross_profit_delta": {
+          "type": "number",
+          "title": "Gross Profit Delta"
+        },
+        "gross_profit_delta_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gross Profit Delta Pct"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "period1_start",
+        "period1_end",
+        "period1_revenue",
+        "period1_units",
+        "period1_cost",
+        "period1_gross_profit",
+        "period1_margin",
+        "period2_start",
+        "period2_end",
+        "period2_revenue",
+        "period2_units",
+        "period2_cost",
+        "period2_gross_profit",
+        "period2_margin",
+        "revenue_delta",
+        "revenue_delta_pct",
+        "units_delta",
+        "units_delta_pct",
+        "gross_profit_delta",
+        "gross_profit_delta_pct"
+      ],
+      "title": "PeriodComparison",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "gross_profit_delta": "derived",
+            "gross_profit_delta_pct": "derived",
+            "period1_cost": "derived",
+            "period1_gross_profit": "derived",
+            "period1_margin": "derived",
+            "period1_revenue": "derived",
+            "period1_units": "derived",
+            "period2_cost": "derived",
+            "period2_gross_profit": "derived",
+            "period2_margin": "derived",
+            "period2_revenue": "derived",
+            "period2_units": "derived",
+            "revenue_delta": "derived",
+            "revenue_delta_pct": "derived",
+            "units_delta": "derived",
+            "units_delta_pct": "derived"
+          },
+          "gross_profit_delta": 18321.77,
+          "gross_profit_delta_pct": 0.068,
+          "period1_cost": 480134.3,
+          "period1_end": "2011-10-31",
+          "period1_gross_profit": 270075.8,
+          "period1_margin": 0.36,
+          "period1_revenue": 750210.1,
+          "period1_start": "2011-10-01",
+          "period1_units": 410233,
+          "period2_cost": 512705.4,
+          "period2_end": "2011-11-30",
+          "period2_gross_profit": 288397.57,
+          "period2_margin": 0.36,
+          "period2_revenue": 801102.97,
+          "period2_start": "2011-11-01",
+          "period2_units": 445513,
+          "revenue_delta": 50892.87,
+          "revenue_delta_pct": 0.068,
+          "units_delta": 35280,
+          "units_delta_pct": 0.086
+        }
+      ]
+    }
+  }
+}

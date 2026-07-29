@@ -1,0 +1,204 @@
+{
+  "$ref": "#/$defs/ProductDetail",
+  "$defs": {
+    "MovementHistoryEntry": {
+      "properties": {
+        "movement_date": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Movement Date"
+        },
+        "quantity_delta": {
+          "type": "integer",
+          "title": "Quantity Delta"
+        },
+        "movement_type": {
+          "type": "string",
+          "title": "Movement Type"
+        },
+        "provenance": {
+          "type": "string",
+          "title": "Provenance"
+        }
+      },
+      "type": "object",
+      "required": [
+        "movement_date",
+        "quantity_delta",
+        "movement_type",
+        "provenance"
+      ],
+      "title": "MovementHistoryEntry",
+      "description": "One stock_movements row. Carries its own provenance label rather\nthan the ProvenanceMixin dict, since sale-driven rows are observed\nwhile opening-balance / injected-PO rows are derived -- a single\nstatic label per field couldn't express that per-row split.",
+      "examples": [
+        {
+          "movement_date": "2026-01-14T00:00:00Z",
+          "movement_type": "sale",
+          "provenance": "observed",
+          "quantity_delta": -12
+        }
+      ]
+    },
+    "ProductDetail": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "category_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category Id"
+        },
+        "supplier_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supplier Id"
+        },
+        "unit_cost": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit Cost"
+        },
+        "reorder_point": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reorder Point"
+        },
+        "safety_stock": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Safety Stock"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        },
+        "quantity_on_hand": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quantity On Hand"
+        },
+        "movement_history": {
+          "items": {
+            "$ref": "#/$defs/MovementHistoryEntry"
+          },
+          "type": "array",
+          "title": "Movement History"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "sku",
+        "description",
+        "category_id",
+        "supplier_id",
+        "unit_cost",
+        "reorder_point",
+        "safety_stock",
+        "created_at",
+        "quantity_on_hand",
+        "movement_history"
+      ],
+      "title": "ProductDetail",
+      "examples": [
+        {
+          "_derivation_ref": {
+            "quantity_on_hand": "data-derivation.md#stock-ledger",
+            "reorder_point": "data-derivation.md#reorder-point",
+            "safety_stock": "data-derivation.md#reorder-point",
+            "unit_cost": "data-derivation.md#cost-price"
+          },
+          "_provenance": {
+            "description": "observed",
+            "quantity_on_hand": "derived",
+            "reorder_point": "derived",
+            "safety_stock": "derived",
+            "sku": "observed",
+            "unit_cost": "derived"
+          },
+          "category_id": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+          "movement_history": [
+            {
+              "movement_date": "2026-01-14T00:00:00Z",
+              "movement_type": "sale",
+              "provenance": "observed",
+              "quantity_delta": -12
+            }
+          ],
+          "quantity_on_hand": 96,
+          "reorder_point": 120,
+          "safety_stock": 40,
+          "sku": "85048",
+          "supplier_id": 7,
+          "unit_cost": 2.15
+        }
+      ]
+    }
+  }
+}

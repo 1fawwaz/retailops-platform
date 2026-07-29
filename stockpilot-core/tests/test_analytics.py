@@ -127,6 +127,22 @@ def test_profit_endpoint(client: TestClient, db_session: Session) -> None:
             assert field in row["_provenance"]
 
 
+def test_profit_grouped_by_month_with_date_filter(client: TestClient, db_session: Session) -> None:
+    _seed_sales(db_session)
+    headers = _auth_headers(db_session)
+
+    response = client.get(
+        "/analytics/profit",
+        params={"group_by": "month", "start_date": "2026-01-01", "end_date": "2026-01-31"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["period"] == "2026-01"
+
+
 def test_turnover_endpoint(client: TestClient, db_session: Session) -> None:
     _seed_sales(db_session)
     headers = _auth_headers(db_session)
@@ -151,7 +167,12 @@ def test_abc_classification(client: TestClient, db_session: Session) -> None:
     # Custom thresholds so all three classes are exercised.
     response = client.get(
         "/analytics/abc",
-        params={"a_threshold": 0.95, "b_threshold": 0.999},
+        params={
+            "a_threshold": 0.95,
+            "b_threshold": 0.999,
+            "start_date": "2026-01-01",
+            "end_date": "2026-02-28",
+        },
         headers=headers,
     )
 
@@ -170,7 +191,14 @@ def test_top_and_bottom_products(client: TestClient, db_session: Session) -> Non
     headers = _auth_headers(db_session)
 
     top_response = client.get(
-        "/analytics/top-products", params={"metric": "revenue", "limit": 1}, headers=headers
+        "/analytics/top-products",
+        params={
+            "metric": "revenue",
+            "limit": 1,
+            "start_date": "2026-01-01",
+            "end_date": "2026-02-28",
+        },
+        headers=headers,
     )
     bottom_response = client.get(
         "/analytics/bottom-products", params={"metric": "revenue", "limit": 1}, headers=headers
@@ -180,6 +208,23 @@ def test_top_and_bottom_products(client: TestClient, db_session: Session) -> Non
     assert bottom_response.status_code == 200
     assert top_response.json()[0]["sku"] == "BEST-1"
     assert bottom_response.json()[0]["sku"] == "WORST-1"
+
+
+def test_top_products_by_units_and_margin(client: TestClient, db_session: Session) -> None:
+    _seed_sales(db_session)
+    headers = _auth_headers(db_session)
+
+    units_response = client.get(
+        "/analytics/top-products", params={"metric": "units", "limit": 1}, headers=headers
+    )
+    margin_response = client.get(
+        "/analytics/top-products", params={"metric": "margin", "limit": 3}, headers=headers
+    )
+
+    assert units_response.status_code == 200
+    assert margin_response.status_code == 200
+    assert units_response.json()[0]["sku"] == "BEST-1"
+    assert {row["sku"] for row in margin_response.json()} == {"BEST-1", "MID-1", "WORST-1"}
 
 
 def test_period_comparison(client: TestClient, db_session: Session) -> None:

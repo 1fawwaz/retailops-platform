@@ -1,0 +1,76 @@
+{
+  "items": {
+    "$ref": "#/$defs/SupplierRead"
+  },
+  "type": "array",
+  "title": "Response List Suppliers Route Suppliers Get",
+  "$defs": {
+    "SupplierRead": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "name": {
+          "type": "string",
+          "title": "Name"
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "title": "Lead Time Days"
+        },
+        "reliability_score": {
+          "type": "number",
+          "title": "Reliability Score"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "id",
+        "name",
+        "lead_time_days",
+        "reliability_score",
+        "created_at"
+      ],
+      "title": "SupplierRead",
+      "examples": [
+        {
+          "_derivation_ref": {
+            "lead_time_days": "data-derivation.md#supplier-assignment",
+            "reliability_score": "data-derivation.md#supplier-assignment"
+          },
+          "_provenance": {
+            "lead_time_days": "derived",
+            "name": "observed",
+            "reliability_score": "derived"
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "id": 7,
+          "lead_time_days": 7,
+          "name": "Acme Wholesale Co",
+          "reliability_score": 0.92
+        }
+      ]
+    }
+  }
+}

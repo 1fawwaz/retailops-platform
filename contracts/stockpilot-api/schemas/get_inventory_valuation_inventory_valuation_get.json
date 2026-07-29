@@ -1,0 +1,132 @@
+{
+  "$ref": "#/$defs/InventoryValuation",
+  "$defs": {
+    "InventoryValuation": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "by_category": {
+          "items": {
+            "$ref": "#/$defs/ValuationRow"
+          },
+          "type": "array",
+          "title": "By Category"
+        },
+        "total_quantity_on_hand": {
+          "type": "integer",
+          "title": "Total Quantity On Hand"
+        },
+        "total_inventory_value": {
+          "type": "number",
+          "title": "Total Inventory Value"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "by_category",
+        "total_quantity_on_hand",
+        "total_inventory_value"
+      ],
+      "title": "InventoryValuation",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "total_inventory_value": "derived",
+            "total_quantity_on_hand": "derived"
+          },
+          "by_category": [
+            {
+              "_derivation_ref": {
+                "inventory_value": "data-derivation.md#cost-price",
+                "quantity_on_hand": "data-derivation.md#stock-ledger"
+              },
+              "_provenance": {
+                "inventory_value": "derived",
+                "quantity_on_hand": "derived"
+              },
+              "category": "Decorations",
+              "inventory_value": 26832.5,
+              "quantity_on_hand": 12480
+            }
+          ],
+          "total_inventory_value": 297512.1,
+          "total_quantity_on_hand": 128400
+        }
+      ]
+    },
+    "ValuationRow": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "quantity_on_hand": {
+          "type": "integer",
+          "title": "Quantity On Hand"
+        },
+        "inventory_value": {
+          "type": "number",
+          "title": "Inventory Value"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "category",
+        "quantity_on_hand",
+        "inventory_value"
+      ],
+      "title": "ValuationRow",
+      "examples": [
+        {
+          "_derivation_ref": {
+            "inventory_value": "data-derivation.md#cost-price",
+            "quantity_on_hand": "data-derivation.md#stock-ledger"
+          },
+          "_provenance": {
+            "inventory_value": "derived",
+            "quantity_on_hand": "derived"
+          },
+          "category": "Decorations",
+          "inventory_value": 26832.5,
+          "quantity_on_hand": 12480
+        }
+      ]
+    }
+  }
+}

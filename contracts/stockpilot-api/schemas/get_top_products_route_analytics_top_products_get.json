@@ -1,0 +1,86 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/ProductPerformanceRow"
+  },
+  "title": "Response Get Top Products Route Analytics Top Products Get",
+  "$defs": {
+    "ProductPerformanceRow": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "revenue": {
+          "type": "number",
+          "title": "Revenue"
+        },
+        "units": {
+          "type": "integer",
+          "title": "Units"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Margin"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "sku",
+        "description",
+        "revenue",
+        "units",
+        "margin"
+      ],
+      "title": "ProductPerformanceRow",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "margin": "derived",
+            "revenue": "derived",
+            "units": "derived"
+          },
+          "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+          "margin": 0.38,
+          "revenue": 45210.3,
+          "sku": "85048",
+          "units": 21023
+        }
+      ]
+    }
+  }
+}

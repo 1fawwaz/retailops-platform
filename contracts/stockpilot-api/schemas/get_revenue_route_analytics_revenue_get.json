@@ -1,0 +1,59 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/RevenuePeriod"
+  },
+  "title": "Response Get Revenue Route Analytics Revenue Get",
+  "$defs": {
+    "RevenuePeriod": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "period": {
+          "type": "string",
+          "title": "Period"
+        },
+        "revenue": {
+          "type": "number",
+          "title": "Revenue"
+        },
+        "units": {
+          "type": "integer",
+          "title": "Units"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "period",
+        "revenue",
+        "units"
+      ],
+      "title": "RevenuePeriod",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "revenue": "derived",
+            "units": "derived"
+          },
+          "period": "2011-11",
+          "revenue": 801102.97,
+          "units": 445513
+        }
+      ]
+    }
+  }
+}

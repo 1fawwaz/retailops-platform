@@ -196,3 +196,46 @@ def test_gbm_recursive_forecast_pooled_matches_single_sku() -> None:
     pooled_forecast = gbm_recursive_forecast_pooled(model, wide, horizon_days=5)
 
     np.testing.assert_allclose(pooled_forecast["A"].to_numpy(), single_forecast, rtol=1e-6)
+
+
+def test_seasonal_naive_empty_history_returns_zeros() -> None:
+    empty = pd.Series([], index=pd.DatetimeIndex([]), dtype=float)
+
+    forecast = seasonal_naive_forecast(empty, horizon_days=3)
+
+    assert list(forecast) == [0.0, 0.0, 0.0]
+
+
+def test_moving_average_empty_history_returns_zeros() -> None:
+    empty = pd.Series([], index=pd.DatetimeIndex([]), dtype=float)
+
+    forecast = moving_average_forecast(empty, horizon_days=3)
+
+    assert list(forecast) == [0.0, 0.0, 0.0]
+
+
+def test_build_pooled_training_frame_all_nan_returns_empty_with_columns() -> None:
+    wide = pd.DataFrame(
+        {"A": [None, None, None]}, index=pd.date_range("2026-01-01", periods=3)
+    ).astype(float)
+
+    frame = build_pooled_training_frame(wide)
+
+    assert frame.empty
+    assert "quantity" in frame.columns
+
+
+def test_gbm_recursive_forecast_pooled_handles_history_shorter_than_max_lag() -> None:
+    history = _synthetic_history(days=20)
+    frame = build_feature_frame(_synthetic_history(days=120))
+    model = train_gbm(frame)
+
+    daily_totals = pd.DataFrame(
+        {"sku": ["A"] * len(history), "sale_date": history.index, "quantity": history.to_numpy()}
+    )
+    wide = build_wide_series(daily_totals, history.index.max())
+
+    forecast = gbm_recursive_forecast_pooled(model, wide, horizon_days=3)
+
+    assert forecast.shape == (3, 1)
+    assert (forecast["A"] >= 0).all()
