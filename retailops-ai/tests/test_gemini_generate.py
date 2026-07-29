@@ -2,13 +2,17 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+from google.genai import errors as genai_errors
 from google.genai import types
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from llm.providers.gemini import (
+    MAX_LLM_RETRIES,
+    LLMUnavailableError,
     _response_to_ai_message,
     _split_messages,
     _tool_to_gemini,
@@ -238,6 +242,102 @@ def test_generate_structured_raises_if_sdk_did_not_return_the_schema_type() -> N
             messages=[HumanMessage(content="x")],
             response_schema=Sentiment,
         )
+
+
+def test_generate_retries_on_timeout_then_succeeds() -> None:
+    fake_client = MagicMock()
+    fake_client.models.generate_content.side_effect = [
+        httpx.TimeoutException("timed out"),
+        httpx.TimeoutException("timed out"),
+        _fake_generate_content_response(text="finally"),
+    ]
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep") as fake_sleep,
+    ):
+        result = generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+
+    assert result.content == "finally"
+    assert fake_client.models.generate_content.call_count == 3
+    assert fake_sleep.call_count == 2
+
+
+def test_generate_raises_llm_unavailable_after_exhausting_retries() -> None:
+    fake_client = MagicMock()
+    fake_client.models.generate_content.side_effect = httpx.ConnectError("refused")
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep") as fake_sleep,
+        pytest.raises(LLMUnavailableError, match="unreachable after"),
+    ):
+        generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+
+    assert fake_client.models.generate_content.call_count == MAX_LLM_RETRIES + 1
+    assert fake_sleep.call_count == MAX_LLM_RETRIES
+
+
+def test_generate_retries_on_server_error() -> None:
+    fake_client = MagicMock()
+    server_error = genai_errors.ServerError(503, {"error": {"message": "unavailable"}})
+    fake_client.models.generate_content.side_effect = [
+        server_error,
+        _fake_generate_content_response(text="recovered"),
+    ]
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep"),
+    ):
+        result = generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+
+    assert result.content == "recovered"
+
+
+def test_generate_does_not_retry_client_errors() -> None:
+    fake_client = MagicMock()
+    client_error = genai_errors.ClientError(400, {"error": {"message": "bad request"}})
+    fake_client.models.generate_content.side_effect = client_error
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep") as fake_sleep,
+        pytest.raises(genai_errors.ClientError),
+    ):
+        generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+
+    assert fake_client.models.generate_content.call_count == 1
+    fake_sleep.assert_not_called()
+
+
+def test_generate_structured_retries_on_timeout_then_succeeds() -> None:
+    class Sentiment(BaseModel):
+        label: str
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.side_effect = [
+        httpx.TimeoutException("timed out"),
+        SimpleNamespace(
+            parsed=Sentiment(label="positive"),
+            text='{"label": "positive"}',
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=1, candidates_token_count=1, thoughts_token_count=0
+            ),
+        ),
+    ]
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep"),
+    ):
+        result = generate_structured(
+            model="gemini-3.5-flash",
+            messages=[HumanMessage(content="hi")],
+            response_schema=Sentiment,
+        )
+
+    assert result.parsed == Sentiment(label="positive")
 
 
 def test_stream_yields_text_chunks() -> None:

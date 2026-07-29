@@ -43,6 +43,34 @@ attribution combines two filters instead:
     replan judgement, which only starts after round N fully finishes) --
     it only failed in Task 3.2 when applied ACROSS different agents
     with no name filter to keep them apart in the first place.
+
+Task 3.6 adds LLM-outage degradation: every node that calls agent.invoke()
+or agent.invoke_structured() (all of them except the tool-less Validator)
+now catches LLMUnavailableError (llm/providers/gemini.py -- raised only
+after that call already retried 3x with backoff) and degrades its OWN
+contribution instead of letting the exception blow up the whole graph
+run. Each catch appends a plain-English entry to state["errors"] and
+returns a node-appropriate fallback:
+  - planner/replan: proceed with no plan / a forced-sufficient judgement
+    (so the loop doesn't retry a call that's already known to be failing)
+  - a retrieval agent: an explicit "[unavailable]" note as that agent's
+    contribution -- the other, unaffected retrieval agents' real results
+    still merge in via ExecutionState's reducers, since LangGraph's fan-out
+    means each retrieval node's success/failure is independent
+  - report/decision: a fixed INCOMPLETE message; for decision specifically,
+    this becomes final_answer, since there is no later stage to recover
+StockPilot-outage degradation (a *different* failure mode, "the answer
+names the missing data explicitly") needs no equivalent graph-level catch:
+agents/base.py::Agent._run_tool_call already absorbs a StockPilotUnavailableError
+raised by a single tool call into a ToolMessage error string fed back to
+that agent's own LLM loop, without ever raising past Agent.invoke() itself
+-- confirmed by test_graph.py::test_stockpilot_outage_produces_a_grounded_answer_naming_the_gap.
+
+Task 3.6 also flags truncated reasoning: _make_synthesis_node checks
+whether the last replan_history entry has sufficient=False (meaning
+Report was reached only because the iteration cap was hit, not because
+the Planner judged the evidence sufficient) and, if so, tells Report and
+Decision explicitly to flag the answer as based on incomplete evidence.
 """
 
 from __future__ import annotations
@@ -59,6 +87,7 @@ from sqlalchemy.orm import Session
 
 from agents.base import Agent
 from agents.replan import ReplanJudgement
+from llm.providers.gemini import LLMUnavailableError
 from orchestration.models.tool_call import ToolCall
 from orchestration.state import ExecutionState
 from orchestration.validator import insufficient_data_message, validate_citations
@@ -68,6 +97,15 @@ RETRIEVAL_AGENT_NAMES = ("inventory", "forecast", "analytics")
 # a fixed cap distinct from budgets["max_tool_iterations"] (which bounds
 # the replan loop, a different mechanism).
 MAX_CITATION_ATTEMPTS = 2
+# Task 3.6: the Decision Engine's own LLM-outage fallback text (set in
+# _make_synthesis_node) is a fixed system-generated notice, not LLM-authored
+# prose making a claim -- the citation validator (Task 3.5) exists to catch
+# a model INVENTING a number, which doesn't apply here (and a retry count or
+# similar digit embedded in the underlying exception's own message would
+# otherwise get flagged as an ungrounded "citation", sending a known-broken
+# LLM call around the regenerate loop pointlessly). _make_validator_node
+# recognizes this exact prefix and skips citation checking for it.
+LLM_DEGRADED_ANSWER_PREFIX = "INCOMPLETE:"
 
 NodeFn = Callable[[ExecutionState], dict[str, object]]
 
@@ -137,7 +175,16 @@ def _make_planner_node(
             prompt = f"{state['memory_context']}\n\nCurrent question:\n{prompt}"
 
         started = time.monotonic()
-        response = agent.invoke(prompt, session_factory=session_factory, execution_id=execution_id)
+        try:
+            response = agent.invoke(
+                prompt, session_factory=session_factory, execution_id=execution_id
+            )
+        except LLMUnavailableError as exc:
+            ended = time.monotonic()
+            return {
+                "errors": [f"planner: {exc}"],
+                "timings": {agent.name: {"start": started, "end": ended}},
+            }
         ended = time.monotonic()
         return {
             "plan": _content_str(response),
@@ -171,9 +218,23 @@ def _make_retrieval_node(
         before_ids = _owned_tool_call_ids(session_factory, execution_id, owned_tool_names)
 
         started = time.monotonic()
-        response = agent.invoke(
-            prompt, session_factory=session_factory, execution_id=execution_id, iteration=iteration
-        )
+        try:
+            response = agent.invoke(
+                prompt,
+                session_factory=session_factory,
+                execution_id=execution_id,
+                iteration=iteration,
+            )
+        except LLMUnavailableError as exc:
+            ended = time.monotonic()
+            return {
+                "agent_results": {
+                    agent.name: f"[unavailable: {agent.name} agent could not reach the "
+                    f"LLM after retries -- no data gathered this round: {exc}]"
+                },
+                "errors": [f"{agent.name} (round {iteration}): {exc}"],
+                "timings": {f"{agent.name}_{iteration}": {"start": started, "end": ended}},
+            }
         ended = time.monotonic()
 
         new_calls = _new_owned_tool_calls(
@@ -235,16 +296,37 @@ def _make_replan_node(
         prompt = "\n\n".join(sections)
 
         started = time.monotonic()
-        judgement = agent.invoke_structured(
-            prompt,
-            ReplanJudgement,
-            session_factory=session_factory,
-            execution_id=execution_id,
-            iteration=iteration,
-        )
+        try:
+            judgement = agent.invoke_structured(
+                prompt,
+                ReplanJudgement,
+                session_factory=session_factory,
+                execution_id=execution_id,
+                iteration=iteration,
+            )
+        except LLMUnavailableError as exc:
+            ended = time.monotonic()
+            # Forcing sufficient=True (rather than leaving it False and
+            # letting the iteration cap eventually catch it) stops the loop
+            # from spending its remaining budget on retrieval rounds whose
+            # own replan judgement would hit this identical LLM outage
+            # again -- proceed to Report with whatever evidence exists now.
+            record: dict[str, object] = {
+                "sufficient": True,
+                "missing": [],
+                "next_action": f"LLM unavailable after retries ({exc}); proceeding with "
+                "evidence gathered so far.",
+                "agents_to_retry": [],
+                "iteration": iteration,
+            }
+            return {
+                "replan_history": [record],
+                "errors": [f"replan (round {iteration}): {exc}"],
+                "timings": {f"replan_{iteration}": {"start": started, "end": ended}},
+            }
         ended = time.monotonic()
 
-        record: dict[str, object] = {**judgement.model_dump(), "iteration": iteration}
+        record = {**judgement.model_dump(), "iteration": iteration}
         return {
             "replan_history": [record],
             "timings": {f"replan_{iteration}": {"start": started, "end": ended}},
@@ -305,14 +387,48 @@ def _make_synthesis_node(
                     "restating those specific values; say plainly that the information "
                     "isn't available rather than guessing or rephrasing around it."
                 )
+        if state["replan_history"] and not state["replan_history"][-1]["sufficient"]:
+            # Task 3.6: "iteration cap hit -> best effort, flagged as
+            # truncated reasoning." Reached only when the iteration cap
+            # (not genuine sufficiency) is why the graph routed here --
+            # _route_after_replan sends "report" in both cases, so this is
+            # the one place downstream that can still tell them apart.
+            latest_judgement = state["replan_history"][-1]
+            missing_raw = latest_judgement.get("missing")
+            missing = [str(m) for m in missing_raw] if isinstance(missing_raw, list) else []
+            missing_text = "; ".join(missing) if missing else "unspecified"
+            sections.append(
+                "Retrieval stopped at the iteration budget cap while the Planner still "
+                "judged the evidence insufficient (not because it became sufficient). "
+                "Explicitly flag your answer as based on incomplete, truncated evidence, "
+                f"and state plainly what remained missing: {missing_text}."
+            )
         prompt = "\n\n".join(sections)
 
         started = time.monotonic()
-        response = agent.invoke(prompt, session_factory=session_factory, execution_id=execution_id)
+        try:
+            response = agent.invoke(
+                prompt, session_factory=session_factory, execution_id=execution_id
+            )
+        except LLMUnavailableError as exc:
+            ended = time.monotonic()
+            fallback = (
+                f"{LLM_DEGRADED_ANSWER_PREFIX} the {agent.name} step could not reach the "
+                f"LLM after retries ({exc}). This answer is flagged incomplete rather "
+                "than fabricated -- retry the request."
+            )
+            update: dict[str, object] = {
+                "agent_results": {agent.name: fallback},
+                "errors": [f"{agent.name}: {exc}"],
+                "timings": {agent.name: {"start": started, "end": ended}},
+            }
+            if is_final:
+                update["final_answer"] = fallback
+            return update
         ended = time.monotonic()
 
         content = _content_str(response)
-        update: dict[str, object] = {
+        update = {
             "agent_results": {agent.name: content},
             "timings": {agent.name: {"start": started, "end": ended}},
         }
@@ -328,14 +444,25 @@ def _make_validator_node(session_factory: Callable[[], Session], execution_id: u
     ever reach `final_answer`'s intended recipient. Not an Agent (no LLM
     call -- pure deterministic checking), so it has no agent_steps row of
     its own; its trace lives entirely in `citation_failures`.
+
+    Task 3.6: a draft starting with LLM_DEGRADED_ANSWER_PREFIX is the
+    Decision node's own fixed system fallback for an exhausted LLM outage,
+    not LLM-authored prose making a claim -- citation checking doesn't
+    apply to it (and would otherwise misfire on a stray digit inside the
+    wrapped exception's own message, e.g. a retry count). Passed
+    immediately so the graph doesn't loop back to a Decision Engine call
+    that's already known to be failing.
     """
 
     def node(state: ExecutionState) -> dict[str, object]:
         draft = state["final_answer"] or ""
         attempt = len(state["citation_failures"]) + 1
+        if draft.startswith(LLM_DEGRADED_ANSWER_PREFIX):
+            record: dict[str, object] = {"attempt": attempt, "passed": True, "failures": []}
+            return {"citation_failures": [record]}
         failures = validate_citations(draft, session_factory, execution_id)
 
-        record: dict[str, object] = {
+        record = {
             "attempt": attempt,
             "passed": not failures,
             "failures": [

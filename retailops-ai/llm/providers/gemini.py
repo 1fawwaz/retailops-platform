@@ -29,11 +29,14 @@ future model swap.
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
+import httpx
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
@@ -44,6 +47,31 @@ from settings import get_settings
 T = TypeVar("T", bound=BaseModel)
 
 THOUGHT_SIGNATURES_KEY = "thought_signatures"
+
+# Task 3.6 failure behaviour: "LLM timeout -> backoff x3, then a partial
+# answer flagged incomplete". Mirrors clients/stockpilot.py's retry shape
+# (same exponential-backoff idea, a separate implementation since the
+# retryable exception types are provider-specific and this module may
+# never import anything from clients/).
+MAX_LLM_RETRIES = 3
+LLM_RETRY_BASE_DELAY_SECONDS = 1.0
+RETRYABLE_LLM_EXCEPTIONS: tuple[type[Exception], ...] = (
+    httpx.TimeoutException,
+    httpx.ConnectError,
+    httpx.ReadError,
+    genai_errors.ServerError,
+)
+
+
+class LLMUnavailableError(Exception):
+    """Raised once generate()/generate_structured() have retried a Gemini
+    call MAX_LLM_RETRIES times with exponential backoff and it still
+    failed. Distinct from clients.stockpilot.StockPilotUnavailableError --
+    that one covers the StockPilot-outage failure mode, this one covers
+    the LLM-outage failure mode; orchestration/graph.py catches this
+    specifically to degrade a node's contribution instead of crashing the
+    whole execution.
+    """
 
 
 @dataclass(frozen=True)
@@ -211,6 +239,30 @@ def _response_to_ai_message(response: types.GenerateContentResponse) -> AIMessag
     )
 
 
+def _generate_content_with_retry(
+    *, model: str, contents: list[types.Content], config: types.GenerateContentConfig
+) -> types.GenerateContentResponse:
+    """Retries a real Gemini call on transient network errors and 5xx
+    responses, exponential backoff (base * 2**attempt), then raises
+    LLMUnavailableError -- the same retry-then-typed-error shape as
+    clients/stockpilot.py's _retry_with_backoff, kept as a separate
+    function since the retryable exception types differ per provider.
+    """
+    last_exception: Exception | None = None
+    for attempt in range(MAX_LLM_RETRIES + 1):
+        try:
+            return _client().models.generate_content(model=model, contents=contents, config=config)
+        except RETRYABLE_LLM_EXCEPTIONS as exc:
+            last_exception = exc
+            if attempt < MAX_LLM_RETRIES:
+                time.sleep(LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
+    assert last_exception is not None
+    raise LLMUnavailableError(
+        f"Gemini unreachable after {MAX_LLM_RETRIES} retries calling model "
+        f"{model!r}: {last_exception}"
+    ) from last_exception
+
+
 def generate(
     *,
     model: str,
@@ -224,6 +276,9 @@ def generate(
     `.content` may be empty -- the caller executes the tool(s) and sends
     the result back as a ToolMessage in a following call, same as any
     LangChain tool-calling loop.
+
+    Raises LLMUnavailableError if Gemini is still unreachable after
+    MAX_LLM_RETRIES retries (Task 3.6).
     """
     system_instruction, contents = _split_messages(messages)
     config = types.GenerateContentConfig(
@@ -232,7 +287,7 @@ def generate(
         temperature=temperature,
         tools=[_tool_to_gemini(tool) for tool in tools] if tools else None,
     )
-    response = _client().models.generate_content(model=model, contents=contents, config=config)
+    response = _generate_content_with_retry(model=model, contents=contents, config=config)
     return _response_to_ai_message(response)
 
 
@@ -247,6 +302,9 @@ def generate_structured(
     """Structured output: response_schema is a Pydantic class, passed
     straight through to the SDK, which returns an already-validated
     instance via response.parsed.
+
+    Raises LLMUnavailableError if Gemini is still unreachable after
+    MAX_LLM_RETRIES retries (Task 3.6).
     """
     system_instruction, contents = _split_messages(messages)
     config = types.GenerateContentConfig(
@@ -256,7 +314,7 @@ def generate_structured(
         response_mime_type="application/json",
         response_schema=response_schema,
     )
-    response = _client().models.generate_content(model=model, contents=contents, config=config)
+    response = _generate_content_with_retry(model=model, contents=contents, config=config)
     parsed = response.parsed
     if not isinstance(parsed, response_schema):
         raise ValueError(

@@ -18,7 +18,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 from sqlalchemy import create_engine
@@ -26,7 +26,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from agents.base import Agent
 from agents.replan import ReplanJudgement
-from llm.providers.gemini import StructuredResult
+from clients.stockpilot import StockPilotUnavailableError
+from llm.providers.gemini import LLMUnavailableError, StructuredResult
 from orchestration.graph import build_execution_graph
 from orchestration.models import Base
 from orchestration.models.agent_step import AgentStep
@@ -656,3 +657,260 @@ def test_citation_validator_gives_up_after_two_failed_attempts(
     final_answer = result["final_answer"]
     assert final_answer is not None
     assert final_answer.startswith("INSUFFICIENT_DATA")
+
+
+def test_stockpilot_outage_produces_a_grounded_answer_naming_the_gap(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Task 3.6: "StockPilot unreachable -> typed ToolUnavailable, graph
+    degrades, the answer names the missing data explicitly." The typed
+    exception is clients.stockpilot.StockPilotUnavailableError; it never
+    needs a graph-level catch because agents.base.Agent._run_tool_call
+    already absorbs it into a ToolMessage error string fed back to that
+    agent's own LLM loop -- proved here by asserting the agent's SECOND
+    round genuinely saw that error text and answered around it, and the
+    whole graph run still completes with a non-None final_answer, not an
+    unhandled exception.
+    """
+    execution_id = _new_execution(session_factory)
+
+    def _failing_run(sku: str) -> str:
+        raise StockPilotUnavailableError("StockPilot unreachable: GET /inventory/stock")
+
+    tool = StructuredTool.from_function(
+        func=_failing_run, name="get_stock", description="d", args_schema=_SkuArgs
+    )
+    agents = _six_agents(
+        inventory=Agent(
+            name="inventory", role="retriever", prompt=load_prompt("inventory"), tools=(tool,)
+        )
+    )
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    tool_call_message = AIMessage(
+        content="", tool_calls=[{"name": "get_stock", "args": {"sku": "123"}, "id": "call_1"}]
+    )
+    captured_tool_error_messages: list[str] = []
+    calls: dict[str, int] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        if name == "inventory" and calls[name] == 1:
+            return tool_call_message
+        if name == "inventory" and calls[name] == 2:
+            last_message = messages[-1]
+            if isinstance(last_message, ToolMessage):
+                captured_tool_error_messages.append(str(last_message.content))
+            return _ai_message(
+                "Stock levels are unavailable right now because StockPilot could not be reached."
+            )
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert len(captured_tool_error_messages) == 1
+    assert "Error calling get_stock" in captured_tool_error_messages[0]
+    assert "StockPilot unreachable" in captured_tool_error_messages[0]
+    assert result["agent_results"]["inventory"] == (
+        "Stock levels are unavailable right now because StockPilot could not be reached."
+    )
+    assert result["final_answer"] is not None
+
+
+def test_retrieval_agent_llm_outage_degrades_that_agent_without_crashing_the_run(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Task 3.6: "LLM timeout -> ... a partial answer flagged incomplete."
+    generate() already retried 3x and exhausted (llm/providers/gemini.py,
+    tested there directly) -- this proves the GRAPH-level behaviour once
+    LLMUnavailableError reaches a node: the failing retrieval agent's own
+    contribution degrades to an explicit "[unavailable]" note and
+    state["errors"] records it, but the two unaffected retrieval agents
+    and the rest of the graph still complete normally.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "forecast":
+            raise LLMUnavailableError("Gemini unreachable after 3 retries calling model x: timeout")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert result["agent_results"]["inventory"] == "inventory answer"
+    assert result["agent_results"]["analytics"] == "analytics answer"
+    assert result["agent_results"]["forecast"].startswith("[unavailable: forecast agent")
+    assert any("forecast" in error and "unreachable" in error for error in result["errors"])
+    assert result["final_answer"] == "decision answer"
+
+
+def test_decision_llm_outage_produces_a_flagged_incomplete_final_answer(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The Decision Engine is the last LLM call before final_answer is set
+    -- if IT hits an exhausted LLM outage, there's no later stage to
+    recover, so the fallback text itself becomes final_answer, clearly
+    flagged INCOMPLETE rather than silently missing or a raw exception
+    escaping graph.invoke().
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "decision":
+            raise LLMUnavailableError("Gemini unreachable after 3 retries calling model x: timeout")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    final_answer = result["final_answer"]
+    assert final_answer is not None
+    assert final_answer.startswith("INCOMPLETE")
+    assert any("decision" in error for error in result["errors"])
+
+
+def test_iteration_cap_hit_flags_the_decision_prompt_as_truncated_reasoning(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Task 3.6: "Iteration cap hit -> best effort, flagged as truncated
+    reasoning." Reuses the same persistently-insufficient setup as
+    test_replan_loop_is_bounded_by_max_tool_iterations, but additionally
+    captures the Decision Engine's own prompt to prove it was actually
+    told to flag the answer as incomplete/truncated, not just that the
+    loop terminated.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+    decision_prompts: list[str] = []
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "decision":
+            decision_prompts.append(str(messages[1].content))
+        return _ai_message(f"{name} answer")
+
+    def fake_generate_structured(
+        *, model: str, messages: list[Any], response_schema: Any
+    ) -> StructuredResult[ReplanJudgement]:
+        return _judgement_result(
+            sufficient=False,
+            missing=["supplier lead time for the flagged SKUs"],
+            next_action="try again",
+            agents_to_retry=["forecast"],
+        )
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=fake_generate_structured),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 2}
+        )
+        result = graph.invoke(state)
+
+    assert result["final_answer"] == "decision answer"
+    assert len(decision_prompts) == 1
+    assert "truncated" in decision_prompts[0]
+    assert "supplier lead time for the flagged SKUs" in decision_prompts[0]
+
+
+def test_planner_llm_outage_degrades_without_crashing_the_run(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The planner node's own LLMUnavailableError catch: with no plan,
+    the retrieval agents still run fine (they already tolerate a None
+    plan), and the run still reaches a final_answer rather than raising.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "planner":
+            raise LLMUnavailableError("Gemini unreachable after 3 retries calling model x: timeout")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert result["plan"] is None
+    assert result["agent_results"]["inventory"] == "inventory answer"
+    assert result["final_answer"] == "decision answer"
+    assert any("planner" in error for error in result["errors"])
+
+
+def test_replan_llm_outage_forces_sufficient_and_stops_the_loop(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The replan node's own LLMUnavailableError catch: rather than
+    leaving the loop stuck retrying a replan judgement call that's
+    already known to be failing, it forces sufficient=True so the graph
+    proceeds straight to Report with whatever evidence already exists.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    def fake_generate_structured(
+        *, model: str, messages: list[Any], response_schema: Any
+    ) -> StructuredResult[ReplanJudgement]:
+        raise LLMUnavailableError("Gemini unreachable after 3 retries calling model x: timeout")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=fake_generate_structured),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        result = graph.invoke(state)
+
+    assert len(result["replan_history"]) == 1
+    assert result["replan_history"][0]["sufficient"] is True
+    assert result["final_answer"] == "decision answer"
+    assert any("replan" in error for error in result["errors"])

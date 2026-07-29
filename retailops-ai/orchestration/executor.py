@@ -128,7 +128,18 @@ def run_execution(
             # ephemeral return value.
             errors_payload["citation_failures"] = result["citation_failures"]
 
-        db_execution.status = "completed" if result["final_answer"] else "failed"
+        if not result["final_answer"]:
+            db_execution.status = "failed"
+        elif result["errors"]:
+            # Task 3.6: state["errors"] is populated only by the graph's own
+            # LLM/StockPilot-outage degradation paths (orchestration/graph.py),
+            # distinct from citation_failures (Task 3.5's own, separately
+            # tracked validator mechanism) -- an execution that finished via
+            # the validator's INSUFFICIENT_DATA path with no LLM/tool outage
+            # is still "completed", not "degraded".
+            db_execution.status = "degraded"
+        else:
+            db_execution.status = "completed"
         db_execution.plan = {"text": result["plan"]} if result["plan"] else None
         db_execution.final_answer = result["final_answer"]
         db_execution.provenance_map = result["provenance_map"] or None

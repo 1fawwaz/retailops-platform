@@ -144,6 +144,36 @@ def test_tool_invocation_is_callable_in_isolation_and_persists_a_tool_call_row(
     }
 
 
+def test_empty_result_set_persists_a_successful_call_not_an_error(db_session: Session) -> None:
+    """Task 3.6: "Empty result set -> a valid answer, not an error." At
+    the tool layer, that means a query that legitimately matches nothing
+    (e.g. every SKU in a category is well-stocked) must persist status
+    "success" with an empty raw_response, never status "error" -- the
+    opposite of test_failed_tool_call_persists_error_status_and_reraises,
+    which the tool layer must keep genuinely distinguishable from this.
+    """
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/auth/login":
+            return _login_response()
+        return httpx2.Response(200, json=[])
+
+    client = _client(handler)
+    execution_id = _new_execution(db_session)
+    tools = build_stockpilot_tools(client, lambda: db_session, execution_id)
+    low_stock_tool = _tools_by_name(tools)["get_low_stock"]
+
+    result = low_stock_tool.invoke({"limit": 100, "offset": 0})
+
+    assert result == []
+    row = db_session.query(ToolCall).one()
+    assert row.execution_id == execution_id
+    assert row.tool_name == "get_low_stock"
+    assert row.status == "success"
+    assert row.raw_response == []
+    assert row.provenance_map == {}
+
+
 def test_no_arg_tool_persists_empty_args(db_session: Session) -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         if request.url.path == "/auth/login":
