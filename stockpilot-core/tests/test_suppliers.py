@@ -48,6 +48,24 @@ def test_update_and_delete_supplier(client: TestClient) -> None:
     assert get_response.status_code == 404
 
 
+def test_supplier_detail_lists_assigned_skus(client: TestClient) -> None:
+    headers = _auth_headers(client)
+    create_response = client.post(
+        "/suppliers",
+        json={"name": "Acme Co", "lead_time_days": 7, "reliability_score": 0.92},
+        headers=headers,
+    )
+    supplier_id = create_response.json()["id"]
+    client.post("/products", json={"sku": "SKU-1", "supplier_id": supplier_id}, headers=headers)
+    client.post("/products", json={"sku": "SKU-2", "supplier_id": supplier_id}, headers=headers)
+    client.post("/products", json={"sku": "SKU-3"}, headers=headers)
+
+    response = client.get(f"/suppliers/{supplier_id}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["skus"] == ["SKU-1", "SKU-2"]
+
+
 def test_get_nonexistent_supplier_is_404(client: TestClient) -> None:
     headers = _auth_headers(client)
 

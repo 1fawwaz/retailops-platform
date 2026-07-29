@@ -1,12 +1,18 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from models.product import Product
 from models.supplier import Supplier
 from schemas.supplier import SupplierCreate, SupplierUpdate
 
 
 def get_supplier(db: Session, supplier_id: int) -> Supplier | None:
     return db.get(Supplier, supplier_id)
+
+
+def get_supplier_skus(db: Session, supplier_id: int) -> list[str]:
+    stmt = select(Product.sku).where(Product.supplier_id == supplier_id).order_by(Product.sku)
+    return list(db.scalars(stmt))
 
 
 def list_suppliers(db: Session, *, limit: int = 100, offset: int = 0) -> list[Supplier]:

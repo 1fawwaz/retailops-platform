@@ -36,3 +36,7 @@ SUPPLIER_DERIVATION_REF = {
     "lead_time_days": "data-derivation.md#supplier-assignment",
     "reliability_score": "data-derivation.md#supplier-assignment",
 }
+
+
+class SupplierDetail(SupplierRead):
+    skus: list[str]
