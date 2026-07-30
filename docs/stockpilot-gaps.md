@@ -44,3 +44,35 @@ validation failure above. No code compares timestamps across timezones yet,
 so naive-vs-aware hasn't caused an ordering or arithmetic bug. Worth
 revisiting if a future task starts doing timezone-sensitive datetime math
 against StockPilot timestamps.
+
+## 2. No per-SKU unit price / recent revenue lookup (found: Stage 4 Task 4.3)
+
+**Needed by:** the Decision Engine's `revenue_at_risk = forecast_daily_demand
+× unit_price × projected_stockout_days` formula.
+
+**What happened:** `unit_price` exists only inside StockPilot Core's raw
+`sales_transaction` table (`models/sales_transaction.py`); no response
+model ever exposes it. The only endpoints that expose a derivable price
+(`revenue / units`) are `/analytics/top-products` and
+`/analytics/bottom-products` — both global rankings bounded by a `limit`
+parameter, not filterable by an exact SKU. There is no endpoint that
+answers "what is SKU X's recent unit price" directly for an arbitrary SKU.
+
+**Workaround applied (retailops-ai side, decided 2026-07-30, user
+confirmed):** `services/pricing.py` fetches `get_top_products` /
+`get_bottom_products` with a large limit and computes
+`unit_price = revenue / units` for the requested SKU if it appears in
+either list. If the SKU appears in neither, `revenue_at_risk` is not
+computed for that SKU — the Decision Engine states the gap explicitly
+rather than estimating or defaulting a price.
+
+**Impact if unaddressed:** revenue-at-risk coverage is bounded by how
+many top/bottom products are fetched, not exhaustive across the whole
+catalog — a real, accepted, documented limitation (see
+`services/pricing.py`'s own docstring and the honesty section of
+`retailops-ai/README.md` once one exists), not a bug.
+
+**Real fix (out of scope, Stage 1 is frozen):** a StockPilot Core
+endpoint like `GET /analytics/unit-price/{sku}`, or a `unit_price` /
+`avg_selling_price` field added to `ProductRead`/`ProductDetail`,
+sourced from the SKU's recent transactions.

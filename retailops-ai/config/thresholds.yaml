@@ -1,0 +1,32 @@
+# Stage 4 Task 4.3: rules-based thresholds for the Decision Engine.
+# CLAUDE.md section 8 ("No hardcoded values... thresholds: config or env
+# only") applies here exactly as it does to config/models.yaml -- every
+# business threshold the priority/confidence/pricing formulas need is
+# read from here, never a literal in services/*.py.
+
+priority:
+  # priority = rules-based tiering on revenue_at_risk OR days_to_stockout
+  # (services/priority.py) -- either dimension alone can escalate the
+  # tier, checked critical -> high -> medium -> low. Amounts in USD.
+  critical_revenue_at_risk: 5000.0
+  critical_days_to_stockout: 3.0
+  high_revenue_at_risk: 1000.0
+  high_days_to_stockout: 7.0
+  medium_revenue_at_risk: 200.0
+  medium_days_to_stockout: 14.0
+
+confidence:
+  # Days of forecast training history considered "fully confident" on
+  # the history-length dimension of compute_confidence -- a SKU with at
+  # least this many days of history no longer loses confidence score
+  # for a short history, only for a wide confidence interval or a
+  # degraded data_quality flag.
+  target_history_days: 365
+
+pricing:
+  # How many top/bottom-ranked products (by revenue) to search when
+  # deriving a per-SKU unit price -- StockPilot has no endpoint that
+  # returns this for an arbitrary single SKU (docs/stockpilot-gaps.md#2).
+  # Bounds revenue_at_risk coverage; a SKU outside both rankings has no
+  # computable revenue_at_risk, stated as a gap rather than estimated.
+  lookup_limit: 500
