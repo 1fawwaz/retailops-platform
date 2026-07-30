@@ -29,12 +29,13 @@ class Settings(BaseSettings):
     groq_api_key: str
     # "primary/fallback order switchable via env var" per the spec --
     # flips WHICH of the two configured (provider, model) pairs is
-    # tried first: "gemini" (the default, per CLAUDE.md's own "Gemini
-    # primary, Groq fallback" stack pin) or "groq" (used for the TRUST
-    # GATE's own "fallback forced as primary" live verification, and
-    # for genuinely preferring Groq if that's ever wanted operationally).
-    # Whichever isn't primary becomes the fallback for that request.
-    llm_primary_provider: Literal["gemini", "groq"] = "gemini"
+    # tried first: "groq" (the default -- Groq is the project's default
+    # primary provider, Gemini its default fallback, a deliberate
+    # project decision) or "gemini" (used for the TRUST GATE's own
+    # "fallback forced as primary" live verification, and for reverting
+    # to Gemini-first if that's ever wanted operationally). Whichever
+    # isn't primary becomes the fallback for that request.
+    llm_primary_provider: Literal["gemini", "groq"] = "groq"
 
 
 @lru_cache

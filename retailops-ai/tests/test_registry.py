@@ -102,25 +102,15 @@ PLANNER_MODEL = get_model_config().roles.planner.model
 FALLBACK_MODEL = get_model_config().fallback.model
 
 
-def test_fresh_chain_tries_gemini_first_by_default(
+def test_fresh_chain_tries_groq_first_by_default(
     fake_providers: tuple[FakeProvider, FakeProvider],
 ) -> None:
+    """Groq is the project's default primary provider, Gemini its
+    default fallback -- see Settings.llm_primary_provider's own
+    docstring for the decision.
+    """
     gemini, groq = fake_providers
-    assert get_settings().llm_primary_provider == "gemini"
-
-    result = registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
-
-    assert result.content == "served by gemini"
-    assert gemini.calls == [PLANNER_MODEL]
-    assert groq.calls == []
-
-
-def test_fresh_chain_tries_groq_first_when_configured_as_primary(
-    fake_providers: tuple[FakeProvider, FakeProvider],
-    primary_provider: Any,
-) -> None:
-    primary_provider("groq")
-    gemini, groq = fake_providers
+    assert get_settings().llm_primary_provider == "groq"
 
     result = registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
 
@@ -129,17 +119,35 @@ def test_fresh_chain_tries_groq_first_when_configured_as_primary(
     assert gemini.calls == []
 
 
+def test_fresh_chain_tries_gemini_first_when_configured_as_primary(
+    fake_providers: tuple[FakeProvider, FakeProvider],
+    primary_provider: Any,
+) -> None:
+    """The override used by the TRUST GATE's own "fallback forced as
+    primary" live verification, and for reverting to Gemini-first
+    operationally.
+    """
+    primary_provider("gemini")
+    gemini, groq = fake_providers
+
+    result = registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
+
+    assert result.content == "served by gemini"
+    assert gemini.calls == [PLANNER_MODEL]
+    assert groq.calls == []
+
+
 def test_fresh_chain_falls_over_to_the_configured_fallback_on_failure(
     fake_providers: tuple[FakeProvider, FakeProvider],
 ) -> None:
     gemini, groq = fake_providers
-    gemini._error = ProviderUnavailableError("quota exceeded")
+    groq._error = ProviderUnavailableError("quota exceeded")
 
     result = registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
 
-    assert result.content == "served by groq"
-    assert gemini.calls == [PLANNER_MODEL]
+    assert result.content == "served by gemini"
     assert groq.calls == [FALLBACK_MODEL]
+    assert gemini.calls == [PLANNER_MODEL]
 
 
 def test_provider_for_role_model_rejects_an_unconfigured_model() -> None:
@@ -165,12 +173,13 @@ def test_pinned_conversation_stays_on_the_same_provider_even_if_it_would_lose_to
     fake_providers: tuple[FakeProvider, FakeProvider],
 ) -> None:
     """The critical fix: round 2 of a Groq-served conversation must call
-    Groq again, never re-resolve to Gemini even though Gemini is the
-    configured default primary -- this is exactly the scenario that
-    produced the real `thought_signature` bug (see registry.py's own
-    docstring). Also asserts the pinned round is NOT given a fresh
-    two-provider chain: if the pinned provider fails, it must raise
-    LLMUnavailableError immediately rather than trying the other one.
+    Groq again, never re-resolve away from it -- this is exactly the
+    scenario that produced the real `thought_signature` bug (see
+    registry.py's own docstring), and matters regardless of which
+    provider is configured as the default primary. Also asserts the
+    pinned round is NOT given a fresh two-provider chain: if the pinned
+    provider fails, it must raise LLMUnavailableError immediately
+    rather than trying the other one.
     """
     gemini, groq = fake_providers
     history = [
@@ -249,16 +258,16 @@ def test_generate_structured_resolves_the_same_fresh_chain_as_generate(
     fake_providers: tuple[FakeProvider, FakeProvider],
 ) -> None:
     gemini, groq = fake_providers
-    gemini._error = ProviderUnavailableError("quota exceeded")
+    groq._error = ProviderUnavailableError("quota exceeded")
 
     result = registry.generate_structured(
         model=PLANNER_MODEL, messages=[HumanMessage(content="hi")], response_schema=Sentiment
     )
 
-    assert result.provider == "groq"
-    assert result.parsed == Sentiment(label="groq")
-    assert gemini.calls == [PLANNER_MODEL]
+    assert result.provider == "gemini"
+    assert result.parsed == Sentiment(label="gemini")
     assert groq.calls == [FALLBACK_MODEL]
+    assert gemini.calls == [PLANNER_MODEL]
 
 
 def test_provider_for_returns_the_named_provider(

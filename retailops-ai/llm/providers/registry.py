@@ -10,9 +10,11 @@ Chain resolution has two paths:
     resolve the normal primary/fallback chain from config/models.yaml,
     by matching the bare `model` string against a role's own configured
     provider. Which end is "primary" is controlled by
-    Settings.llm_primary_provider (default "gemini", matching CLAUDE.md's
-    own stack pin) -- see that setting's own docstring for the "forced
-    as primary" live-verification use this exists for.
+    Settings.llm_primary_provider (default "groq" -- Groq is the
+    project's default primary provider, Gemini its default fallback,
+    see that setting's own docstring) -- see that setting's own
+    docstring for the "forced as primary" live-verification use this
+    also exists for.
   - LATER round of an existing multi-round tool-calling conversation
     (agents/base.py::Agent.invoke()'s own loop, which re-calls generate()
     once per round with the growing message history): PINNED to
