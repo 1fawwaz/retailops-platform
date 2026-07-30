@@ -32,10 +32,17 @@ class PricingThresholds(BaseModel):
     lookup_limit: int
 
 
+class WorkflowThresholds(BaseModel):
+    inventory_health_max_recommendations: int
+    business_review_period_days: int
+    dead_stock_lookup_limit: int
+
+
 class ThresholdsConfig(BaseModel):
     priority: PriorityThresholds
     confidence: ConfidenceThresholds
     pricing: PricingThresholds
+    workflows: WorkflowThresholds
 
 
 @lru_cache

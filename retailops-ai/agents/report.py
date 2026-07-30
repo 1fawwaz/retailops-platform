@@ -20,22 +20,25 @@ this task existed. Each report's `evidence` field (a list of
 tool_call_id strings) is how a transcribed number stays traceable,
 mirroring the shape the spec gives Task 4.3's own Recommendation.evidence.
 
-Fields are deliberately limited to what an existing tool already returns
-(tools/stockpilot_tools.py's 18 endpoints, tools/derived_tools.py's 3
-derived ones) -- e.g. no "recommended_order_qty" on ReorderReport or
-"dead_stock_capital" on HealthReport, since nothing in the codebase
-computes either yet and inventing a formula here would be exactly the
-kind of fabricated business value CLAUDE.md section 11 says to stop and
-flag rather than build.
+Fields are deliberately limited to what an existing tool already
+returns, or (as of Stage 4 Task 4.4) a value with a documented Python
+computation behind it -- e.g. `PerformanceReport.dead_stock_capital`
+sums `quantity_on_hand * unit_cost` across dead-stock SKUs
+(services/dead_stock.py), added only once Task 4.4's own spec text
+explicitly called for "dead-stock capital" in the business-review
+workflow. `ReorderReport` still has no "recommended_order_qty" field --
+Task 4.3 resolved that formula for `Recommendation` specifically
+(services/order_quantity.py), not for this schema, and nothing calls
+for it here.
 
 Not yet wired into the default /agent/query graph path, which still
 uses the Report Agent's original free-text mode
 (orchestration/graph.py's _make_synthesis_node via Agent.invoke()) for
 general ad-hoc questions -- deciding which of these three report types
 fits an arbitrary question isn't something this task's spec text asks
-for. Task 4.4's goal-driven workflow endpoints are what will call
-build_report() with an already-known report_type (one per endpoint), not
-a runtime classification invented for this task.
+for. Task 4.4's goal-driven workflow endpoints (orchestration/workflows.py)
+call build_report() with an already-known report_type (one per
+endpoint), not a runtime classification.
 """
 
 from __future__ import annotations
@@ -49,6 +52,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from agents.base import Agent
+from orchestration.models.report import Report as ReportRow
 
 ReportType = Literal["reorder", "health", "performance"]
 
@@ -139,6 +143,12 @@ class PerformanceReport(BaseModel):
     margin: float | None = None
     revenue_delta_pct: float | None = None
     gross_profit_delta_pct: float | None = None
+    margin_delta_pct: float | None = None
+    # Stage 4 Task 4.4: "inventory value, dead-stock capital" -- the
+    # business-review workflow's own spec text, not present in Task
+    # 4.2's original schema since nothing computed either value yet.
+    total_inventory_value: float | None = None
+    dead_stock_capital: float | None = None
     top_products: list[ProductPerformanceEntry] = Field(default_factory=list)
     bottom_products: list[ProductPerformanceEntry] = Field(default_factory=list)
     category_performance: list[CategoryPerformance] = Field(default_factory=list)
@@ -312,7 +322,10 @@ def _render_performance_report(report: PerformanceReport, as_of_date: date | Non
         f"**Revenue:** {_fmt(report.revenue)} ({_fmt(report.revenue_delta_pct)}% vs prior)\n\n"
         f"**Gross profit:** {_fmt(report.gross_profit)} "
         f"({_fmt(report.gross_profit_delta_pct)}% vs prior)\n\n"
-        f"**Margin:** {_fmt(report.margin)}\n\n"
+        f"**Margin:** {_fmt(report.margin)} "
+        f"({_fmt(report.margin_delta_pct)} pts vs prior)\n\n"
+        f"**Total inventory value:** {_fmt(report.total_inventory_value)}\n\n"
+        f"**Dead-stock capital:** {_fmt(report.dead_stock_capital)}\n\n"
         f"## Top products\n\n{_table(product_headers, top_rows)}\n"
         f"## Bottom products\n\n{_table(product_headers, bottom_rows)}\n"
         f"## Category performance\n\n"
@@ -328,3 +341,47 @@ def render_report_markdown(report: Report, *, as_of_date: date | None = None) ->
     if isinstance(report, HealthReport):
         return _render_health_report(report, as_of_date)
     return _render_performance_report(report, as_of_date)
+
+
+def _report_type_of(report: Report) -> ReportType:
+    if isinstance(report, ReorderReport):
+        return "reorder"
+    if isinstance(report, HealthReport):
+        return "health"
+    return "performance"
+
+
+def persist_report(
+    session_factory: Callable[[], Session],
+    execution_id: uuid.UUID,
+    report: Report,
+    *,
+    inputs: dict[str, object] | None = None,
+    duration_ms: int | None = None,
+    cost_tokens: int | None = None,
+    as_of_date: date | None = None,
+) -> uuid.UUID:
+    """Stage 4 Task 4.4: "Persist every run with inputs, outputs,
+    duration, cost, tool ledger." `outputs` is the report itself
+    (`model_dump(mode="json")`); the tool ledger needs no separate
+    column here -- every tool_calls row this run made is already
+    queryable by `execution_id`, the same full-trace mechanism
+    invariant 2 relies on everywhere else in this codebase.
+    """
+    session = session_factory()
+    try:
+        row = ReportRow(
+            execution_id=execution_id,
+            report_type=_report_type_of(report),
+            inputs=inputs,
+            outputs=report.model_dump(mode="json"),
+            markdown=render_report_markdown(report, as_of_date=as_of_date),
+            as_of_date=as_of_date,
+            duration_ms=duration_ms,
+            cost_tokens=cost_tokens,
+        )
+        session.add(row)
+        session.commit()
+        return row.id
+    finally:
+        session.close()

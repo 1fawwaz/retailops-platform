@@ -28,11 +28,13 @@ from agents.report import (
     ReorderReportItem,
     SlowMoverRow,
     build_report,
+    persist_report,
     render_report_markdown,
 )
 from llm.providers.gemini import StructuredResult
 from orchestration.models.agent_step import AgentStep
 from orchestration.models.execution import Execution
+from orchestration.models.report import Report as ReportRow
 from prompts.loader import load_prompt
 
 
@@ -246,3 +248,66 @@ def test_build_report_selects_the_matching_schema(
 
     assert captured["schema"] is schema
     assert isinstance(result, schema)
+
+
+# -- persist_report() ---------------------------------------------------
+
+
+def test_persist_report_writes_a_row_with_the_rendered_markdown(db_session: Session) -> None:
+    execution_id = _new_execution(db_session)
+    report = HealthReport(title="Inventory Health", summary="All clear.")
+
+    report_id = persist_report(
+        lambda: db_session,
+        execution_id,
+        report,
+        inputs={"limit": 10},
+        duration_ms=123,
+        cost_tokens=45,
+    )
+
+    row = db_session.get(ReportRow, report_id)
+    assert row is not None
+    assert row.execution_id == execution_id
+    assert row.report_type == "health"
+    assert row.inputs == {"limit": 10}
+    assert row.duration_ms == 123
+    assert row.cost_tokens == 45
+    assert row.as_of_date is None
+    assert "# Inventory Health" in (row.markdown or "")
+    assert row.outputs is not None
+    assert row.outputs["summary"] == "All clear."
+
+
+def test_persist_report_stamps_the_backtest_banner_when_as_of_date_is_set(
+    db_session: Session,
+) -> None:
+    execution_id = _new_execution(db_session)
+    report = PerformanceReport(
+        title="Business Review",
+        period_start="2011-11-01",
+        period_end="2011-11-30",
+        largest_change_driver="d",
+        summary="s",
+    )
+
+    report_id = persist_report(
+        lambda: db_session, execution_id, report, as_of_date=date(2011, 11, 30)
+    )
+
+    row = db_session.get(ReportRow, report_id)
+    assert row is not None
+    assert row.report_type == "performance"
+    assert row.as_of_date == date(2011, 11, 30)
+    assert "Historical simulation as of 2011-11-30" in (row.markdown or "")
+
+
+def test_persist_report_recognizes_the_reorder_type(db_session: Session) -> None:
+    execution_id = _new_execution(db_session)
+    report = ReorderReport(title="Reorder Report", items=[], summary="Nothing to reorder.")
+
+    report_id = persist_report(lambda: db_session, execution_id, report)
+
+    row = db_session.get(ReportRow, report_id)
+    assert row is not None
+    assert row.report_type == "reorder"

@@ -76,3 +76,49 @@ catalog — a real, accepted, documented limitation (see
 endpoint like `GET /analytics/unit-price/{sku}`, or a `unit_price` /
 `avg_selling_price` field added to `ProductRead`/`ProductDetail`,
 sourced from the SKU's recent transactions.
+
+## 3. No point-in-time (historical) stock or forecast query (found: Stage 4 Task 4.4)
+
+**Needed by:** Task 4.4's "BACKTEST MODE" — both workflow endpoints
+accept an `as_of_date`, and the spec's own wording implies every figure
+in the report should reflect what was true as of that past date, not
+today.
+
+**What happened:** `stock_levels` genuinely stores a full daily history
+per SKU (`models/stock_level.py`, `UniqueConstraint("sku", "as_of_date")`)
+— the data exists — but every current inventory endpoint
+(`get_stock`/`get_low_stock`/`get_product`/...) is hardcoded to the
+`MAX(as_of_date)` row per SKU (`services/inventory.py::_latest_stock_level_subquery`);
+none accepts an `as_of_date` query parameter to select a different
+snapshot. Forecasting has no as-of capability at all — `forecast_demand`
+always trains/scores against all history up to the live request time;
+Task 5's own backtest (`scripts/train_forecast_model.py`) was a one-off
+offline evaluation script, never a live, queryable "forecast as of a
+past date" capability.
+
+The analytics endpoints are the exception: `get_revenue`, `get_profit`,
+`get_top_products`, `get_bottom_products`, `get_period_comparison` all
+already accept `start_date`/`end_date` and query `sales_transactions`,
+which is immutable historical fact — these genuinely can, and do,
+reflect a real past period.
+
+**Workaround applied (retailops-ai side, decided 2026-07-30, user
+confirmed):** the two workflows are treated differently, honestly:
+- `/workflow/business-review/run` (`orchestration/workflows.py`) does a
+  REAL backtest — `as_of_date` sets the end of the review period, and
+  every revenue/profit/margin/top-bottom/category figure is queried for
+  that actual historical window via the date-range-capable analytics
+  endpoints above.
+- `/workflow/inventory-health/run` can only apply a LABEL — `as_of_date`
+  stamps every report/recommendation as
+  "Historical simulation as of \<date\>. Not live monitoring." per spec,
+  but the underlying stock/reorder/forecast figures are always the
+  current live snapshot, since no endpoint can return anything else.
+  This is a real, accepted, documented limitation, not silently passed
+  off as genuine point-in-time inventory backtesting.
+
+**Real fix (out of scope, Stage 1 is frozen):** an `as_of_date` query
+parameter on the inventory endpoints (selecting the nearest
+`stock_levels` row on or before that date instead of always the latest),
+and a live, queryable "retrain/score as of a past date" forecasting
+capability.

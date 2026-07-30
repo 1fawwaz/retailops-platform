@@ -30,3 +30,16 @@ pricing:
   # Bounds revenue_at_risk coverage; a SKU outside both rankings has no
   # computable revenue_at_risk, stated as a gap rather than estimated.
   lookup_limit: 500
+
+workflows:
+  # Stage 4 Task 4.4. inventory_health_max_recommendations bounds how
+  # many candidate SKUs (from rank_stockout_risk) get a full Decision
+  # Engine pass per run -- each candidate costs several StockPilot calls
+  # plus one LLM call, so this is a real cost/latency knob, not
+  # arbitrary. business_review_period_days is the default review window
+  # when the caller doesn't specify one. dead_stock_lookup_limit bounds
+  # how many dead-stock SKUs get a unit_cost lookup for dead_stock_capital
+  # -- same documented-limitation pattern as pricing.lookup_limit.
+  inventory_health_max_recommendations: 10
+  business_review_period_days: 30
+  dead_stock_lookup_limit: 200

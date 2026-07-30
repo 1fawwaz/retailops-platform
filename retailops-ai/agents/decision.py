@@ -334,6 +334,8 @@ def persist_recommendation(
     session_factory: Callable[[], Session],
     execution_id: uuid.UUID,
     recommendation: Recommendation,
+    *,
+    report_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """Persists one Recommendation with status="pending" (the DB column's
     own default) -- ranking by revenue_at_risk across a batch is the
@@ -345,11 +347,17 @@ def persist_recommendation(
     0.0 with the gap itself visible in `reason`/`risk_if_ignored`
     (build_recommendation's prompt already tells the model to say so)
     rather than a NULL the schema doesn't allow.
+
+    `report_id` links this recommendation to the Report it was produced
+    alongside (Stage 4 Task 4.4's inventory-health workflow) -- optional
+    since Task 4.3's own milestone persisted recommendations standalone,
+    with no Report yet to link to.
     """
     session = session_factory()
     try:
         row = RecommendationRow(
             execution_id=execution_id,
+            report_id=report_id,
             sku=recommendation.sku,
             action=recommendation.action,
             priority=recommendation.priority,

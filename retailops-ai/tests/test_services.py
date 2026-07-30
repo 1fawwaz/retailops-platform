@@ -5,10 +5,12 @@ higher-level pipeline (data gathering, the required determinism test).
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from clients.stockpilot_models import ProductPerformanceRow
 from services.confidence import compute_confidence
+from services.dead_stock import compute_dead_stock_capital
 from services.order_quantity import compute_recommended_order_qty
 from services.pricing import find_unit_price
 from services.priority import compute_priority
@@ -180,3 +182,53 @@ def test_find_unit_price_returns_none_when_the_sku_appears_in_neither_ranking() 
     )
 
     assert price is None
+
+
+# -- dead stock capital ---------------------------------------------------
+
+
+def test_compute_dead_stock_capital_sums_quantity_times_unit_cost() -> None:
+    dead_stock_tool = MagicMock()
+    dead_stock_tool.invoke.return_value = [
+        SimpleNamespace(sku="A", quantity_on_hand=10),
+        SimpleNamespace(sku="B", quantity_on_hand=5),
+    ]
+    get_product_tool = MagicMock()
+    get_product_tool.invoke.side_effect = [
+        SimpleNamespace(unit_cost=2.0),
+        SimpleNamespace(unit_cost=3.0),
+    ]
+
+    capital = compute_dead_stock_capital(
+        dead_stock_tool=dead_stock_tool, get_product_tool=get_product_tool, days=90, limit=200
+    )
+
+    # 10*2.0 + 5*3.0 = 35.0
+    assert capital == 35.0
+    dead_stock_tool.invoke.assert_called_once_with({"days": 90, "limit": 200, "offset": 0})
+
+
+def test_compute_dead_stock_capital_skips_skus_with_no_recorded_unit_cost() -> None:
+    dead_stock_tool = MagicMock()
+    dead_stock_tool.invoke.return_value = [SimpleNamespace(sku="A", quantity_on_hand=10)]
+    get_product_tool = MagicMock()
+    get_product_tool.invoke.return_value = SimpleNamespace(unit_cost=None)
+
+    capital = compute_dead_stock_capital(
+        dead_stock_tool=dead_stock_tool, get_product_tool=get_product_tool, days=90, limit=200
+    )
+
+    assert capital == 0.0
+
+
+def test_compute_dead_stock_capital_is_zero_for_no_dead_stock() -> None:
+    dead_stock_tool = MagicMock()
+    dead_stock_tool.invoke.return_value = []
+    get_product_tool = MagicMock()
+
+    capital = compute_dead_stock_capital(
+        dead_stock_tool=dead_stock_tool, get_product_tool=get_product_tool, days=90, limit=200
+    )
+
+    assert capital == 0.0
+    get_product_tool.invoke.assert_not_called()
