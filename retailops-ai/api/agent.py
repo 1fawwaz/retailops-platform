@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, sessionmaker
 
-from api.deps import get_db_session_factory, get_stockpilot_client
+from api.deps import get_current_subject, get_db_session_factory, get_stockpilot_client
 from clients.stockpilot import StockPilotClient
 from orchestration.executor import run_execution
 from orchestration.models.agent_step import AgentStep
@@ -155,6 +155,7 @@ class ExecutionTraceResponse(BaseModel):
 @router.post("/query", response_model=AgentQueryResponse)
 def query_agent(
     request: AgentQueryRequest,
+    _subject: str = Depends(get_current_subject),
     client: StockPilotClient = Depends(get_stockpilot_client),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> AgentQueryResponse:
@@ -200,6 +201,7 @@ def query_agent(
 @router.get("/execution/{execution_id}", response_model=ExecutionTraceResponse)
 def get_execution_trace(
     execution_id: uuid.UUID,
+    _subject: str = Depends(get_current_subject),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> ExecutionTraceResponse:
     session = session_factory()

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, sessionmaker
 
-from api.deps import get_db_session_factory
+from api.deps import get_current_subject, get_db_session_factory
 from orchestration.models.recommendation import Recommendation
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
@@ -55,6 +55,7 @@ class RecommendationResponse(BaseModel):
 def record_recommendation_action(
     recommendation_id: uuid.UUID,
     request: RecommendationActionRequest,
+    _subject: str = Depends(get_current_subject),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> RecommendationResponse:
     session = session_factory()

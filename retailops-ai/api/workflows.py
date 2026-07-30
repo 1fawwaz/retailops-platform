@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, sessionmaker
 
 from agents.report import HealthReport, PerformanceReport
-from api.deps import get_db_session_factory, get_stockpilot_client
+from api.deps import get_current_subject, get_db_session_factory, get_stockpilot_client
 from clients.stockpilot import StockPilotClient
 from orchestration.models.base import JsonDict
 from orchestration.models.report import Report as ReportRow
@@ -85,6 +85,7 @@ class ReportResponse(BaseModel):
 @router.post("/workflow/inventory-health/run", response_model=InventoryHealthWorkflowResponse)
 def run_inventory_health(
     request: InventoryHealthRequest,
+    _subject: str = Depends(get_current_subject),
     client: StockPilotClient = Depends(get_stockpilot_client),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> InventoryHealthWorkflowResponse:
@@ -112,6 +113,7 @@ def run_inventory_health(
 @router.post("/workflow/business-review/run", response_model=BusinessReviewWorkflowResponse)
 def run_business_review(
     request: BusinessReviewRequest,
+    _subject: str = Depends(get_current_subject),
     client: StockPilotClient = Depends(get_stockpilot_client),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> BusinessReviewWorkflowResponse:
@@ -135,6 +137,7 @@ def run_business_review(
 def get_report(
     report_id: uuid.UUID,
     format: Literal["json", "markdown"] = Query(default="json"),
+    _subject: str = Depends(get_current_subject),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> Response:
     session = session_factory()

@@ -5,15 +5,57 @@ os.environ.setdefault("STOCKPILOT_BASE_URL", "http://localhost:8000")
 os.environ.setdefault("STOCKPILOT_USERNAME", "test@example.com")
 os.environ.setdefault("STOCKPILOT_PASSWORD", "test-password-not-for-production")
 os.environ.setdefault("GEMINI_API_KEY", "test-key-not-for-production")
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-0123456789")
+os.environ.setdefault("JWT_ALGORITHM", "HS256")
 
 from collections.abc import Generator  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
+import jwt  # noqa: E402
 import pytest  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from orchestration.models import Base  # noqa: E402
+from settings import get_settings  # noqa: E402
+
+
+def mint_test_token(subject: str = "test@example.com") -> str:
+    """A JWT shaped exactly like one StockPilot's own /auth/login would
+    issue (see auth.py's docstring) -- signed with this test process's
+    own JWT_SECRET/JWT_ALGORITHM env defaults above, decodable by
+    auth.py::decode_bearer_subject the same way a real StockPilot token
+    would be.
+    """
+    settings = get_settings()
+    payload = {"sub": subject, "exp": datetime.now(UTC) + timedelta(minutes=60)}
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+@pytest.fixture
+def auth_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {mint_test_token()}"}
+
+
+@pytest.fixture(autouse=True)
+def _default_auth_override() -> Generator[None]:
+    """Every route test that goes through FastAPI's TestClient gets a
+    free, valid "authenticated as test@example.com" identity by default
+    -- the same app.dependency_overrides mechanism every existing route
+    test already uses for get_db_session_factory/get_stockpilot_client,
+    just applied here once instead of touching every test file's call
+    sites. A test that specifically wants to prove auth is REALLY
+    enforced (a real 401 with no token, a real 200 with a genuinely
+    minted token) pops this override at the top of its own test body;
+    the pop is undone here regardless of how that test exits.
+    """
+    from api import deps
+    from api.main import app
+
+    app.dependency_overrides[deps.get_current_subject] = lambda: "test@example.com"
+    yield
+    app.dependency_overrides.pop(deps.get_current_subject, None)
 
 
 @pytest.fixture(autouse=True)

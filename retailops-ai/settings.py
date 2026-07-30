@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     stockpilot_username: str
     stockpilot_password: str
     gemini_api_key: str
+    jwt_secret: str
+    jwt_algorithm: str = "HS256"
 
 
 @lru_cache
