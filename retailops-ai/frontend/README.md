@@ -23,10 +23,22 @@ boundary is `retailops-ai` verifying the JWT signature on every request.
 
 ## Chat
 
-`app/chat/page.tsx` calls the blocking JSON path of `POST /agent/query`
-(`Accept: application/json`), not the SSE path that same endpoint also
-serves — consuming SSE (streaming tokens, progress/replan events) is a
-separate, later task (BUILD-SPEC.md Stage 6 frontend priority F2).
+`app/chat/page.tsx` calls the SSE path of `POST /agent/query`
+(`Accept: text/event-stream`) via `app/api/agent/query/route.ts`, which
+forwards whichever `Accept` header the client sent and, for a streaming
+response, pipes the upstream `ReadableStream` straight through rather than
+buffering it. `lib/sse.ts` parses the `event: <type>\ndata: <json>\n\n`
+wire format by hand (the browser's native `EventSource` only supports GET
+with no custom headers/body, and this call needs a POST body plus a
+server-attached `Authorization` header) into the typed events documented on
+`orchestration/executor.py::run_execution_streaming()`: `token` (appended
+live to the in-progress answer), `agent_completed` (rendered as progress
+pills), `replan_judgement` (a note plus dropping retried agents' pills, so a
+second retrieval round doesn't show a stale checkmark for evidence being
+redone), `citation_check` (a failed check discards the streamed-so-far text,
+per that function's own documented "treat this as a fresh draft" contract),
+`error`, and `done` (finalizes the message and advances `conversation_id`).
+
 `conversation_id` is kept in React state across turns so a follow-up
 question continues the same conversation server-side
 (`orchestration/memory.py`); it does not persist across a page reload —

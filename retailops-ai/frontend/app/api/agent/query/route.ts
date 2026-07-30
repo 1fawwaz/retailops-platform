@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { clearSessionCookie, getSessionToken } from "@/lib/session";
 
 /**
- * Proxies to retailops-ai's own POST /agent/query -- the plain
- * blocking JSON path specifically (Accept: application/json), not the
- * SSE path (Accept: text/event-stream) that same endpoint also serves.
- * Consuming SSE is F2's own job (BUILD-SPEC.md Stage 6 frontend
- * priority list); F1's chat page only needs a request/response turn.
+ * Proxies to retailops-ai's own POST /agent/query, forwarding whichever
+ * Accept header the client sent -- that same endpoint serves either a
+ * blocking JSON response (Accept: application/json, F1's original
+ * path) or a live SSE stream (Accept: text/event-stream, F2) from the
+ * SAME upstream call, so this proxy just needs to relay the header and
+ * then relay whichever kind of body comes back, rather than branching
+ * into two different upstream requests.
  *
  * Runs server-side so the httpOnly session cookie (never readable by
  * client JS) can be read here and attached as the Authorization
@@ -33,13 +35,15 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const acceptHeader = request.headers.get("accept") ?? "application/json";
+
   let upstream: Response;
   try {
     upstream = await fetch(`${retailopsBaseUrl}/agent/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Accept: "application/json",
+        Accept: acceptHeader,
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
@@ -56,7 +60,27 @@ export async function POST(request: Request): Promise<Response> {
     // upstream 401 means it expired or StockPilot's own JWT_SECRET no
     // longer matches -- either way, this session is dead; clear it so
     // the next request bounces to /login instead of retrying forever.
+    // A 401 is always a plain JSON body (the auth dependency rejects
+    // the request before api/agent.py ever branches into the SSE
+    // generator), so this check is safe to run before the
+    // streaming-vs-JSON branch below.
     await clearSessionCookie();
+  }
+
+  const contentType = upstream.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    // Pipe the upstream ReadableStream straight through -- no need to
+    // parse/re-encode SSE frames here, this proxy only needs to attach
+    // auth and relay bytes. upstream.body is null only for a response
+    // with no body at all, which api/agent.py's SSE path never sends.
+    return new NextResponse(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   }
 
   const responseBody = await upstream.text();

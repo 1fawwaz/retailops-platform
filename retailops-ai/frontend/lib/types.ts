@@ -40,3 +40,64 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+/**
+ * Mirrors orchestration/executor.py::run_execution_streaming()'s own
+ * documented event shapes exactly (see that function's docstring) --
+ * the SSE path api/agent.py's POST /agent/query serves when the
+ * request carries Accept: text/event-stream.
+ */
+export interface TokenEvent {
+  type: "token";
+  node: string;
+  text: string;
+}
+
+export interface AgentCompletedEvent {
+  type: "agent_completed";
+  agent: string;
+  output: string;
+  provider: string | null;
+  model: string | null;
+}
+
+export interface ReplanJudgementEvent {
+  type: "replan_judgement";
+  iteration: number;
+  sufficient: boolean;
+  missing: string[];
+  next_action: string;
+  agents_to_retry: string[];
+}
+
+export interface CitationFailureDetail {
+  token: string;
+  value: number;
+  reason: string;
+}
+
+export interface CitationCheckEvent {
+  type: "citation_check";
+  attempt: number;
+  passed: boolean;
+  failures: CitationFailureDetail[];
+}
+
+export interface ErrorEvent {
+  type: "error";
+  detail: string;
+  error_id?: string;
+}
+
+/** The exact AgentQueryResponse field shape, plus the SSE envelope's
+ * own "type" discriminant -- yielded exactly once, last.
+ */
+export type DoneEvent = AgentQueryResponse & { type: "done" };
+
+export type AgentStreamEvent =
+  | TokenEvent
+  | AgentCompletedEvent
+  | ReplanJudgementEvent
+  | CitationCheckEvent
+  | ErrorEvent
+  | DoneEvent;
