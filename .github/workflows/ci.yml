@@ -38,3 +38,8 @@ jobs:
       - name: pytest
         working-directory: ${{ matrix.service }}
         run: pytest tests
+
+      - name: Eval suite (CI gate: grounding 100%, accuracy at or above baseline)
+        if: matrix.service == 'retailops-ai'
+        working-directory: ${{ matrix.service }}
+        run: python evals/run.py

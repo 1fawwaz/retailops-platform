@@ -24,7 +24,7 @@ test:
 	retailops-ai/.venv/Scripts/python.exe -m pytest retailops-ai/tests
 
 eval:
-	retailops-ai/.venv/Scripts/python.exe -m retailops_ai.evals.run
+	cd retailops-ai && ../retailops-ai/.venv/Scripts/python.exe evals/run.py
 
 run-core:
 	stockpilot-core/.venv/Scripts/uvicorn.exe api.main:app --app-dir stockpilot-core --reload --port 8000
