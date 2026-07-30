@@ -29,6 +29,8 @@ those same dicts as SSE wire format and JSON-encoding them (UUIDs need
 from __future__ import annotations
 
 import json
+import logging
+import time
 import uuid
 from collections.abc import Iterator
 from datetime import datetime
@@ -40,6 +42,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, sessionmaker
 
 from api.deps import get_current_subject, get_db_session_factory, get_stockpilot_client
+from api.errors import safe_error_body
+from api.rate_limit import rate_limit
+from api.timeouts import run_with_timeout
 from clients.stockpilot import StockPilotClient
 from orchestration.executor import (
     build_query_response_fields,
@@ -50,6 +55,7 @@ from orchestration.models.agent_step import AgentStep
 from orchestration.models.base import JsonDict, JsonValue
 from orchestration.models.execution import Execution
 from orchestration.models.tool_call import ToolCall
+from settings import get_settings
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -219,28 +225,63 @@ def query_agent(
     payload: AgentQueryRequest,
     request: Request,
     _subject: str = Depends(get_current_subject),
+    _rate_limit: None = Depends(rate_limit),
     client: StockPilotClient = Depends(get_stockpilot_client),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> AgentQueryResponse | StreamingResponse:
+    timeout_seconds = get_settings().request_timeout_seconds
+
     if "text/event-stream" in request.headers.get("accept", ""):
 
         def event_source() -> Iterator[str]:
-            for event in run_execution_streaming(
+            deadline = time.monotonic() + timeout_seconds
+            try:
+                for event in run_execution_streaming(
+                    payload.query,
+                    client=client,
+                    session_factory=session_factory,
+                    conversation_id=payload.conversation_id,
+                ):
+                    if time.monotonic() > deadline:
+                        yield _sse_event({"type": "error", **safe_error_body(TimeoutError())})
+                        return
+                    yield _sse_event(event)
+            except Exception as exc:  # noqa: BLE001 -- the last line of defense for an
+                # already-started SSE stream: headers are sent as 200 the moment the
+                # first byte goes out, so a mid-stream exception can't become a
+                # different HTTP status code the way api/errors.py's registered
+                # handler does for the blocking JSON path -- an "error" event, safely
+                # categorized and logged in full here, is the only way left to tell
+                # a listening client anything went wrong instead of the connection
+                # just silently truncating (confirmed live: this is exactly what
+                # happened before this fix, during Stage 6's own SSE live testing).
+                error_id = uuid.uuid4()
+                logging.getLogger(__name__).error(
+                    "Unhandled exception mid-stream on POST /agent/query "
+                    "(error_id=%s, category=%s): %s",
+                    error_id,
+                    type(exc).__name__,
+                    exc,
+                    exc_info=exc,
+                )
+                yield _sse_event({"type": "error", **safe_error_body(exc, error_id=error_id)})
+
+        return StreamingResponse(event_source(), media_type="text/event-stream")
+
+    try:
+        state = run_with_timeout(
+            lambda: run_execution(
                 payload.query,
                 client=client,
                 session_factory=session_factory,
                 conversation_id=payload.conversation_id,
-            ):
-                yield _sse_event(event)
-
-        return StreamingResponse(event_source(), media_type="text/event-stream")
-
-    state = run_execution(
-        payload.query,
-        client=client,
-        session_factory=session_factory,
-        conversation_id=payload.conversation_id,
-    )
+            ),
+            timeout_seconds=timeout_seconds,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=safe_error_body(exc)["detail"]
+        ) from None
     fields = build_query_response_fields(state, session_factory)
     return _query_response_from_fields(fields)
 

@@ -59,6 +59,23 @@ def _default_auth_override() -> Generator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _clear_rate_limit_state() -> Generator[None]:
+    """api/rate_limit.py's sliding window is process-lifetime, in-memory,
+    global module state -- every test in this session shares the same
+    "test@example.com" subject (via _default_auth_override above), so
+    without this, tests running earlier in the session would eat into
+    later tests' budget and cause order-dependent 429s on routes that
+    are supposed to succeed. Same rationale as _clear_gemini_client_cache
+    below, just for a different piece of shared state.
+    """
+    from api.rate_limit import reset_rate_limit_state
+
+    reset_rate_limit_state()
+    yield
+    reset_rate_limit_state()
+
+
+@pytest.fixture(autouse=True)
 def _clear_gemini_client_cache() -> Generator[None]:
     """llm.providers.gemini._client() is cached per thread (see its own
     docstring for why); tests that patch google.genai.Client need the

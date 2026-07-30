@@ -62,6 +62,32 @@ RETRYABLE_LLM_EXCEPTIONS: tuple[type[Exception], ...] = (
     httpx.ReadError,
     genai_errors.ServerError,
 )
+# HTTP 429 from Gemini's own free-tier quota (confirmed live this build,
+# repeatedly -- see project memory) is a genai_errors.ClientError, NOT a
+# ServerError, so it fell outside RETRYABLE_LLM_EXCEPTIONS entirely and
+# propagated raw past every degradation path built in Task 3.6 -- a real
+# bug, caught live during Stage 6 SSE work when a real quota-exhausted
+# call crashed a request instead of degrading. Only code 429 is treated
+# as retryable-then-unavailable here; every OTHER ClientError (400 bad
+# request, 401 bad API key, ...) still propagates immediately and
+# unmodified -- those need a human to fix configuration, and silently
+# "degrading" them would hide a broken deployment forever instead of
+# failing loudly the first time.
+RATE_LIMITED_STATUS_CODE = 429
+# A named tuple constant (rather than unpacking RETRYABLE_LLM_EXCEPTIONS
+# inline at each `except` site) so mypy can actually verify it as a
+# valid tuple-of-exception-types -- inline `(*RETRYABLE_LLM_EXCEPTIONS,
+# genai_errors.ClientError)` in an except clause defeats that check.
+_RETRYABLE_OR_RATE_LIMITED: tuple[type[Exception], ...] = (
+    *RETRYABLE_LLM_EXCEPTIONS,
+    genai_errors.ClientError,
+)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, RETRYABLE_LLM_EXCEPTIONS):
+        return True
+    return isinstance(exc, genai_errors.ClientError) and exc.code == RATE_LIMITED_STATUS_CODE
 
 
 class LLMUnavailableError(Exception):
@@ -253,7 +279,9 @@ def _generate_content_with_retry(
     for attempt in range(MAX_LLM_RETRIES + 1):
         try:
             return _client().models.generate_content(model=model, contents=contents, config=config)
-        except RETRYABLE_LLM_EXCEPTIONS as exc:
+        except _RETRYABLE_OR_RATE_LIMITED as exc:
+            if not _is_retryable(exc):
+                raise
             last_exception = exc
             if attempt < MAX_LLM_RETRIES:
                 time.sleep(LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
@@ -384,7 +412,9 @@ def stream(
             )
             first = next(chunks, None)
             break
-        except RETRYABLE_LLM_EXCEPTIONS as exc:
+        except _RETRYABLE_OR_RATE_LIMITED as exc:
+            if not _is_retryable(exc):
+                raise
             last_exception = exc
             chunks = None
             if attempt < MAX_LLM_RETRIES:

@@ -365,3 +365,186 @@ def test_query_agent_without_streaming_accept_header_returns_plain_json(
     assert response.status_code == 200
     assert "application/json" in response.headers["content-type"]
     assert response.json()["answer"] == "decision answer"
+
+
+def test_query_agent_is_rate_limited_per_user(session_factory: Callable[[], Session]) -> None:
+    """Stage 6 backend hardening: the SAME subject ("test@example.com",
+    via tests/conftest.py's autouse auth override) hitting POST
+    /agent/query more than the configured limit gets a 429 with a
+    user-safe message -- through the real route, real rate_limit
+    dependency, real (mocked-LLM) graph runs.
+    """
+    from types import SimpleNamespace
+
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    test_client = _test_client(session_factory, _login_only_client())
+    try:
+        with (
+            patch("agents.base.generate", side_effect=fake_generate),
+            patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+            patch(
+                "api.rate_limit.get_settings",
+                return_value=SimpleNamespace(rate_limit_requests=2, rate_limit_window_seconds=60),
+            ),
+        ):
+            first = test_client.post("/agent/query", json={"query": "q1"})
+            second = test_client.post("/agent/query", json={"query": "q2"})
+            third = test_client.post("/agent/query", json={"query": "q3"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429
+    assert "too many requests" in third.json()["detail"].lower()
+
+
+def test_query_agent_returns_504_when_the_request_times_out(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Stage 6 backend hardening: a request that runs past
+    Settings.request_timeout_seconds gets a clean 504 with a user-safe
+    message, never hangs the caller indefinitely. Real timeout wiring
+    (api/timeouts.py::run_with_timeout), a genuinely slow mocked
+    generate() call.
+    """
+    import time
+    from types import SimpleNamespace
+
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "planner":
+            time.sleep(0.2)
+        return _ai_message(f"{name} answer")
+
+    test_client = _test_client(session_factory, _login_only_client())
+    try:
+        with (
+            patch("agents.base.generate", side_effect=fake_generate),
+            patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+            patch(
+                "api.agent.get_settings",
+                return_value=SimpleNamespace(request_timeout_seconds=0.05),
+            ),
+        ):
+            response = test_client.post("/agent/query", json={"query": "q"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 504
+    assert "took too long" in response.json()["detail"].lower()
+
+
+def test_query_agent_streams_a_timeout_error_event_when_the_stream_runs_too_long(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The mid-stream deadline check (distinct code path from the
+    generic-exception catch below): the graph itself completes without
+    raising, but takes longer than request_timeout_seconds between two
+    yielded progress events, so the stream ends early with a safe
+    "error" event carrying TIMED_OUT's message rather than running to
+    a "done" event past the caller's own budget.
+    """
+    import time as time_module
+    from types import SimpleNamespace
+
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "forecast":
+            time_module.sleep(0.1)
+        return _ai_message(f"{name} answer")
+
+    test_client = _test_client(session_factory, _login_only_client())
+    events: list[tuple[str, dict[str, Any]]] = []
+    try:
+        with (
+            patch("agents.base.generate", side_effect=fake_generate),
+            patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+            patch(
+                "api.agent.get_settings",
+                return_value=SimpleNamespace(request_timeout_seconds=0.02),
+            ),
+        ):
+            with test_client.stream(
+                "POST",
+                "/agent/query",
+                json={"query": "q"},
+                headers={"Accept": "text/event-stream"},
+            ) as response:
+                assert response.status_code == 200
+                event_type: str | None = None
+                for line in response.iter_lines():
+                    if line.startswith("event: "):
+                        event_type = line.removeprefix("event: ")
+                    elif line.startswith("data: "):
+                        assert event_type is not None
+                        events.append((event_type, json.loads(line.removeprefix("data: "))))
+    finally:
+        app.dependency_overrides.clear()
+
+    assert events, "expected at least the error event"
+    assert events[-1][0] == "error"
+    assert "took too long" in events[-1][1]["detail"].lower()
+    assert all(event_type != "done" for event_type, _ in events)
+
+
+def test_query_agent_streams_a_safe_error_event_for_an_unexpected_exception(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Stage 6 backend hardening: an exception that genuinely propagates
+    past the graph (here, a raw RuntimeError from a mocked generate() --
+    none of orchestration/graph.py's except clauses catch anything but
+    LLMUnavailableError) must become a safe "error" SSE event, not a
+    truncated connection or leaked exception text. This is exactly the
+    live gap found during this session's own testing (a real 429
+    ClientError silently killing the stream with no event at all).
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "inventory":
+            raise RuntimeError("some sensitive internal detail: password=hunter2")
+        return _ai_message(f"{name} answer")
+
+    test_client = _test_client(session_factory, _login_only_client())
+    events: list[tuple[str, dict[str, Any]]] = []
+    try:
+        with (
+            patch("agents.base.generate", side_effect=fake_generate),
+            patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+        ):
+            with test_client.stream(
+                "POST",
+                "/agent/query",
+                json={"query": "q"},
+                headers={"Accept": "text/event-stream"},
+            ) as response:
+                assert response.status_code == 200
+                event_type: str | None = None
+                for line in response.iter_lines():
+                    if line.startswith("event: "):
+                        event_type = line.removeprefix("event: ")
+                    elif line.startswith("data: "):
+                        assert event_type is not None
+                        events.append((event_type, json.loads(line.removeprefix("data: "))))
+    finally:
+        app.dependency_overrides.clear()
+
+    assert events, "expected at least the error event"
+    error_events = [data for event_type, data in events if event_type == "error"]
+    assert len(error_events) == 1
+    body = error_events[0]
+    assert "hunter2" not in json.dumps(body)
+    assert "password" not in json.dumps(body)
+    assert "error_id" in body
+    uuid.UUID(body["error_id"])  # a real, parseable id

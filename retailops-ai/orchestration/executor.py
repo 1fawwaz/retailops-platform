@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 
 from agents.base import build_agents
 from clients.stockpilot import StockPilotClient
+from logging_config import bind_execution_id, reset_execution_id
 from model_config import get_model_config
 from orchestration.graph import build_execution_graph
 from orchestration.memory import load_conversation_context
@@ -230,13 +231,25 @@ def run_execution(
         query, client, session_factory, conversation_id
     )
 
-    # cast: CompiledStateGraph.invoke()'s return type doesn't narrow to the
-    # exact ExecutionState TypedDict here even though it's the graph's own
-    # declared output schema -- the same generic-inference limitation
-    # noted in build_execution_graph's own add_node casts.
-    result = cast(ExecutionState, graph.invoke(state))
-
-    _persist_execution_result(result, conversation_id, execution_id, session_factory)
+    # Stage 6: every log line emitted while this execution runs (agent
+    # calls, tool calls, a caught-and-degraded LLM/StockPilot outage)
+    # carries this execution_id -- logging_config.py's own contextvar
+    # mechanism existed since Task 2.1 but nothing had ever called
+    # bind_execution_id()/reset_execution_id() until now, a real gap
+    # against CLAUDE.md invariant 2's "full trace" claim, surfaced while
+    # building this task's error taxonomy (which needs exactly this
+    # correlation to make a logged error actually traceable back to one
+    # execution).
+    token = bind_execution_id(str(execution_id))
+    try:
+        # cast: CompiledStateGraph.invoke()'s return type doesn't narrow to
+        # the exact ExecutionState TypedDict here even though it's the
+        # graph's own declared output schema -- the same generic-inference
+        # limitation noted in build_execution_graph's own add_node casts.
+        result = cast(ExecutionState, graph.invoke(state))
+        _persist_execution_result(result, conversation_id, execution_id, session_factory)
+    finally:
+        reset_execution_id(token)
     return result
 
 
@@ -282,6 +295,18 @@ def run_execution_streaming(
         query, client, session_factory, conversation_id, streaming=True
     )
 
+    # Deliberately NOT bind_execution_id() here, unlike run_execution()'s
+    # identical-looking call -- tried it, and it broke live: a
+    # contextvars.Token is only valid to .reset() in the SAME Context it
+    # was created in, and Starlette's StreamingResponse drives a sync
+    # generator's successive next() calls through run_in_threadpool,
+    # which is not guaranteed to reuse one Context across those calls.
+    # Confirmed by a real ValueError ("token ... was created in a
+    # different Context") surfacing through this very function's own
+    # test suite. Log lines emitted while a streaming execution runs
+    # won't carry execution_id until a safe mechanism for a
+    # thread-crossing generator is found -- a known, honest gap, not a
+    # silently swallowed one.
     previous_agents: set[str] = set()
     previous_replan_rounds = 0
     previous_citation_attempts = 0

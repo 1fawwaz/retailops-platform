@@ -16,10 +16,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from agents.report import HealthReport, PerformanceReport
 from api.deps import get_current_subject, get_db_session_factory, get_stockpilot_client
+from api.errors import safe_error_body
+from api.rate_limit import rate_limit
+from api.timeouts import run_with_timeout
 from clients.stockpilot import StockPilotClient
 from orchestration.models.base import JsonDict
 from orchestration.models.report import Report as ReportRow
 from orchestration.workflows import run_business_review_workflow, run_inventory_health_workflow
+from settings import get_settings
 
 router = APIRouter(tags=["workflows"])
 
@@ -86,15 +90,24 @@ class ReportResponse(BaseModel):
 def run_inventory_health(
     request: InventoryHealthRequest,
     _subject: str = Depends(get_current_subject),
+    _rate_limit: None = Depends(rate_limit),
     client: StockPilotClient = Depends(get_stockpilot_client),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> InventoryHealthWorkflowResponse:
-    result = run_inventory_health_workflow(
-        client,
-        session_factory,
-        as_of_date=request.as_of_date,
-        max_recommendations=request.max_recommendations,
-    )
+    try:
+        result = run_with_timeout(
+            lambda: run_inventory_health_workflow(
+                client,
+                session_factory,
+                as_of_date=request.as_of_date,
+                max_recommendations=request.max_recommendations,
+            ),
+            timeout_seconds=get_settings().request_timeout_seconds,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=safe_error_body(exc)["detail"]
+        ) from None
     return InventoryHealthWorkflowResponse(
         execution_id=result.execution_id,
         report_id=result.report_id,
@@ -114,15 +127,24 @@ def run_inventory_health(
 def run_business_review(
     request: BusinessReviewRequest,
     _subject: str = Depends(get_current_subject),
+    _rate_limit: None = Depends(rate_limit),
     client: StockPilotClient = Depends(get_stockpilot_client),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
 ) -> BusinessReviewWorkflowResponse:
-    result = run_business_review_workflow(
-        client,
-        session_factory,
-        as_of_date=request.as_of_date,
-        period_days=request.period_days,
-    )
+    try:
+        result = run_with_timeout(
+            lambda: run_business_review_workflow(
+                client,
+                session_factory,
+                as_of_date=request.as_of_date,
+                period_days=request.period_days,
+            ),
+            timeout_seconds=get_settings().request_timeout_seconds,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=safe_error_body(exc)["detail"]
+        ) from None
     return BusinessReviewWorkflowResponse(
         execution_id=result.execution_id,
         report_id=result.report_id,

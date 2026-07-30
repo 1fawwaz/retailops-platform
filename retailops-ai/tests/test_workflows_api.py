@@ -302,3 +302,71 @@ def test_get_report_returns_404_for_an_unknown_id(db_session: Session) -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
+
+
+def test_run_inventory_health_is_rate_limited_per_user(db_session: Session) -> None:
+    """Stage 6 backend hardening: same api/rate_limit.py wiring as
+    POST /agent/query, applied here too -- the mechanism itself is
+    already exhaustively tested in tests/test_rate_limit.py and
+    tests/test_agent_api.py; this just confirms THIS route is actually
+    wired to it.
+    """
+    from types import SimpleNamespace
+
+    app.dependency_overrides[deps.get_db_session_factory] = lambda: lambda: db_session
+    app.dependency_overrides[deps.get_stockpilot_client] = lambda: _stockpilot_client(
+        _inventory_health_handler
+    )
+    try:
+        with (
+            patch("agents.base.generate_structured", side_effect=_fake_generate_structured),
+            patch(
+                "api.rate_limit.get_settings",
+                return_value=SimpleNamespace(rate_limit_requests=1, rate_limit_window_seconds=60),
+            ),
+        ):
+            first = client.post("/workflow/inventory-health/run", json={"max_recommendations": 1})
+            second = client.post("/workflow/inventory-health/run", json={"max_recommendations": 1})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert "too many requests" in second.json()["detail"].lower()
+
+
+def test_run_business_review_returns_504_when_the_request_times_out(
+    db_session: Session,
+) -> None:
+    """Stage 6 backend hardening: same api/timeouts.py wiring as POST
+    /agent/query, confirmed here for the workflow route too.
+    """
+    import time
+    from types import SimpleNamespace
+
+    def _slow_generate_structured(
+        *, model: str, messages: list[object], response_schema: type[BaseModel]
+    ) -> StructuredResult[BaseModel]:
+        time.sleep(0.2)
+        return _fake_generate_structured(
+            model=model, messages=messages, response_schema=response_schema
+        )
+
+    app.dependency_overrides[deps.get_db_session_factory] = lambda: lambda: db_session
+    app.dependency_overrides[deps.get_stockpilot_client] = lambda: _stockpilot_client(
+        _business_review_handler
+    )
+    try:
+        with (
+            patch("agents.base.generate_structured", side_effect=_slow_generate_structured),
+            patch(
+                "api.workflows.get_settings",
+                return_value=SimpleNamespace(request_timeout_seconds=0.05),
+            ),
+        ):
+            response = client.post("/workflow/business-review/run", json={})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 504
+    assert "took too long" in response.json()["detail"].lower()

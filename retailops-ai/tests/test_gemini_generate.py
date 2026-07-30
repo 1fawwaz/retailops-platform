@@ -311,6 +311,80 @@ def test_generate_does_not_retry_client_errors() -> None:
     fake_sleep.assert_not_called()
 
 
+def test_generate_retries_a_429_rate_limit_then_succeeds() -> None:
+    """Stage 6 backend hardening: a real 429 RESOURCE_EXHAUSTED from
+    Gemini's own quota is a genai_errors.ClientError, not a ServerError --
+    confirmed live to previously propagate raw past every degradation
+    path. This is the fix: treated as retryable, same as a timeout.
+    """
+    fake_client = MagicMock()
+    rate_limited = genai_errors.ClientError(
+        429, {"error": {"message": "quota exceeded", "status": "RESOURCE_EXHAUSTED"}}
+    )
+    fake_client.models.generate_content.side_effect = [
+        rate_limited,
+        _fake_generate_content_response(text="recovered"),
+    ]
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep"),
+    ):
+        result = generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+
+    assert result.content == "recovered"
+    assert fake_client.models.generate_content.call_count == 2
+
+
+def test_generate_raises_llm_unavailable_after_exhausting_429_retries() -> None:
+    fake_client = MagicMock()
+    rate_limited = genai_errors.ClientError(429, {"error": {"message": "quota exceeded"}})
+    fake_client.models.generate_content.side_effect = rate_limited
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep") as fake_sleep,
+        pytest.raises(LLMUnavailableError, match="unreachable after"),
+    ):
+        generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+
+    assert fake_client.models.generate_content.call_count == MAX_LLM_RETRIES + 1
+    assert fake_sleep.call_count == MAX_LLM_RETRIES
+
+
+def test_stream_retries_a_429_rate_limit_then_succeeds() -> None:
+    fake_client = MagicMock()
+    rate_limited = genai_errors.ClientError(429, {"error": {"message": "quota exceeded"}})
+    fake_client.models.generate_content_stream.side_effect = [
+        rate_limited,
+        [SimpleNamespace(text="recovered", usage_metadata=None)],
+    ]
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep"),
+    ):
+        chunks = list(stream(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")]))
+
+    assert [c.text for c in chunks] == ["recovered"]
+
+
+def test_stream_does_not_retry_non_rate_limit_client_errors() -> None:
+    fake_client = MagicMock()
+    client_error = genai_errors.ClientError(400, {"error": {"message": "bad request"}})
+    fake_client.models.generate_content_stream.side_effect = client_error
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep") as fake_sleep,
+        pytest.raises(genai_errors.ClientError),
+    ):
+        list(stream(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")]))
+
+    assert fake_client.models.generate_content_stream.call_count == 1
+    fake_sleep.assert_not_called()
+
+
 def test_generate_structured_retries_on_timeout_then_succeeds() -> None:
     class Sentiment(BaseModel):
         label: str

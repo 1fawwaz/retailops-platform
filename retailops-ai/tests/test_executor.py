@@ -219,6 +219,41 @@ def test_run_execution_persists_citation_failures_on_the_execution_row(
     assert all(not attempt["passed"] for attempt in citation_failures)
 
 
+def test_run_execution_binds_execution_id_for_logging_during_the_run(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Stage 6 backend hardening: logging_config.py's execution_id
+    contextvar (existed since Task 2.1, never actually bound by anything
+    until this task) is now set for the whole graph run, including the
+    three retrieval agents' own concurrent threads -- proven by
+    capturing execution_id_var.get() from inside a mocked generate()
+    call for every agent, not just the sequential planner/report/
+    decision ones.
+    """
+    from logging_config import execution_id_var
+
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+    captured: dict[str, str | None] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        captured[name] = execution_id_var.get()
+        return _ai_message(f"{name} answer")
+
+    assert execution_id_var.get() is None
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+    ):
+        result = run_execution("q", client=_client(), session_factory=session_factory)
+
+    assert execution_id_var.get() is None  # reset once the run finishes
+    assert set(captured) == set(AGENT_NAMES)
+    expected = str(result["execution_id"])
+    assert all(eid == expected for eid in captured.values()), captured
+
+
 def test_run_execution_streaming_yields_progress_events_then_a_done_event(
     session_factory: Callable[[], Session],
 ) -> None:
