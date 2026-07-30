@@ -37,7 +37,7 @@ from agents.base import build_agents
 from clients.stockpilot import StockPilotClient
 from logging_config import bind_execution_id, reset_execution_id
 from model_config import get_model_config
-from orchestration.graph import build_execution_graph
+from orchestration.graph import RETRIEVAL_AGENT_NAMES, build_execution_graph
 from orchestration.memory import load_conversation_context
 from orchestration.models.agent_step import AgentStep
 from orchestration.models.conversation import Conversation
@@ -211,6 +211,39 @@ def _serving_models_by_agent(
     return serving
 
 
+def _agent_timing_key(state: ExecutionState, name: str) -> str:
+    """Mirrors orchestration/graph.py's own timings key convention
+    exactly: a retrieval agent's timing is tagged per round
+    (f"{name}_{iteration}", since it can genuinely run more than once),
+    while report/decision run exactly once and are keyed by plain name.
+    Must stay in sync with _make_retrieval_node()/_make_synthesis_node()
+    -- there is no shared constant to import instead of duplicating this,
+    since graph.py builds these keys inline at write time.
+    """
+    if name in RETRIEVAL_AGENT_NAMES:
+        return f"{name}_{len(state['replan_history']) + 1}"
+    return name
+
+
+def _agent_iteration(state: ExecutionState, name: str) -> int:
+    """Which retrieval round this completion belongs to -- 1 for the
+    first (and for report/decision, which never retry). Lets a caller
+    (the frontend's live execution graph, Task F3) tell a round-2 retry
+    of an agent apart from its round-1 completion without re-deriving
+    this from replan_judgement event ordering itself.
+    """
+    if name in RETRIEVAL_AGENT_NAMES:
+        return len(state["replan_history"]) + 1
+    return 1
+
+
+def _agent_duration_ms(state: ExecutionState, name: str) -> int | None:
+    timing = state["timings"].get(_agent_timing_key(state, name))
+    if timing is None:
+        return None
+    return round((timing["end"] - timing["start"]) * 1000)
+
+
 def build_query_response_fields(
     state: ExecutionState, session_factory: Callable[[], Session]
 ) -> dict[str, object]:
@@ -308,12 +341,29 @@ def run_execution_streaming(
         the "decision" node, since orchestration/graph.py's streaming
         wiring is scoped to the one node whose text is the live answer).
       {"type": "agent_completed", "agent": name, "output": text, "provider":
-        ..., "model": ...} -- once per agent the moment its result lands
-        in state["agent_results"] (derived from LangGraph's own "values"
-        mode, no graph.py change needed for this one). provider/model
-        are the SERVING ones (Task 6.4), read fresh from agent_steps
-        right as the event is built, since ExecutionState itself carries
-        no provider concept.
+        ..., "model": ..., "duration_ms": ..., "iteration": ...,
+        "tool_names": [...]} -- once per agent completion, INCLUDING a
+        retry: keyed off the agent's result VALUE changing in
+        state["agent_results"], not merely a new key appearing (derived
+        from LangGraph's own "values" mode, no graph.py change needed for
+        this one) -- a retried retrieval agent overwrites its existing
+        agent_results key with fresh content, so a plain key-presence
+        diff would silently miss every completion after the first (a
+        real bug, found and fixed for Task F3: the live execution graph
+        needs a signal for every round, not just the first). provider/
+        model are the SERVING ones (Task 6.4), read fresh from
+        agent_steps right as the event is built, since ExecutionState
+        itself carries no provider concept. duration_ms is None only if
+        this event fires before graph.py's own node function has written
+        its timings entry, which should not happen in practice (both are
+        set in the same node-function return). tool_names is every tool
+        this agent called THIS round, attributed via the "agent" tag
+        orchestration/graph.py now stamps on each tool_ledger entry --
+        needed because tool_ledger is one shared, interleaved list across
+        every agent (round 1's concurrent fan-out can genuinely interleave
+        two agents' own entries), so without the tag there would be no
+        way to tell whose call was whose. Always empty for report/decision
+        (tool-less, invariant 1).
       {"type": "replan_judgement", "iteration": ..., "sufficient": ...,
         "missing": [...], "next_action": "...", "agents_to_retry": [...]}
         -- once per replan round, straight from state["replan_history"].
@@ -341,9 +391,10 @@ def run_execution_streaming(
     # won't carry execution_id until a safe mechanism for a
     # thread-crossing generator is found -- a known, honest gap, not a
     # silently swallowed one.
-    previous_agents: set[str] = set()
+    previous_agent_results: dict[str, str] = {}
     previous_replan_rounds = 0
     previous_citation_attempts = 0
+    previous_tool_ledger_len = 0
     final_state: ExecutionState = state
 
     for mode, chunk in graph.stream(state, stream_mode=["custom", "values"]):
@@ -354,19 +405,41 @@ def run_execution_streaming(
         current = cast(ExecutionState, chunk)
         final_state = current
 
-        new_agents = set(current["agent_results"]) - previous_agents
-        if new_agents:
+        # tool_ledger is strictly append-only (operator.add reducer,
+        # orchestration/state.py), so a length-based slice is a safe way
+        # to isolate just the entries new THIS tick -- each is tagged
+        # with its owning agent (Task F3, orchestration/graph.py), which
+        # is what makes attributing them correctly possible even when
+        # more than one retrieval agent completes in the same superstep
+        # (round 1's concurrent fan-out).
+        new_ledger_entries = current["tool_ledger"][previous_tool_ledger_len:]
+        previous_tool_ledger_len = len(current["tool_ledger"])
+
+        changed_agents = {
+            name: content
+            for name, content in current["agent_results"].items()
+            if previous_agent_results.get(name) != content
+        }
+        if changed_agents:
             serving = _serving_models_by_agent(execution_id, session_factory)
-            for name in sorted(new_agents):
+            for name in sorted(changed_agents):
                 served = serving.get(name, {})
+                tool_names = [
+                    str(entry["tool_name"])
+                    for entry in new_ledger_entries
+                    if entry.get("agent") == name
+                ]
                 yield {
                     "type": "agent_completed",
                     "agent": name,
-                    "output": current["agent_results"][name],
+                    "output": changed_agents[name],
                     "provider": served.get("provider"),
                     "model": served.get("model"),
+                    "duration_ms": _agent_duration_ms(current, name),
+                    "iteration": _agent_iteration(current, name),
+                    "tool_names": tool_names,
                 }
-        previous_agents = set(current["agent_results"])
+        previous_agent_results = dict(current["agent_results"])
 
         if len(current["replan_history"]) > previous_replan_rounds:
             judgement = current["replan_history"][-1]

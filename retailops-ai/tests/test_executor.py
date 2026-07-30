@@ -13,6 +13,7 @@ from collections.abc import Callable, Generator
 from typing import Any
 from unittest.mock import patch
 
+import httpx2
 import pytest
 from langchain_core.messages import AIMessage
 from sqlalchemy import create_engine
@@ -29,6 +30,8 @@ from orchestration.models.message import Message
 from prompts.loader import load_prompt
 
 AGENT_NAMES = ("planner", "inventory", "forecast", "analytics", "report", "decision")
+
+Handler = Callable[[httpx2.Request], httpx2.Response]
 
 
 @pytest.fixture
@@ -54,6 +57,16 @@ def session_factory() -> Generator[Callable[[], Session]]:
 
 def _client() -> StockPilotClient:
     return StockPilotClient(base_url="http://x", username="u", password="p")
+
+
+def _mocked_client(handler: Handler) -> StockPilotClient:
+    return StockPilotClient(
+        base_url="http://stockpilot.test",
+        username="reader@example.com",
+        password="hunter22!!",
+        transport=httpx2.MockTransport(handler),
+        base_delay_seconds=0.0,
+    )
 
 
 def _ai_message(text: str) -> AIMessage:
@@ -322,3 +335,173 @@ def test_run_execution_streaming_yields_progress_events_then_a_done_event(
     assert len(executions) == 1
     assert executions[0].status == "completed"
     assert executions[0].final_answer == "decision answer"
+
+
+def test_run_execution_streaming_yields_a_second_agent_completed_event_on_retry(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Real bug found and fixed for Task F3 (live execution graph): the
+    original diff logic tracked only WHICH agent names had appeared in
+    state["agent_results"], so a retried retrieval agent -- which
+    overwrites its existing key rather than adding a new one -- never
+    re-emitted "agent_completed" at all. A live execution graph has no
+    way to show a retry round without this. Fixed by diffing on the
+    agent's result VALUE instead of key presence.
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+    calls: dict[str, int] = {}
+    ordinals = ("first", "second")
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        return _ai_message(f"{name} answer ({ordinals[calls[name] - 1]} call)")
+
+    def fake_stream(*, model: str, messages: list[Any], tools: Any = None) -> Any:
+        from llm.providers.gemini import StreamChunk
+
+        yield StreamChunk(text="decision answer")
+        yield StreamChunk(
+            text="", usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        )
+
+    replan_calls = {"count": 0}
+
+    def fake_generate_structured(
+        *, model: str, messages: list[Any], response_schema: Any
+    ) -> StructuredResult[ReplanJudgement]:
+        replan_calls["count"] += 1
+        if replan_calls["count"] == 1:
+            return StructuredResult(
+                parsed=ReplanJudgement(
+                    sufficient=False,
+                    missing=["forecast confidence interval"],
+                    next_action="forecast agent, targeted retrieval",
+                    agents_to_retry=["forecast"],
+                ),
+                usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+                provider="gemini",
+                model=model,
+            )
+        return StructuredResult(
+            parsed=ReplanJudgement(
+                sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
+            ),
+            usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            provider="gemini",
+            model=model,
+        )
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=fake_generate_structured),
+        patch("agents.base.stream", side_effect=fake_stream),
+    ):
+        events = list(
+            run_execution_streaming(
+                "Which products are low on stock?",
+                client=_client(),
+                session_factory=session_factory,
+            )
+        )
+
+    forecast_events = [
+        e for e in events if e["type"] == "agent_completed" and e["agent"] == "forecast"
+    ]
+    assert len(forecast_events) == 2, "forecast must emit agent_completed once per round"
+    assert forecast_events[0]["output"] == "forecast answer (first call)"
+    assert forecast_events[0]["iteration"] == 1
+    assert forecast_events[1]["output"] == "forecast answer (second call)"
+    assert forecast_events[1]["iteration"] == 2
+    for event in forecast_events:
+        assert isinstance(event["duration_ms"], int)
+        assert event["duration_ms"] >= 0
+
+    # inventory/analytics were never retried -- exactly one completion each.
+    inventory_events = [
+        e for e in events if e["type"] == "agent_completed" and e["agent"] == "inventory"
+    ]
+    assert len(inventory_events) == 1
+    assert inventory_events[0]["iteration"] == 1
+
+    report_events = [e for e in events if e["type"] == "agent_completed" and e["agent"] == "report"]
+    assert len(report_events) == 1
+    assert report_events[0]["iteration"] == 1
+
+
+def test_run_execution_streaming_attributes_tool_names_to_the_calling_agent(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Task F3 (live execution graph): each agent_completed event's
+    tool_names must reflect ONLY that agent's own tool calls, even
+    though every retrieval agent's calls land in the same shared
+    tool_ledger list (orchestration/state.py's operator.add reducer).
+    Inventory genuinely calls a real tool here (through a real
+    StockPilotClient over a mocked transport, not a stub); forecast and
+    analytics call none -- proving both a populated and an empty
+    tool_names list are attributed correctly, not just defaulted.
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def low_stock_handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/auth/login":
+            return httpx2.Response(200, json={"access_token": "t", "token_type": "bearer"})
+        if request.url.path == "/inventory/low-stock":
+            return httpx2.Response(
+                200,
+                json=[
+                    {
+                        "sku": "85048",
+                        "description": "Glass Ball",
+                        "category": "Christmas",
+                        "quantity_on_hand": 12,
+                        "reorder_point": 40,
+                        "safety_stock": 10,
+                        "as_of_date": "2026-07-01",
+                        "is_low_stock": True,
+                        "_provenance": {"quantity_on_hand": "derived", "reorder_point": "derived"},
+                        "_derivation_ref": {},
+                    }
+                ],
+            )
+        raise AssertionError(f"unexpected request: {request.url.path}")
+
+    tool_call_message = AIMessage(
+        content="", tool_calls=[{"name": "get_low_stock", "args": {}, "id": "call_1"}]
+    )
+    calls: dict[str, int] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        if name == "inventory" and calls[name] == 1:
+            return tool_call_message
+        return _ai_message(f"{name} answer")
+
+    def fake_stream(*, model: str, messages: list[Any], tools: Any = None) -> Any:
+        from llm.providers.gemini import StreamChunk
+
+        yield StreamChunk(text="decision answer")
+        yield StreamChunk(
+            text="", usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        )
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+        patch("agents.base.stream", side_effect=fake_stream),
+    ):
+        events = list(
+            run_execution_streaming(
+                "Which products are low on stock?",
+                client=_mocked_client(low_stock_handler),
+                session_factory=session_factory,
+            )
+        )
+
+    by_agent = {e["agent"]: e["tool_names"] for e in events if e["type"] == "agent_completed"}
+    assert by_agent["inventory"] == ["get_low_stock"]
+    assert by_agent["forecast"] == []
+    assert by_agent["analytics"] == []
+    assert by_agent["report"] == []
+    assert by_agent["decision"] == []

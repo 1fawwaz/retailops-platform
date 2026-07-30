@@ -252,6 +252,16 @@ def _make_retrieval_node(
                     "tool_name": call.tool_name,
                     "status": call.status,
                     "latency_ms": call.latency_ms,
+                    # Task F3: the live execution graph needs to attribute
+                    # each tool call to the agent that made it -- entries
+                    # from concurrent round-1 agents interleave in the
+                    # shared tool_ledger list (operator.add reducer,
+                    # orchestration/state.py), so without this tag there
+                    # is no way to tell them apart once they land there.
+                    # Only retrieval agents ever produce ledger entries
+                    # (Report/Decision are tool-less, invariant 1), so this
+                    # is never absent for a real entry.
+                    "agent": agent.name,
                 }
             )
 

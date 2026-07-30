@@ -1,26 +1,92 @@
 @import "tailwindcss";
 
+/* docs/DESIGN-SPEC.md §3 -- dark is the canonical/default theme; light
+   is a full parallel definition, not an inverted afterthought. Applied
+   globally here (foundational, used by any spec-conformant component);
+   existing pre-DESIGN-SPEC pages (F1/F2's login/chat) keep their own
+   Tailwind utility classes untouched for now -- only new components
+   (starting with F3's execution graph) are built against these tokens. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-canvas: #0b0b0c;
+  --color-surface: #141416;
+  --color-raised: #1c1c1f;
+  --color-hairline: rgba(255, 255, 255, 0.08);
+  --color-hairline-hi: rgba(255, 255, 255, 0.14);
+
+  --color-text-hi: #e8e8e6;
+  --color-text-mid: #9a9a96;
+  --color-text-low: #6a6a67;
+
+  --color-accent: #be8a3d;
+  --color-accent-dim: rgba(190, 138, 61, 0.14);
+
+  --color-danger: #b4463c;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root[data-theme="light"] {
+  --color-canvas: #fafaf8;
+  --color-surface: #ffffff;
+  --color-raised: #f4f4f1;
+  --color-hairline: rgba(0, 0, 0, 0.1);
+  --color-hairline-hi: rgba(0, 0, 0, 0.16);
+
+  --color-text-hi: #17171a;
+  --color-text-mid: #5f5f5c;
+  --color-text-low: #8a8a86;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-canvas: #fafaf8;
+    --color-surface: #ffffff;
+    --color-raised: #f4f4f1;
+    --color-hairline: rgba(0, 0, 0, 0.1);
+    --color-hairline-hi: rgba(0, 0, 0, 0.16);
+
+    --color-text-hi: #17171a;
+    --color-text-mid: #5f5f5c;
+    --color-text-low: #8a8a86;
   }
 }
 
+@theme inline {
+  --color-canvas: var(--color-canvas);
+  --color-surface: var(--color-surface);
+  --color-raised: var(--color-raised);
+  --color-hairline: var(--color-hairline);
+  --color-hairline-hi: var(--color-hairline-hi);
+  --color-text-hi: var(--color-text-hi);
+  --color-text-mid: var(--color-text-mid);
+  --color-text-low: var(--color-text-low);
+  --color-accent: var(--color-accent);
+  --color-accent-dim: var(--color-accent-dim);
+  --color-danger: var(--color-danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-token: 6px;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-text-hi);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* DESIGN-SPEC §2/§4: anything measured is monospaced, with tabular
+   figures, everywhere -- not opt-in per component. */
+.font-mono,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

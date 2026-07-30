@@ -79,6 +79,10 @@ class ToolLedgerEntry(BaseModel):
     tool_name: str
     status: str
     latency_ms: int | None
+    # Task F3: which retrieval agent made this call -- always present in
+    # practice, since only retrieval agents ever produce a ledger entry
+    # (Report/Decision are tool-less, invariant 1).
+    agent: str
 
 
 class ServingModel(BaseModel):
@@ -125,6 +129,7 @@ class AgentQueryResponse(BaseModel):
                             "tool_name": "get_low_stock",
                             "status": "success",
                             "latency_ms": 120,
+                            "agent": "inventory",
                         }
                     ],
                     "provenance_map": {"quantity_on_hand": "observed"},
@@ -201,6 +206,7 @@ def _tool_ledger_entries(raw_entries: object) -> list[ToolLedgerEntry]:
             tool_name=str(entry["tool_name"]),
             status=str(entry["status"]),
             latency_ms=entry["latency_ms"] if isinstance(entry["latency_ms"], int) else None,
+            agent=str(entry["agent"]),
         )
         for entry in entries
     ]

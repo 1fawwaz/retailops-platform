@@ -13,6 +13,7 @@ export interface ToolLedgerEntry {
   tool_name: string;
   status: string;
   latency_ms: number | null;
+  agent: string;
 }
 
 export interface ServingModel {
@@ -59,6 +60,9 @@ export interface AgentCompletedEvent {
   output: string;
   provider: string | null;
   model: string | null;
+  duration_ms: number | null;
+  iteration: number;
+  tool_names: string[];
 }
 
 export interface ReplanJudgementEvent {

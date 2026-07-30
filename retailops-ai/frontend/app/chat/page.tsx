@@ -4,6 +4,12 @@ import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { parseSSEStream } from "@/lib/sse";
 import type { ChatMessage } from "@/lib/types";
+import {
+  applyStreamEvent,
+  initialExecutionGraphState,
+  type ExecutionGraphState,
+} from "@/lib/executionGraph";
+import { ExecutionGraph } from "@/components/ExecutionGraph";
 
 export default function ChatPage() {
   const router = useRouter();
@@ -12,9 +18,9 @@ export default function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
-  const [completedAgents, setCompletedAgents] = useState<string[]>([]);
-  const [progressNote, setProgressNote] = useState<string | null>(null);
+  const [graph, setGraph] = useState<ExecutionGraphState | null>(null);
   const conversationId = useRef<string | null>(null);
+  const abortController = useRef<AbortController | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -27,9 +33,11 @@ export default function ChatPage() {
     setMessages((current) => [...current, { role: "user", content: query }]);
     setInput("");
     setStreamingText("");
-    setCompletedAgents([]);
-    setProgressNote(null);
+    setGraph(initialExecutionGraphState());
     setIsSending(true);
+
+    const controller = new AbortController();
+    abortController.current = controller;
 
     try {
       const response = await fetch("/api/agent/query", {
@@ -39,6 +47,7 @@ export default function ChatPage() {
           query,
           conversation_id: conversationId.current,
         }),
+        signal: controller.signal,
       });
 
       if (response.status === 401) {
@@ -57,42 +66,20 @@ export default function ChatPage() {
       let finalAnswer: string | null = null;
       let sawError = false;
       for await (const streamEvent of parseSSEStream(response.body)) {
+        setGraph((current) => (current ? applyStreamEvent(current, streamEvent) : current));
+
         switch (streamEvent.type) {
           case "token":
             if (streamEvent.node === "decision") {
               setStreamingText((current) => current + streamEvent.text);
             }
             break;
-          case "agent_completed":
-            setCompletedAgents((current) =>
-              current.includes(streamEvent.agent) ? current : [...current, streamEvent.agent],
-            );
-            break;
-          case "replan_judgement":
-            setProgressNote(
-              streamEvent.sufficient
-                ? null
-                : `Gathering more evidence: ${streamEvent.next_action}`,
-            );
-            if (!streamEvent.sufficient) {
-              // A new retrieval round is starting -- the agents it
-              // retries will emit fresh agent_completed events, so drop
-              // them from the "done" pill list rather than show a stale
-              // checkmark for evidence that's being redone.
-              setCompletedAgents((current) =>
-                current.filter((agent) => !streamEvent.agents_to_retry.includes(agent)),
-              );
-            }
-            break;
           case "citation_check":
-            if (streamEvent.passed) {
-              setProgressNote(null);
-            } else {
+            if (!streamEvent.passed) {
               // Per run_execution_streaming()'s own docstring: more
               // token events after a failed check are a FRESH draft,
               // not a continuation -- discard what streamed so far.
               setStreamingText("");
-              setProgressNote("A citation check failed; regenerating the answer…");
             }
             break;
           case "error":
@@ -114,14 +101,19 @@ export default function ChatPage() {
           { role: "assistant", content: finalAnswer ?? "No answer was produced for this query." },
         ]);
       }
-    } catch {
-      setError("Could not reach the server.");
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        setError("Could not reach the server.");
+      }
     } finally {
       setStreamingText("");
-      setCompletedAgents([]);
-      setProgressNote(null);
       setIsSending(false);
+      abortController.current = null;
     }
+  }
+
+  function handleStop(): void {
+    abortController.current?.abort();
   }
 
   async function handleLogout(): Promise<void> {
@@ -131,93 +123,119 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-950">
-        <h1 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">RetailOps AI</h1>
+    <div className="flex flex-1 flex-col bg-(--color-canvas)">
+      <header className="flex items-center justify-between border-b border-(--color-hairline) bg-(--color-surface) px-6 py-3">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-[16px] font-medium text-(--color-text-hi)">RetailOps AI</h1>
+          <span className="font-mono text-[11px] text-(--color-text-mid)" data-numeric>
+            Online Retail II · as-of 2011-12-09
+          </span>
+        </div>
         <button
           type="button"
           onClick={handleLogout}
-          className="text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+          className="rounded-[6px] px-2 py-1 text-[13px] text-(--color-text-mid) transition-colors duration-150 hover:text-(--color-text-hi) focus-visible:outline focus-visible:outline-2 focus-visible:outline-(--color-accent)"
         >
           Log out
         </button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
-        {messages.length === 0 && !isSending && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Ask about inventory, forecasts, or performance — e.g. &ldquo;What should I reorder
-            today?&rdquo;
-          </p>
-        )}
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`max-w-[85%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap ${
-              message.role === "user"
-                ? "self-end bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                : "self-start bg-white text-zinc-950 shadow-sm dark:bg-zinc-900 dark:text-zinc-50"
-            }`}
-          >
-            {message.content}
-          </div>
-        ))}
+      <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
+            {messages.length === 0 && !isSending && (
+              <p className="max-w-[68ch] text-[14px] leading-[1.6] text-(--color-text-mid)">
+                Ask about inventory, forecasts, or performance — e.g. &ldquo;What should I reorder
+                today?&rdquo;
+              </p>
+            )}
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={`max-w-[85%] rounded-[6px] px-4 py-2 text-[14px] leading-[1.6] whitespace-pre-wrap ${
+                  message.role === "user"
+                    ? "self-end bg-(--color-accent-dim) text-(--color-text-hi)"
+                    : "self-start border border-(--color-hairline) bg-(--color-surface) text-(--color-text-hi)"
+                }`}
+              >
+                {message.content}
+              </div>
+            ))}
 
-        {isSending && (
-          <div className="flex max-w-[85%] flex-col gap-2 self-start">
-            {completedAgents.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {completedAgents.map((agent) => (
-                  <span
-                    key={agent}
-                    className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-                  >
-                    {agent} ✓
-                  </span>
-                ))}
+            {isSending && (
+              <div className="self-start rounded-[6px] border border-(--color-hairline) bg-(--color-surface) px-4 py-2 text-[14px] leading-[1.6] whitespace-pre-wrap text-(--color-text-hi)">
+                {streamingText || "Thinking…"}
               </div>
             )}
-            {progressNote && (
-              <p className="text-xs text-zinc-500 italic dark:text-zinc-400">{progressNote}</p>
+
+            {error && (
+              <p role="alert" className="self-start text-[14px] text-(--color-danger)">
+                {error}
+              </p>
             )}
-            <div className="rounded-lg bg-white px-4 py-2 text-sm whitespace-pre-wrap text-zinc-950 shadow-sm dark:bg-zinc-900 dark:text-zinc-50">
-              {streamingText || "Thinking…"}
-            </div>
           </div>
-        )}
 
-        {error && (
-          <p role="alert" className="self-start text-sm text-red-600 dark:text-red-400">
-            {error}
-          </p>
-        )}
+          <form onSubmit={handleSubmit} className="flex items-end gap-2 px-6 pb-6">
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              rows={1}
+              placeholder="Ask a question…"
+              className="flex-1 resize-none rounded-[6px] border border-(--color-hairline) bg-(--color-surface) px-3 py-2 text-[14px] text-(--color-text-hi) outline-none placeholder:text-(--color-text-low) focus-visible:border-(--color-accent) focus-visible:outline focus-visible:outline-2 focus-visible:outline-(--color-accent)"
+            />
+            {isSending ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                className="rounded-[6px] border border-(--color-hairline) px-4 py-2 text-[13px] font-medium text-(--color-text-hi) transition-colors duration-150 hover:border-(--color-hairline-hi) focus-visible:outline focus-visible:outline-2 focus-visible:outline-(--color-accent)"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className="rounded-[6px] bg-(--color-accent) px-4 py-2 text-[13px] font-medium text-(--color-canvas) transition-colors duration-150 hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-(--color-accent)"
+              >
+                Send
+              </button>
+            )}
+          </form>
+        </div>
+
+        <aside className="flex h-[320px] shrink-0 flex-col border-t border-(--color-hairline) bg-(--color-canvas) lg:h-auto lg:w-[420px] lg:border-t-0 lg:border-l">
+          <div className="flex items-center justify-between px-4 py-3">
+            <h2 className="text-[13px] font-medium text-(--color-text-mid) uppercase tracking-[0.04em]">
+              Execution graph
+            </h2>
+          </div>
+          {graph?.replanNote && (
+            <p className="mx-4 mb-3 rounded-[6px] bg-(--color-accent-dim) px-3 py-2 text-[13px] leading-[1.45] text-(--color-text-hi)">
+              {graph.replanNote}
+            </p>
+          )}
+          {graph?.citationNote && (
+            <p className="mx-4 mb-3 text-[12px] text-(--color-text-mid) italic">
+              {graph.citationNote}
+            </p>
+          )}
+          <div className="min-h-0 flex-1 px-4 pb-4">
+            {graph ? (
+              <ExecutionGraph graph={graph} />
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-[6px] border border-(--color-hairline) px-4 text-center text-[13px] text-(--color-text-mid)">
+                The live agent graph for your next question will appear here as it runs.
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="mx-auto flex w-full max-w-3xl items-end gap-2 px-6 pb-6"
-      >
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
-          rows={1}
-          placeholder="Ask a question…"
-          className="flex-1 resize-none rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-950 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-        />
-        <button
-          type="submit"
-          disabled={isSending || !input.trim()}
-          className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-        >
-          Send
-        </button>
-      </form>
     </div>
   );
 }
