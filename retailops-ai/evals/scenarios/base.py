@@ -136,6 +136,8 @@ class ScriptedReplan:
         return StructuredResult(
             parsed=self._judgements[index],
             usage_metadata={"input_tokens": 3, "output_tokens": 3, "total_tokens": 6},
+            provider="gemini",
+            model=model,
         )
 
 

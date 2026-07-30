@@ -41,7 +41,8 @@ from sqlalchemy.orm import Session
 
 from agents.envelope import envelope
 from clients.stockpilot import StockPilotClient
-from llm.providers.gemini import StructuredResult, generate, generate_structured, stream
+from llm.providers.base import StructuredResult
+from llm.providers.registry import generate, generate_structured, stream
 from model_config import get_model_config
 from orchestration.models.agent_step import AgentStep
 from prompts.loader import LoadedPrompt, load_prompt
@@ -95,11 +96,18 @@ class Agent:
 
     @property
     def model_id(self) -> str:
+        """The CONFIGURED primary model for this agent's role -- what's
+        actually requested first. The model that actually served a given
+        call can differ (llm/providers/fallback.py) and is recorded
+        separately, per call, from the response itself -- see
+        _persist_step()/_write_agent_step()'s own `provider`/`model_id`
+        handling, not this property.
+        """
         roles = get_model_config().roles
-        model_id = getattr(roles, self.role, None)
-        if model_id is None:
+        role_config = getattr(roles, self.role, None)
+        if role_config is None:
             raise ValueError(f"Unknown model role '{self.role}'")
-        return str(model_id)
+        return str(role_config.model)
 
     def invoke(
         self,
@@ -213,6 +221,8 @@ class Agent:
         error: Exception | None = None
         text_parts: list[str] = []
         usage: dict[str, int] | None = None
+        provider: str | None = None
+        served_model: str | None = None
 
         try:
             for chunk in stream(model=self.model_id, messages=messages):
@@ -222,13 +232,25 @@ class Agent:
                         on_chunk(chunk.text)
                 if chunk.usage_metadata is not None:
                     usage = chunk.usage_metadata
+                if chunk.provider is not None:
+                    provider = chunk.provider
+                if chunk.model is not None:
+                    served_model = chunk.model
         except Exception as exc:  # noqa: BLE001 -- recorded below, then re-raised unchanged
             status = "failed"
             error = exc
 
         latency_ms = int((time.monotonic() - started) * 1000)
         response = (
-            AIMessage(content="".join(text_parts), usage_metadata=usage) if error is None else None
+            AIMessage(
+                content="".join(text_parts),
+                usage_metadata=usage,
+                response_metadata={"provider": provider, "model": served_model}
+                if provider and served_model
+                else {},
+            )
+            if error is None
+            else None
         )
         self._persist_step(
             session_factory=session_factory,
@@ -292,6 +314,8 @@ class Agent:
             query=query,
             output=output,
             usage=result.usage_metadata if result is not None else None,
+            provider=result.provider if result is not None else None,
+            model_id=result.model if result is not None else self.model_id,
             status=status,
             latency_ms=latency_ms,
             iteration=iteration,
@@ -337,12 +361,24 @@ class Agent:
         if error is not None:
             output["error"] = str(error)
         usage = response.usage_metadata if response is not None else None
+        # Stage 6 Task 6.4: response_metadata carries which provider/model
+        # ACTUALLY served this call (llm/providers/gemini.py::
+        # _response_to_ai_message, groq.py's own equivalent, and
+        # invoke_streaming()'s own AIMessage construction above all set
+        # it) -- can differ from self.model_id once a fallback fires, so
+        # this is read from the response, never assumed to be the
+        # configured primary.
+        metadata = response.response_metadata if response is not None else {}
+        provider = metadata.get("provider") if metadata else None
+        served_model = metadata.get("model") if metadata else None
         self._write_agent_step(
             session_factory=session_factory,
             execution_id=execution_id,
             query=query,
             output=output,
             usage=usage,
+            provider=provider,
+            model_id=served_model or self.model_id,
             status=status,
             latency_ms=latency_ms,
             iteration=iteration,
@@ -361,6 +397,15 @@ class Agent:
         # is the real common shape of the two; only ["input_tokens"] and
         # ["output_tokens"] (always int in both) are ever read below.
         usage: Mapping[str, Any] | None,
+        # Stage 6 Task 6.4: which provider/model actually served this
+        # call. `provider` is None only when the call failed outright
+        # (every provider in the chain was exhausted -- nobody "served"
+        # it); `model_id` still falls back to self.model_id (the
+        # configured primary) in that case, since a step row needs SOME
+        # model_id and the configured one is the most honest choice
+        # available when nothing actually served the request.
+        provider: str | None,
+        model_id: str,
         status: str,
         latency_ms: int,
         iteration: int,
@@ -374,7 +419,8 @@ class Agent:
                     iteration=iteration,
                     input={"query": query},
                     output=output,
-                    model_id=self.model_id,
+                    provider=provider,
+                    model_id=model_id,
                     prompt_version_hash=self.prompt.content_hash,
                     prompt_tokens=usage["input_tokens"] if usage else None,
                     completion_tokens=usage["output_tokens"] if usage else None,

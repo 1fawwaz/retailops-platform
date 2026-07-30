@@ -26,9 +26,9 @@ def main() -> None:
     available = set(list_model_ids())
 
     configured = {
-        "planner": config.roles.planner,
-        "retriever": config.roles.retriever,
-        "decision": config.roles.decision,
+        "planner": config.roles.planner.model,
+        "retriever": config.roles.retriever.model,
+        "decision": config.roles.decision.model,
     }
 
     failures: dict[str, list[str]] = {role: [] for role in configured}

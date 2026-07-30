@@ -181,6 +181,36 @@ def _persist_execution_result(
         session.close()
 
 
+def _serving_models_by_agent(
+    execution_id: uuid.UUID, session_factory: Callable[[], Session]
+) -> dict[str, dict[str, str]]:
+    """Stage 6 Task 6.4 trace requirement: which provider/model actually
+    served each agent's MOST RECENT call this execution (a replan loop
+    can invoke the same retrieval agent more than once; the last call is
+    what its current agent_results entry reflects). Read straight from
+    the persisted agent_steps rows rather than threaded through
+    ExecutionState -- the graph's own reducers (orchestration/state.py)
+    have no concept of "provider" and adding one there would be a real
+    orchestration change this task doesn't call for; this reads the same
+    durable trace GET /agent/execution/{id} already exposes.
+    """
+    session = session_factory()
+    try:
+        steps = (
+            session.query(AgentStep)
+            .filter(AgentStep.execution_id == execution_id, AgentStep.provider.isnot(None))
+            .order_by(AgentStep.id)
+            .all()
+        )
+    finally:
+        session.close()
+    serving: dict[str, dict[str, str]] = {}
+    for step in steps:
+        if step.provider and step.model_id:
+            serving[step.agent_name] = {"provider": step.provider, "model": step.model_id}
+    return serving
+
+
 def build_query_response_fields(
     state: ExecutionState, session_factory: Callable[[], Session]
 ) -> dict[str, object]:
@@ -212,6 +242,7 @@ def build_query_response_fields(
         "citation_attempts": len(state["citation_failures"]),
         "errors": state["errors"],
         "total_tokens": execution.total_tokens,
+        "serving": _serving_models_by_agent(state["execution_id"], session_factory),
     }
 
 
@@ -276,10 +307,13 @@ def run_execution_streaming(
         text delta from the decision node's own generation (only ever
         the "decision" node, since orchestration/graph.py's streaming
         wiring is scoped to the one node whose text is the live answer).
-      {"type": "agent_completed", "agent": name, "output": text} -- once
-        per agent the moment its result lands in state["agent_results"]
-        (derived from LangGraph's own "values" mode, no graph.py change
-        needed for this one).
+      {"type": "agent_completed", "agent": name, "output": text, "provider":
+        ..., "model": ...} -- once per agent the moment its result lands
+        in state["agent_results"] (derived from LangGraph's own "values"
+        mode, no graph.py change needed for this one). provider/model
+        are the SERVING ones (Task 6.4), read fresh from agent_steps
+        right as the event is built, since ExecutionState itself carries
+        no provider concept.
       {"type": "replan_judgement", "iteration": ..., "sufficient": ...,
         "missing": [...], "next_action": "...", "agents_to_retry": [...]}
         -- once per replan round, straight from state["replan_history"].
@@ -321,12 +355,17 @@ def run_execution_streaming(
         final_state = current
 
         new_agents = set(current["agent_results"]) - previous_agents
-        for name in sorted(new_agents):
-            yield {
-                "type": "agent_completed",
-                "agent": name,
-                "output": current["agent_results"][name],
-            }
+        if new_agents:
+            serving = _serving_models_by_agent(execution_id, session_factory)
+            for name in sorted(new_agents):
+                served = serving.get(name, {})
+                yield {
+                    "type": "agent_completed",
+                    "agent": name,
+                    "output": current["agent_results"][name],
+                    "provider": served.get("provider"),
+                    "model": served.get("model"),
+                }
         previous_agents = set(current["agent_results"])
 
         if len(current["replan_history"]) > previous_replan_rounds:

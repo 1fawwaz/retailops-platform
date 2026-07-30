@@ -124,6 +124,8 @@ def _judgement_result(
             agents_to_retry=agents_to_retry,
         ),
         usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        provider="gemini",
+        model="gemini-3.1-pro-preview",
     )
 
 

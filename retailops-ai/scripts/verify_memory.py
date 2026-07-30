@@ -54,7 +54,7 @@ def _patched_generate(*, model: str, messages: list[Any], tools: Any = None) -> 
     roles = get_model_config().roles
     if messages and messages[0].content == PLANNER_PROMPT_TEXT and len(messages) > 1:
         captured_planner_prompts.append(str(messages[1].content))
-    if model == roles.retriever:
+    if model == roles.retriever.model:
         return real_generate(model=model, messages=messages, tools=tools)
     return AIMessage(
         content=f"[mocked -- quota-blocked model '{model}'] acknowledged.",
@@ -72,7 +72,10 @@ def _always_sufficient_generate_structured(
         sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
     )
     return StructuredResult(
-        parsed=judgement, usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        parsed=judgement,
+        usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        provider="gemini",
+        model=model,
     )
 
 

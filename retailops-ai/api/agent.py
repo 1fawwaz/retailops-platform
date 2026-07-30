@@ -81,6 +81,18 @@ class ToolLedgerEntry(BaseModel):
     latency_ms: int | None
 
 
+class ServingModel(BaseModel):
+    """Stage 6 Task 6.4 trace requirement: which provider/model ACTUALLY
+    served an agent's most recent call this execution -- can differ from
+    config/models.yaml's configured primary once
+    llm/providers/fallback.py's chain fires. Never the configured one;
+    always read back from the persisted agent_steps row.
+    """
+
+    provider: str
+    model: str
+
+
 class AgentQueryResponse(BaseModel):
     execution_id: uuid.UUID
     conversation_id: uuid.UUID
@@ -94,6 +106,7 @@ class AgentQueryResponse(BaseModel):
     citation_attempts: int
     errors: list[str]
     total_tokens: int | None
+    serving: dict[str, ServingModel]
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -119,6 +132,7 @@ class AgentQueryResponse(BaseModel):
                     "citation_attempts": 1,
                     "errors": [],
                     "total_tokens": 4213,
+                    "serving": {"inventory": {"provider": "gemini", "model": "gemini-3.5-flash"}},
                 }
             ]
         }
@@ -131,6 +145,7 @@ class AgentStepEntry(BaseModel):
     iteration: int
     input: JsonDict | None
     output: JsonDict | None
+    provider: str | None
     model_id: str | None
     prompt_version_hash: str | None
     prompt_tokens: int | None
@@ -191,6 +206,14 @@ def _tool_ledger_entries(raw_entries: object) -> list[ToolLedgerEntry]:
     ]
 
 
+def _serving_models(raw_serving: object) -> dict[str, ServingModel]:
+    serving = cast(dict[str, dict[str, str]], raw_serving)
+    return {
+        agent_name: ServingModel(provider=served["provider"], model=served["model"])
+        for agent_name, served in serving.items()
+    }
+
+
 def _query_response_from_fields(fields: dict[str, object]) -> AgentQueryResponse:
     """The shared response shape, built from
     orchestration/executor.py::build_query_response_fields()'s plain
@@ -212,6 +235,7 @@ def _query_response_from_fields(fields: dict[str, object]) -> AgentQueryResponse
         citation_attempts=cast(int, fields["citation_attempts"]),
         errors=cast(list[str], fields["errors"]),
         total_tokens=cast("int | None", fields["total_tokens"]),
+        serving=_serving_models(fields["serving"]),
     )
 
 

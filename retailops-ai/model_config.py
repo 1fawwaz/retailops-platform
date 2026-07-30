@@ -1,7 +1,13 @@
-"""Loads config/models.yaml: role -> Gemini model ID and per-execution
-budgets (CLAUDE.md section 7). No model name may appear anywhere else in
-the codebase -- code asks for a role ("planner", "retriever", "decision"),
-never a literal model string.
+"""Loads config/models.yaml: role -> (provider, model), the fallback
+(provider, model), and per-execution budgets (CLAUDE.md section 7). No
+model name may appear anywhere else in the codebase -- code asks for a
+role ("planner", "retriever", "decision"), never a literal model string.
+
+Stage 6 Task 6.4: `RoleModelConfig`/`FallbackModelConfig` now carry a
+`provider` field alongside `model`, since two providers exist. Every
+concrete piece of code that resolves "which model does this role use"
+(agents/base.py::Agent.model_id) or "which provider serves this model"
+(llm/providers/registry.py) reads it from here -- never hardcoded.
 """
 
 from functools import lru_cache
@@ -14,10 +20,20 @@ SERVICE_ROOT = Path(__file__).resolve().parent
 MODELS_CONFIG_PATH = SERVICE_ROOT / "config" / "models.yaml"
 
 
+class RoleModelConfig(BaseModel):
+    provider: str
+    model: str
+
+
+class FallbackModelConfig(BaseModel):
+    provider: str
+    model: str
+
+
 class ModelRoles(BaseModel):
-    planner: str
-    retriever: str
-    decision: str
+    planner: RoleModelConfig
+    retriever: RoleModelConfig
+    decision: RoleModelConfig
 
 
 class ModelBudgets(BaseModel):
@@ -27,6 +43,7 @@ class ModelBudgets(BaseModel):
 
 class ModelConfig(BaseModel):
     roles: ModelRoles
+    fallback: FallbackModelConfig
     budgets: ModelBudgets
 
 

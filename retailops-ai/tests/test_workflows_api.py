@@ -223,7 +223,10 @@ def _fake_generate_structured(
     else:
         raise AssertionError(f"unexpected schema: {response_schema}")
     return StructuredResult(
-        parsed=parsed, usage_metadata={"input_tokens": 2, "output_tokens": 2, "total_tokens": 4}
+        parsed=parsed,
+        usage_metadata={"input_tokens": 2, "output_tokens": 2, "total_tokens": 4},
+        provider="gemini",
+        model=model,
     )
 
 
@@ -370,3 +373,16 @@ def test_run_business_review_returns_504_when_the_request_times_out(
 
     assert response.status_code == 504
     assert "took too long" in response.json()["detail"].lower()
+
+    # api/timeouts.py::run_with_timeout() only bounds the CALLER's wait
+    # (documented tradeoff, see that module's own docstring) -- the
+    # abandoned _slow_generate_structured() call is still running on its
+    # own thread pool worker for another ~0.15s past the assertions
+    # above. Waiting it out here, rather than letting this test function
+    # return immediately, avoids a real (if rare) race against the
+    # db_session fixture's own teardown (StaticPool's shared connection,
+    # not designed for a second thread to still be mid-query while the
+    # main thread disposes the engine) -- confirmed live: this exact
+    # race intermittently raised sqlalchemy.exc.IllegalStateChangeError
+    # during teardown before this wait was added.
+    time.sleep(0.3)

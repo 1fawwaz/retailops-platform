@@ -314,6 +314,8 @@ def _narrative_result(reason: str, risk: str) -> StructuredResult[DecisionNarrat
     return StructuredResult(
         parsed=DecisionNarrative(reason=reason, risk_if_ignored=risk),
         usage_metadata={"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
+        provider="gemini",
+        model="gemini-3.1-pro-preview",
     )
 
 

@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,6 +25,16 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 20
     rate_limit_window_seconds: int = 60
     request_timeout_seconds: float = 60.0
+    # Stage 6 Task 6.4: provider abstraction + Groq fallback.
+    groq_api_key: str
+    # "primary/fallback order switchable via env var" per the spec --
+    # flips WHICH of the two configured (provider, model) pairs is
+    # tried first: "gemini" (the default, per CLAUDE.md's own "Gemini
+    # primary, Groq fallback" stack pin) or "groq" (used for the TRUST
+    # GATE's own "fallback forced as primary" live verification, and
+    # for genuinely preferring Groq if that's ever wanted operationally).
+    # Whichever isn't primary becomes the fallback for that request.
+    llm_primary_provider: Literal["gemini", "groq"] = "gemini"
 
 
 @lru_cache

@@ -70,6 +70,8 @@ def _sufficient_judgement(
             sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
         ),
         usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        provider="gemini",
+        model=model,
     )
 
 

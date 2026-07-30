@@ -55,6 +55,7 @@ repos:
           - langchain-core==1.5.2
           - langgraph==1.2.10
           - google-genai==2.14.0
+          - groq==1.6.0
           - pyyaml==6.0.3
           - pyjwt==2.13.0
           - types-PyYAML==6.0.12.20260724

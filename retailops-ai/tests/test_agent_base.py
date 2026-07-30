@@ -286,6 +286,8 @@ def test_agent_invoke_structured_persists_a_completed_step_with_parsed_output(
     fake_result = StructuredResult(
         parsed=_Judgement(sufficient=False, missing=["forecast for SKU X"]),
         usage_metadata={"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+        provider="gemini",
+        model="gemini-3.1-pro-preview",
     )
 
     with patch("agents.base.generate_structured", return_value=fake_result):
@@ -306,6 +308,8 @@ def test_agent_invoke_structured_persists_a_completed_step_with_parsed_output(
     assert step.output == {"parsed": {"sufficient": False, "missing": ["forecast for SKU X"]}}
     assert step.prompt_tokens == 5
     assert step.completion_tokens == 2
+    assert step.provider == "gemini"
+    assert step.model_id == "gemini-3.1-pro-preview"
 
 
 def test_agent_invoke_structured_persists_a_failed_step_and_reraises(

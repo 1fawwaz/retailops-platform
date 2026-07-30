@@ -84,7 +84,7 @@ _replan_calls = {"count": 0}
 
 def _patched_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
     roles = get_model_config().roles
-    if model == roles.retriever:
+    if model == roles.retriever.model:
         return real_generate(model=model, messages=messages, tools=tools)
     # Planner/Report/Decision Engine share the zero-quota model family --
     # see the module docstring. A fast, fixed stand-in keeps the graph's
@@ -118,7 +118,10 @@ def _patched_generate_structured(
             sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
         )
     return StructuredResult(
-        parsed=judgement, usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        parsed=judgement,
+        usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        provider="gemini",
+        model=model,
     )
 
 

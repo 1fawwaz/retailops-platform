@@ -65,7 +65,7 @@ DRAFT_ROUND_2_HONEST = (
 
 def _patched_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
     roles = get_model_config().roles
-    if model == roles.retriever:
+    if model == roles.retriever.model:
         return real_generate(model=model, messages=messages, tools=tools)
     system_text = messages[0].content if messages else ""
     if "Decision" in system_text or "decision" in system_text.lower():
@@ -94,7 +94,10 @@ def _always_sufficient_generate_structured(
         sufficient=True, missing=[], next_action="proceed to report", agents_to_retry=[]
     )
     return StructuredResult(
-        parsed=judgement, usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        parsed=judgement,
+        usage_metadata={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        provider="gemini",
+        model=model,
     )
 
 

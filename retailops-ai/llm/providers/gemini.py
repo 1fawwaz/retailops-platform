@@ -1,12 +1,11 @@
-"""The ONLY module allowed to import the Gemini SDK (CLAUDE.md section 7,
-ARCHITECTURE RULES: "No provider SDK outside llm/providers/"). One
-interface for the rest of the codebase: generate(), generate_structured(),
-stream(). Messages and tools are LangChain primitives (SystemMessage,
-HumanMessage, AIMessage, ToolMessage; langchain_core.tools.StructuredTool)
-per CLAUDE.md's "LangChain (tools/messages primitives only)" rule --
-nothing outside this module ever sees a google.genai type. No model name
-is hardcoded here; every call site passes a model ID resolved from
-config/models.yaml via model_config.get_model_config().
+"""One of two concrete providers (the other: llm/providers/groq.py) behind
+the LLMProvider interface (llm/providers/base.py). The ONLY module
+allowed to import the Gemini SDK (CLAUDE.md section 7: "No provider SDK
+outside llm/providers/"). Messages and tools are LangChain primitives
+(SystemMessage, HumanMessage, AIMessage, ToolMessage;
+langchain_core.tools.StructuredTool) per CLAUDE.md's "LangChain
+(tools/messages primitives only)" rule -- nothing outside llm/providers/
+ever sees a google.genai type.
 
 Tool declarations are built directly from each StructuredTool's Pydantic
 args_schema via parameters_json_schema (verified live against the real
@@ -24,6 +23,19 @@ it could break multi-turn tool use on those models even though nothing
 in the current smoke testing surfaced a concrete failure from omitting
 it -- cheap to preserve, not worth the risk of silently degrading a
 future model swap.
+
+Stage 6 Task 6.4 retry policy (a deliberate change from this build's own
+prior behaviour, not an oversight -- see the module docstring history in
+git blame if curious): a genuine 429 RESOURCE_EXHAUSTED (Gemini's own
+free-tier quota) raises ProviderUnavailableError IMMEDIATELY, no
+in-provider retry -- a quota error is deterministic within its window,
+so retrying it here only delays FallbackProvider from trying Groq.
+Every OTHER retryable failure (timeout, connection drop, 5xx) still
+retries MAX_LLM_RETRIES times with exponential backoff first, exactly as
+before. Any OTHER ClientError (400 bad request, 401 bad key, ...)
+propagates immediately and unmodified either way -- those need a human
+to fix configuration, not a retry or a silent failover that would hide
+a broken deployment forever.
 """
 
 from __future__ import annotations
@@ -32,8 +44,7 @@ import itertools
 import threading
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 import httpx
 from google import genai
@@ -43,17 +54,29 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
+# LLMUnavailableError re-exported (the `as LLMUnavailableError` self-alias signals
+# this is intentional, not an unused import): orchestration/graph.py, api/errors.py,
+# and existing tests all import it from THIS module. Keeping that import path valid,
+# rather than requiring every caller to switch to llm.providers.base, is a deliberate,
+# minimal-footprint choice matching Task 6.4's own "orchestration, agents, and tools do
+# not change at all" constraint. The class itself now lives in base.py since it's the
+# shared terminal signal FallbackProvider (not this module) raises once every provider
+# in the chain has failed.
+from llm.providers.base import LLMUnavailableError as LLMUnavailableError
+from llm.providers.base import ProviderUnavailableError as ProviderUnavailableError
+from llm.providers.base import StreamChunk as StreamChunk
+from llm.providers.base import StructuredResult as StructuredResult
 from settings import get_settings
 
 T = TypeVar("T", bound=BaseModel)
 
 THOUGHT_SIGNATURES_KEY = "thought_signatures"
 
-# Task 3.6 failure behaviour: "LLM timeout -> backoff x3, then a partial
-# answer flagged incomplete". Mirrors clients/stockpilot.py's retry shape
-# (same exponential-backoff idea, a separate implementation since the
-# retryable exception types are provider-specific and this module may
-# never import anything from clients/).
+# "LLM timeout -> backoff x3, then a partial answer flagged incomplete".
+# Mirrors clients/stockpilot.py's retry shape (same exponential-backoff
+# idea, a separate implementation since the retryable exception types
+# are provider-specific and this module may never import anything from
+# clients/). Does NOT apply to a 429 -- see module docstring.
 MAX_LLM_RETRIES = 3
 LLM_RETRY_BASE_DELAY_SECONDS = 1.0
 RETRYABLE_LLM_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -62,55 +85,9 @@ RETRYABLE_LLM_EXCEPTIONS: tuple[type[Exception], ...] = (
     httpx.ReadError,
     genai_errors.ServerError,
 )
-# HTTP 429 from Gemini's own free-tier quota (confirmed live this build,
-# repeatedly -- see project memory) is a genai_errors.ClientError, NOT a
-# ServerError, so it fell outside RETRYABLE_LLM_EXCEPTIONS entirely and
-# propagated raw past every degradation path built in Task 3.6 -- a real
-# bug, caught live during Stage 6 SSE work when a real quota-exhausted
-# call crashed a request instead of degrading. Only code 429 is treated
-# as retryable-then-unavailable here; every OTHER ClientError (400 bad
-# request, 401 bad API key, ...) still propagates immediately and
-# unmodified -- those need a human to fix configuration, and silently
-# "degrading" them would hide a broken deployment forever instead of
-# failing loudly the first time.
 RATE_LIMITED_STATUS_CODE = 429
-# A named tuple constant (rather than unpacking RETRYABLE_LLM_EXCEPTIONS
-# inline at each `except` site) so mypy can actually verify it as a
-# valid tuple-of-exception-types -- inline `(*RETRYABLE_LLM_EXCEPTIONS,
-# genai_errors.ClientError)` in an except clause defeats that check.
-_RETRYABLE_OR_RATE_LIMITED: tuple[type[Exception], ...] = (
-    *RETRYABLE_LLM_EXCEPTIONS,
-    genai_errors.ClientError,
-)
 
-
-def _is_retryable(exc: Exception) -> bool:
-    if isinstance(exc, RETRYABLE_LLM_EXCEPTIONS):
-        return True
-    return isinstance(exc, genai_errors.ClientError) and exc.code == RATE_LIMITED_STATUS_CODE
-
-
-class LLMUnavailableError(Exception):
-    """Raised once generate()/generate_structured() have retried a Gemini
-    call MAX_LLM_RETRIES times with exponential backoff and it still
-    failed. Distinct from clients.stockpilot.StockPilotUnavailableError --
-    that one covers the StockPilot-outage failure mode, this one covers
-    the LLM-outage failure mode; orchestration/graph.py catches this
-    specifically to degrade a node's contribution instead of crashing the
-    whole execution.
-    """
-
-
-@dataclass(frozen=True)
-class StructuredResult(Generic[T]):
-    """generate_structured()'s return value. A bare parsed Pydantic
-    instance would lose token usage, and callers that need to persist a
-    full trace record (CLAUDE.md invariant 2: prompt/completion tokens
-    per agent_steps row) can't do that from response.parsed alone.
-    """
-
-    parsed: T
-    usage_metadata: dict[str, int]
+PROVIDER_NAME = "gemini"
 
 
 _thread_local = threading.local()
@@ -230,7 +207,7 @@ def _usage_metadata(response: types.GenerateContentResponse) -> dict[str, int]:
     }
 
 
-def _response_to_ai_message(response: types.GenerateContentResponse) -> AIMessage:
+def _response_to_ai_message(response: types.GenerateContentResponse, *, model: str) -> AIMessage:
     candidate = response.candidates[0] if response.candidates else None
     parts = (
         candidate.content.parts
@@ -263,6 +240,7 @@ def _response_to_ai_message(response: types.GenerateContentResponse) -> AIMessag
         if thought_signatures
         else {},
         usage_metadata=_usage_metadata(response),
+        response_metadata={"provider": PROVIDER_NAME, "model": model},
     )
 
 
@@ -270,23 +248,27 @@ def _generate_content_with_retry(
     *, model: str, contents: list[types.Content], config: types.GenerateContentConfig
 ) -> types.GenerateContentResponse:
     """Retries a real Gemini call on transient network errors and 5xx
-    responses, exponential backoff (base * 2**attempt), then raises
-    LLMUnavailableError -- the same retry-then-typed-error shape as
-    clients/stockpilot.py's _retry_with_backoff, kept as a separate
-    function since the retryable exception types differ per provider.
+    responses, exponential backoff (base * 2**attempt). A 429 (quota)
+    is NOT retried here at all -- see module docstring. Raises
+    ProviderUnavailableError in both failure shapes; FallbackProvider is
+    what decides whether to try Groq next.
     """
     last_exception: Exception | None = None
     for attempt in range(MAX_LLM_RETRIES + 1):
         try:
             return _client().models.generate_content(model=model, contents=contents, config=config)
-        except _RETRYABLE_OR_RATE_LIMITED as exc:
-            if not _is_retryable(exc):
+        except genai_errors.ClientError as exc:
+            if exc.code != RATE_LIMITED_STATUS_CODE:
                 raise
+            raise ProviderUnavailableError(
+                f"Gemini quota exceeded calling model {model!r}: {exc}"
+            ) from exc
+        except RETRYABLE_LLM_EXCEPTIONS as exc:
             last_exception = exc
             if attempt < MAX_LLM_RETRIES:
                 time.sleep(LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
     assert last_exception is not None
-    raise LLMUnavailableError(
+    raise ProviderUnavailableError(
         f"Gemini unreachable after {MAX_LLM_RETRIES} retries calling model "
         f"{model!r}: {last_exception}"
     ) from last_exception
@@ -306,8 +288,8 @@ def generate(
     the result back as a ToolMessage in a following call, same as any
     LangChain tool-calling loop.
 
-    Raises LLMUnavailableError if Gemini is still unreachable after
-    MAX_LLM_RETRIES retries (Task 3.6).
+    Raises ProviderUnavailableError if Gemini could not serve this call
+    (immediately for quota, after retries for other transient failures).
     """
     system_instruction, contents = _split_messages(messages)
     config = types.GenerateContentConfig(
@@ -317,7 +299,7 @@ def generate(
         tools=[_tool_to_gemini(tool) for tool in tools] if tools else None,
     )
     response = _generate_content_with_retry(model=model, contents=contents, config=config)
-    return _response_to_ai_message(response)
+    return _response_to_ai_message(response, model=model)
 
 
 def generate_structured(
@@ -332,8 +314,7 @@ def generate_structured(
     straight through to the SDK, which returns an already-validated
     instance via response.parsed.
 
-    Raises LLMUnavailableError if Gemini is still unreachable after
-    MAX_LLM_RETRIES retries (Task 3.6).
+    Raises ProviderUnavailableError -- see generate()'s docstring.
     """
     system_instruction, contents = _split_messages(messages)
     config = types.GenerateContentConfig(
@@ -349,21 +330,12 @@ def generate_structured(
         raise ValueError(
             f"Gemini did not return a valid {response_schema.__name__}: {response.text!r}"
         )
-    return StructuredResult(parsed=parsed, usage_metadata=_usage_metadata(response))
-
-
-@dataclass(frozen=True)
-class StreamChunk:
-    """One piece of a streamed response. `usage_metadata` is only
-    populated on the FINAL chunk of a stream -- Gemini's streaming
-    responses only carry complete token counts once generation has
-    finished, not on each incremental delta (the same reason
-    generate()/generate_structured() only report usage once, from a
-    single non-streaming response).
-    """
-
-    text: str
-    usage_metadata: dict[str, int] | None = None
+    return StructuredResult(
+        parsed=parsed,
+        usage_metadata=_usage_metadata(response),
+        provider=PROVIDER_NAME,
+        model=model,
+    )
 
 
 def stream(
@@ -375,21 +347,20 @@ def stream(
     temperature: float | None = None,
 ) -> Iterator[StreamChunk]:
     """Yields StreamChunks as text arrives, with a final chunk carrying
-    usage_metadata once generation completes. Tool-calling is not
-    supported mid-stream (a streamed response is assumed to be the final
-    answer, not a step in a tool-use loop) -- callers that need tools
-    should use generate() for those turns and reserve stream() for the
-    final response to a user.
+    usage_metadata/provider/model once generation completes. Tool-calling
+    is not supported mid-stream (a streamed response is assumed to be
+    the final answer, not a step in a tool-use loop) -- callers that
+    need tools should use generate() for those turns and reserve
+    stream() for the final response to a user.
 
     Retries ONLY establishing the stream (the SDK call plus fetching the
-    first chunk) with the same exponential backoff as generate(), then
-    raises LLMUnavailableError -- the same connection-level failure mode
-    generate() guards against. A failure partway through an
-    already-started stream (after some chunks have already reached the
-    caller, e.g. already relayed onward as SSE tokens) is NOT retried --
-    transparently restarting a stream a caller has already partially
-    consumed and relayed isn't a "retry" a caller could use safely, so
-    this deliberately doesn't attempt it; the stream simply ends with the
+    first chunk) with the same policy as generate() -- immediate failure
+    on quota, backoff-then-fail for other transient errors. A failure
+    partway through an already-started stream (after some chunks have
+    already reached the caller, e.g. already relayed onward as SSE
+    tokens) is NOT retried -- transparently restarting a stream a caller
+    has already partially consumed and relayed isn't safe, so this
+    deliberately doesn't attempt it; the stream simply ends with the
     exception propagating, same as any other mid-stream network failure.
     """
     system_instruction, contents = _split_messages(messages)
@@ -412,16 +383,20 @@ def stream(
             )
             first = next(chunks, None)
             break
-        except _RETRYABLE_OR_RATE_LIMITED as exc:
-            if not _is_retryable(exc):
+        except genai_errors.ClientError as exc:
+            if exc.code != RATE_LIMITED_STATUS_CODE:
                 raise
+            raise ProviderUnavailableError(
+                f"Gemini quota exceeded calling model {model!r} (stream): {exc}"
+            ) from exc
+        except RETRYABLE_LLM_EXCEPTIONS as exc:
             last_exception = exc
             chunks = None
             if attempt < MAX_LLM_RETRIES:
                 time.sleep(LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
     if chunks is None:
         assert last_exception is not None
-        raise LLMUnavailableError(
+        raise ProviderUnavailableError(
             f"Gemini unreachable after {MAX_LLM_RETRIES} retries calling model {model!r} "
             f"(stream): {last_exception}"
         ) from last_exception
@@ -434,7 +409,7 @@ def stream(
         if chunk.text:
             yield StreamChunk(text=chunk.text)
     if last_usage is not None:
-        yield StreamChunk(text="", usage_metadata=last_usage)
+        yield StreamChunk(text="", usage_metadata=last_usage, provider=PROVIDER_NAME, model=model)
 
 
 def list_model_ids() -> list[str]:
@@ -444,3 +419,72 @@ def list_model_ids() -> list[str]:
     """
     client = _client()
     return [model.name.removeprefix("models/") for model in client.models.list() if model.name]
+
+
+class GeminiProvider:
+    """Thin class wrapper around this module's own tested functions --
+    the LLMProvider interface (llm/providers/base.py) is implemented by
+    delegating straight to generate()/generate_structured()/stream()/
+    list_model_ids() above, which retain every existing test's own
+    module-level patch targets (llm.providers.gemini.generate,
+    llm.providers.gemini.genai.Client, ...) unchanged. Stateless -- safe
+    to construct once and reuse (or construct fresh per call, same
+    effect either way, since all real state lives in the module-level
+    thread-local client cache).
+    """
+
+    name = PROVIDER_NAME
+
+    def generate(
+        self,
+        *,
+        model: str,
+        messages: list[BaseMessage],
+        tools: list[StructuredTool] | None = None,
+        max_output_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> AIMessage:
+        return generate(
+            model=model,
+            messages=messages,
+            tools=tools,
+            max_output_tokens=max_output_tokens,
+            temperature=temperature,
+        )
+
+    def generate_structured(
+        self,
+        *,
+        model: str,
+        messages: list[BaseMessage],
+        response_schema: type[T],
+        max_output_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> StructuredResult[T]:
+        return generate_structured(
+            model=model,
+            messages=messages,
+            response_schema=response_schema,
+            max_output_tokens=max_output_tokens,
+            temperature=temperature,
+        )
+
+    def stream(
+        self,
+        *,
+        model: str,
+        messages: list[BaseMessage],
+        tools: list[StructuredTool] | None = None,
+        max_output_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> Iterator[StreamChunk]:
+        return stream(
+            model=model,
+            messages=messages,
+            tools=tools,
+            max_output_tokens=max_output_tokens,
+            temperature=temperature,
+        )
+
+    def list_model_ids(self) -> list[str]:
+        return list_model_ids()

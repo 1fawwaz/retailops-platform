@@ -184,7 +184,10 @@ def test_build_report_dispatches_reorder_type_and_persists_the_step(
     execution_id = _new_execution(db_session)
     parsed = ReorderReport(title="Reorder Report", items=[], summary="s")
     fake_result: StructuredResult[ReorderReport] = StructuredResult(
-        parsed=parsed, usage_metadata={"input_tokens": 3, "output_tokens": 1, "total_tokens": 4}
+        parsed=parsed,
+        usage_metadata={"input_tokens": 3, "output_tokens": 1, "total_tokens": 4},
+        provider="gemini",
+        model="gemini-3.1-pro-preview",
     )
 
     with patch("agents.base.generate_structured", return_value=fake_result) as mock_generate:
@@ -235,6 +238,8 @@ def test_build_report_selects_the_matching_schema(
         return StructuredResult(
             parsed=instance,
             usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            provider="gemini",
+            model=model,
         )
 
     with patch("agents.base.generate_structured", side_effect=fake_generate_structured):

@@ -1,16 +1,51 @@
-# Role -> Gemini model ID. No model name may appear anywhere else in the
-# codebase (CLAUDE.md section 7); code asks for a role, never a literal
-# model string.
+# Role -> provider + model. No model name may appear anywhere else in
+# the codebase (CLAUDE.md section 7); code asks for a role, never a
+# literal model string. Stage 6 Task 6.4 adds `fallback`: the ONE
+# provider+model tried, for ANY role, when a role's own primary
+# provider raises a failover-eligible error (llm/providers/fallback.py).
 #
-# Verified against the real Gemini model-list endpoint on 2026-07-29
-# (`python scripts/verify_model_config.py`) -- CLAUDE.md's own example
-# config names "gemini-3.1-pro", but that exact ID does not currently
-# exist; only the preview release does. Re-run the verification script
-# after editing this file, and before ever pointing an agent at a new ID.
+# roles.*.model verified against the real Gemini model-list endpoint on
+# 2026-07-29 (`python scripts/verify_model_config.py`) -- CLAUDE.md's
+# own example config names "gemini-3.1-pro", but that exact ID does not
+# currently exist; only the preview release does.
+#
+# fallback.model verified LIVE against Groq's real model-list endpoint
+# during Task 6.4's own implementation, with TWO constraints beyond "the
+# ID exists":
+#   1. Structured output: most models on this account's live list
+#      reject response_format=json_schema outright (confirmed by trying
+#      every one). generate_structured() is load-bearing for several
+#      roles (replan judgement, report, decision narrative), so the
+#      fallback model must be one of the handful that actually supports
+#      it -- only the openai/gpt-oss family did.
+#   2. Tool-choice reliability with THIS codebase's real planner prompt
+#      specifically: both openai/gpt-oss-20b and openai/gpt-oss-safeguard-20b
+#      unreliably attempted a phantom tool call even with tool_choice=
+#      "none" explicitly set, when given prompts/planner/v1.md's real
+#      text (which names "Inventory, Forecast, Analytics" as agents to
+#      ROUTE to, not tools to call directly) -- Groq's own backend then
+#      rejects the malformed response with a 400 "Tool choice is none,
+#      but model called a tool". openai/gpt-oss-120b (the larger
+#      variant) did not reproduce this across repeated live attempts.
+#      Confirmed directly against the real prompt file, not a paraphrase.
+#
+# Re-run the relevant verification script after editing either section,
+# and before ever pointing an agent at a new ID.
 roles:
-  planner: gemini-3.1-pro-preview # strongest reasoning; planning and replanning
-  retriever: gemini-3.5-flash # fast, cheap; inventory / forecast / analytics agents
-  decision: gemini-3.1-pro-preview # Decision Engine prose only
+  planner:
+    provider: gemini
+    model: gemini-3.1-pro-preview # strongest reasoning; planning and replanning
+  retriever:
+    provider: gemini
+    model: gemini-3.5-flash # fast, cheap; inventory / forecast / analytics agents
+  decision:
+    provider: gemini
+    model: gemini-3.1-pro-preview # Decision Engine prose only
+
+fallback:
+  provider: groq
+  model: openai/gpt-oss-120b # verified live: structured output, tools, streaming, and reliable
+  # tool_choice="none" adherence against the real planner prompt (see comment above)
 
 budgets:
   max_tool_iterations: 12

@@ -240,7 +240,10 @@ def _fake_generate_structured(
     else:
         raise AssertionError(f"unexpected schema: {response_schema}")
     return StructuredResult(
-        parsed=parsed, usage_metadata={"input_tokens": 2, "output_tokens": 2, "total_tokens": 4}
+        parsed=parsed,
+        usage_metadata={"input_tokens": 2, "output_tokens": 2, "total_tokens": 4},
+        provider="gemini",
+        model=model,
     )
 
 

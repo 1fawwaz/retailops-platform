@@ -17,6 +17,12 @@ class AgentStep(Base):
     `prompt_version_hash` are per-step because different agents (and
     different replan iterations of the same agent) can use different
     model roles (config/models.yaml) and prompt versions.
+
+    Stage 6 Task 6.4: `provider` records which provider ("gemini" or
+    "groq") ACTUALLY served this call -- can differ from the role's
+    configured primary once llm/providers/fallback.py's chain fires.
+    Nullable: a step whose call failed outright (every provider in the
+    chain exhausted) has no serving provider to record.
     """
 
     __tablename__ = "agent_steps"
@@ -37,6 +43,7 @@ class AgentStep(Base):
     iteration: Mapped[int] = mapped_column(Integer, default=1)
     input: Mapped[JsonDict | None] = mapped_column(JSON)
     output: Mapped[JsonDict | None] = mapped_column(JSON)
+    provider: Mapped[str | None] = mapped_column(String)
     model_id: Mapped[str | None] = mapped_column(String)
     prompt_version_hash: Mapped[str | None] = mapped_column(String)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)

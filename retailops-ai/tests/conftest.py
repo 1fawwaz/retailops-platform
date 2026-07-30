@@ -5,6 +5,7 @@ os.environ.setdefault("STOCKPILOT_BASE_URL", "http://localhost:8000")
 os.environ.setdefault("STOCKPILOT_USERNAME", "test@example.com")
 os.environ.setdefault("STOCKPILOT_PASSWORD", "test-password-not-for-production")
 os.environ.setdefault("GEMINI_API_KEY", "test-key-not-for-production")
+os.environ.setdefault("GROQ_API_KEY", "test-key-not-for-production")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-0123456789")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
 
@@ -83,6 +84,18 @@ def _clear_gemini_client_cache() -> Generator[None]:
     cached instance instead of their own patch.
     """
     from llm.providers.gemini import _reset_client_cache
+
+    _reset_client_cache()
+    yield
+    _reset_client_cache()
+
+
+@pytest.fixture(autouse=True)
+def _clear_groq_client_cache() -> Generator[None]:
+    """Same reasoning as _clear_gemini_client_cache above, for
+    llm.providers.groq._client()'s own per-thread cache.
+    """
+    from llm.providers.groq import _reset_client_cache
 
     _reset_client_cache()
     yield
