@@ -256,10 +256,11 @@ def test_build_agents_wires_tool_less_agents_correctly(db_session: Session) -> N
     assert agents["planner"].tools == ()
     assert agents["report"].tools == ()
     assert agents["decision"].tools == ()
-    # Stage 4 Task 4.1 adds one local derived tool to inventory
-    # (rank_stockout_risk) and two to forecast (days_of_cover,
-    # reorder_timing) -- see tools/derived_tools.py.
-    assert len(agents["inventory"].tools) == 10
+    # Stage 4 Task 4.1 adds local derived tools to inventory
+    # (rank_stockout_risk) and forecast (days_of_cover, reorder_timing);
+    # Task 4.5 adds one more to inventory (dead_stock_capital) -- see
+    # tools/derived_tools.py.
+    assert len(agents["inventory"].tools) == 11
     assert len(agents["forecast"].tools) == 4
     assert len(agents["analytics"].tools) == 7
 

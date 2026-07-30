@@ -65,6 +65,8 @@ INVENTORY_TOOL_NAMES = (
     "get_inventory_valuation",
     # Stage 4 Task 4.1: local (non-HTTP) derived tool, tools/derived_tools.py.
     "rank_stockout_risk",
+    # Stage 4 Task 4.5: ditto -- get_dead_stock alone has no cost field.
+    "dead_stock_capital",
 )
 FORECAST_TOOL_NAMES = (
     "forecast_demand",

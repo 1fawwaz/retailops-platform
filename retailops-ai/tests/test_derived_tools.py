@@ -105,6 +105,18 @@ def _forecast_payload(
     }
 
 
+def _dead_stock_item_payload(sku: str, quantity_on_hand: int) -> dict[str, object]:
+    return {
+        "sku": sku,
+        "description": "Widget",
+        "quantity_on_hand": quantity_on_hand,
+        "last_movement_date": "2025-01-01T00:00:00",
+        "days_since_movement": 200,
+        "_provenance": {"quantity_on_hand": "derived"},
+        "_derivation_ref": {},
+    }
+
+
 def _supplier_detail_payload(supplier_id: int, lead_time_days: int) -> dict[str, object]:
     return {
         "id": supplier_id,
@@ -118,7 +130,7 @@ def _supplier_detail_payload(supplier_id: int, lead_time_days: int) -> dict[str,
     }
 
 
-def test_build_derived_tools_returns_three_uniquely_named_tools(db_session: Session) -> None:
+def test_build_derived_tools_returns_four_uniquely_named_tools(db_session: Session) -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         return _login_response()
 
@@ -128,7 +140,12 @@ def test_build_derived_tools_returns_three_uniquely_named_tools(db_session: Sess
     tools = build_derived_tools(client, lambda: db_session, execution_id)
 
     names = {t.name for t in tools}
-    assert names == {"rank_stockout_risk", "days_of_cover", "reorder_timing"}
+    assert names == {
+        "rank_stockout_risk",
+        "days_of_cover",
+        "reorder_timing",
+        "dead_stock_capital",
+    }
 
 
 def test_rank_stockout_risk_tool_fetches_and_ranks_then_persists(db_session: Session) -> None:
@@ -319,3 +336,80 @@ def test_reorder_timing_tool_raises_a_clear_error_when_safety_stock_is_unrecorde
 
     with pytest.raises(ValueError, match="no recorded safety_stock"):
         tools["reorder_timing"].invoke({"sku": "85048", "horizon_days": 14})
+
+
+def test_dead_stock_capital_tool_sums_quantity_times_unit_cost_then_persists(
+    db_session: Session,
+) -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/auth/login":
+            return _login_response()
+        if request.url.path == "/inventory/dead-stock":
+            return httpx2.Response(
+                200,
+                json=[
+                    _dead_stock_item_payload("A", quantity_on_hand=10),
+                    _dead_stock_item_payload("B", quantity_on_hand=5),
+                ],
+            )
+        sku = request.url.path.rsplit("/", 1)[-1]
+        return httpx2.Response(
+            200,
+            json=_product_detail_payload(sku, quantity_on_hand=1, safety_stock=1, supplier_id=7),
+        )
+
+    client = _client(handler)
+    execution_id = _new_execution(db_session)
+    tools = _tools_by_name(build_derived_tools(client, lambda: db_session, execution_id))
+
+    result = tools["dead_stock_capital"].invoke({"days": 90, "limit": 200})
+
+    # unit_cost is fixed at 2.15 in _product_detail_payload: (10+5)*2.15
+    assert result.dead_stock_capital == pytest.approx(15 * 2.15)
+    assert result.sku_count == 2
+    assert result.skus_missing_cost == 0
+
+    row = db_session.query(ToolCall).one()
+    assert row.tool_name == "dead_stock_capital"
+    assert row.status == "success"
+    assert row.provenance_map is not None
+    assert row.provenance_map["dead_stock_capital"] == "derived"
+
+
+def test_dead_stock_capital_tool_counts_skus_missing_a_recorded_cost(
+    db_session: Session,
+) -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/auth/login":
+            return _login_response()
+        if request.url.path == "/inventory/dead-stock":
+            return httpx2.Response(200, json=[_dead_stock_item_payload("A", quantity_on_hand=10)])
+        payload = _product_detail_payload("A", quantity_on_hand=1, safety_stock=1, supplier_id=7)
+        payload["unit_cost"] = None
+        return httpx2.Response(200, json=payload)
+
+    client = _client(handler)
+    execution_id = _new_execution(db_session)
+    tools = _tools_by_name(build_derived_tools(client, lambda: db_session, execution_id))
+
+    result = tools["dead_stock_capital"].invoke({"days": 90, "limit": 200})
+
+    assert result.dead_stock_capital == 0.0
+    assert result.skus_missing_cost == 1
+
+
+def test_dead_stock_capital_tool_is_zero_for_no_dead_stock(db_session: Session) -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/auth/login":
+            return _login_response()
+        assert request.url.path == "/inventory/dead-stock"
+        return httpx2.Response(200, json=[])
+
+    client = _client(handler)
+    execution_id = _new_execution(db_session)
+    tools = _tools_by_name(build_derived_tools(client, lambda: db_session, execution_id))
+
+    result = tools["dead_stock_capital"].invoke({"days": 90, "limit": 200})
+
+    assert result.dead_stock_capital == 0.0
+    assert result.sku_count == 0

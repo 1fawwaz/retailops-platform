@@ -154,3 +154,8 @@ class ReorderTimingArgs(BaseModel):
     horizon_days: int = Field(
         default=14, ge=1, le=90, description="Forecast horizon backing the daily demand rate."
     )
+
+
+class DeadStockCapitalArgs(BaseModel):
+    days: int = Field(default=90, ge=1, description="No stock movement in at least this many days.")
+    limit: int = Field(default=200, ge=1, le=1000)

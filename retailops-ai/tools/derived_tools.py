@@ -38,14 +38,22 @@ from orchestration.models.tool_call import ToolCall
 from serialization import to_jsonable
 from tools.derived import (
     DaysOfCoverResult,
+    DeadStockCapitalResult,
+    DeadStockPosition,
     ReorderTimingResult,
     StockoutRiskRanking,
     StockPosition,
     compute_days_of_cover,
+    compute_dead_stock_capital,
     compute_reorder_timing,
     rank_stockout_risk,
 )
-from tools.schemas import DaysOfCoverArgs, RankStockoutRiskArgs, ReorderTimingArgs
+from tools.schemas import (
+    DaysOfCoverArgs,
+    DeadStockCapitalArgs,
+    RankStockoutRiskArgs,
+    ReorderTimingArgs,
+)
 
 ArgsT = TypeVar("ArgsT", bound=BaseModel)
 
@@ -153,6 +161,21 @@ def _reorder_timing(client: StockPilotClient, args: ReorderTimingArgs) -> Reorde
     )
 
 
+def _dead_stock_capital(
+    client: StockPilotClient, args: DeadStockCapitalArgs
+) -> DeadStockCapitalResult:
+    items = client.get_dead_stock(days=args.days, limit=args.limit, offset=0)
+    positions = [
+        DeadStockPosition(
+            sku=item.sku,
+            quantity_on_hand=item.quantity_on_hand,
+            unit_cost=client.get_product(item.sku).unit_cost,
+        )
+        for item in items
+    ]
+    return compute_dead_stock_capital(positions)
+
+
 def build_derived_tools(
     client: StockPilotClient,
     session_factory: Callable[[], Session],
@@ -206,5 +229,15 @@ def build_derived_tools(
             "None when predicted demand is zero -- state that explicitly, don't guess.",
             ReorderTimingArgs,
             _reorder_timing,
+        ),
+        tool(
+            "dead_stock_capital",
+            "Capital tied up in dead stock: sum(quantity_on_hand x unit_cost) across every "
+            "dead-stock SKU (no movement in `days` days, default 90). get_dead_stock alone "
+            "has no cost field -- use this tool, not get_dead_stock, whenever asked how much "
+            "capital or money is tied up in dead stock. Bounded by `limit`; skus_missing_cost "
+            "counts SKUs excluded from the sum for lacking a recorded unit_cost.",
+            DeadStockCapitalArgs,
+            _dead_stock_capital,
         ),
     ]

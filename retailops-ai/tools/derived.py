@@ -176,3 +176,54 @@ def rank_stockout_risk(positions: list[StockPosition]) -> StockoutRiskRanking:
         rows, key=lambda row: row.stock_ratio if row.stock_ratio is not None else float("inf")
     )
     return StockoutRiskRanking(field_provenance=STOCKOUT_RISK_PROVENANCE, items=ranked)
+
+
+# Stage 4 Task 4.5: "which products are dead stock and how much capital
+# is in them" -- get_dead_stock has no cost field (capital needs
+# quantity_on_hand * unit_cost, and unit_cost lives on the product
+# record), so this was previously only computable inside the Task 4.4
+# business-review workflow (services/dead_stock.py, which takes
+# StructuredTool objects since it's invoked from a fixed pipeline, not
+# an agent's own tool-calling loop). This is the same formula, reshaped
+# for tools/derived_tools.py's fetch-then-compute split (like
+# rank_stockout_risk above: derived_tools.py fetches raw data via the
+# client directly, this function only sums already-paired data) so the
+# Inventory Agent can compute it too when a user asks directly -- not a
+# duplicate by oversight, a different call shape for a different caller.
+DEAD_STOCK_CAPITAL_PROVENANCE = {
+    "dead_stock_capital": "derived",
+    "sku_count": "observed",
+    "skus_missing_cost": "observed",
+}
+
+
+class DeadStockPosition(BaseModel):
+    sku: str
+    quantity_on_hand: int
+    unit_cost: float | None
+
+
+class DeadStockCapitalResult(BaseModel):
+    field_provenance: dict[str, str]
+    dead_stock_capital: float
+    sku_count: int
+    # SKUs skipped from the sum for lacking a recorded unit_cost --
+    # surfaced explicitly so a caller can see the total undercounts
+    # rather than silently treating a missing cost as zero.
+    skus_missing_cost: int
+
+
+def compute_dead_stock_capital(positions: list[DeadStockPosition]) -> DeadStockCapitalResult:
+    capital = 0.0
+    skus_missing_cost = 0
+    for position in positions:
+        if position.unit_cost is None:
+            skus_missing_cost += 1
+            continue
+        capital += position.quantity_on_hand * position.unit_cost
+    return DeadStockCapitalResult(
+        field_provenance=DEAD_STOCK_CAPITAL_PROVENANCE,
+        dead_stock_capital=capital,
+        sku_count=len(positions),
+        skus_missing_cost=skus_missing_cost,
+    )
