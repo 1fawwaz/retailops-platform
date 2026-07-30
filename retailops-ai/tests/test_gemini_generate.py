@@ -340,15 +340,54 @@ def test_generate_structured_retries_on_timeout_then_succeeds() -> None:
     assert result.parsed == Sentiment(label="positive")
 
 
-def test_stream_yields_text_chunks() -> None:
+def test_stream_yields_text_chunks_then_a_final_usage_chunk() -> None:
     fake_client = MagicMock()
     fake_client.models.generate_content_stream.return_value = [
-        SimpleNamespace(text="Hel"),
-        SimpleNamespace(text="lo"),
-        SimpleNamespace(text=None),
+        SimpleNamespace(text="Hel", usage_metadata=None),
+        SimpleNamespace(text="lo", usage_metadata=None),
+        SimpleNamespace(
+            text=None,
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=3, candidates_token_count=2, thoughts_token_count=0
+            ),
+        ),
     ]
 
     with patch("llm.providers.gemini.genai.Client", return_value=fake_client):
         chunks = list(stream(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")]))
 
-    assert chunks == ["Hel", "lo"]
+    assert [c.text for c in chunks] == ["Hel", "lo", ""]
+    assert chunks[0].usage_metadata is None
+    assert chunks[1].usage_metadata is None
+    assert chunks[2].usage_metadata == {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}
+
+
+def test_stream_retries_a_failed_connection_then_succeeds() -> None:
+    fake_client = MagicMock()
+    fake_client.models.generate_content_stream.side_effect = [
+        httpx.ConnectError("refused"),
+        [SimpleNamespace(text="recovered", usage_metadata=None)],
+    ]
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep"),
+    ):
+        chunks = list(stream(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")]))
+
+    assert [c.text for c in chunks] == ["recovered"]
+
+
+def test_stream_raises_llm_unavailable_after_exhausting_retries() -> None:
+    fake_client = MagicMock()
+    fake_client.models.generate_content_stream.side_effect = httpx.ConnectError("refused")
+
+    with (
+        patch("llm.providers.gemini.genai.Client", return_value=fake_client),
+        patch("llm.providers.gemini.time.sleep") as fake_sleep,
+        pytest.raises(LLMUnavailableError, match="unreachable after"),
+    ):
+        list(stream(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")]))
+
+    assert fake_client.models.generate_content_stream.call_count == MAX_LLM_RETRIES + 1
+    assert fake_sleep.call_count == MAX_LLM_RETRIES

@@ -28,6 +28,7 @@ future model swap.
 
 from __future__ import annotations
 
+import itertools
 import threading
 import time
 from collections.abc import Iterator
@@ -323,6 +324,20 @@ def generate_structured(
     return StructuredResult(parsed=parsed, usage_metadata=_usage_metadata(response))
 
 
+@dataclass(frozen=True)
+class StreamChunk:
+    """One piece of a streamed response. `usage_metadata` is only
+    populated on the FINAL chunk of a stream -- Gemini's streaming
+    responses only carry complete token counts once generation has
+    finished, not on each incremental delta (the same reason
+    generate()/generate_structured() only report usage once, from a
+    single non-streaming response).
+    """
+
+    text: str
+    usage_metadata: dict[str, int] | None = None
+
+
 def stream(
     *,
     model: str,
@@ -330,12 +345,24 @@ def stream(
     tools: list[StructuredTool] | None = None,
     max_output_tokens: int | None = None,
     temperature: float | None = None,
-) -> Iterator[str]:
-    """Yields text chunks as they arrive. Tool-calling is not supported
-    mid-stream (a streamed response is assumed to be the final answer,
-    not a step in a tool-use loop) -- callers that need tools should use
-    generate() for those turns and reserve stream() for the final
-    response to a user.
+) -> Iterator[StreamChunk]:
+    """Yields StreamChunks as text arrives, with a final chunk carrying
+    usage_metadata once generation completes. Tool-calling is not
+    supported mid-stream (a streamed response is assumed to be the final
+    answer, not a step in a tool-use loop) -- callers that need tools
+    should use generate() for those turns and reserve stream() for the
+    final response to a user.
+
+    Retries ONLY establishing the stream (the SDK call plus fetching the
+    first chunk) with the same exponential backoff as generate(), then
+    raises LLMUnavailableError -- the same connection-level failure mode
+    generate() guards against. A failure partway through an
+    already-started stream (after some chunks have already reached the
+    caller, e.g. already relayed onward as SSE tokens) is NOT retried --
+    transparently restarting a stream a caller has already partially
+    consumed and relayed isn't a "retry" a caller could use safely, so
+    this deliberately doesn't attempt it; the stream simply ends with the
+    exception propagating, same as any other mid-stream network failure.
     """
     system_instruction, contents = _split_messages(messages)
     config = types.GenerateContentConfig(
@@ -344,11 +371,40 @@ def stream(
         temperature=temperature,
         tools=[_tool_to_gemini(tool) for tool in tools] if tools else None,
     )
-    for chunk in _client().models.generate_content_stream(
-        model=model, contents=contents, config=config
-    ):
+
+    last_exception: Exception | None = None
+    chunks: Iterator[types.GenerateContentResponse] | None = None
+    first: types.GenerateContentResponse | None = None
+    for attempt in range(MAX_LLM_RETRIES + 1):
+        try:
+            chunks = iter(
+                _client().models.generate_content_stream(
+                    model=model, contents=contents, config=config
+                )
+            )
+            first = next(chunks, None)
+            break
+        except RETRYABLE_LLM_EXCEPTIONS as exc:
+            last_exception = exc
+            chunks = None
+            if attempt < MAX_LLM_RETRIES:
+                time.sleep(LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
+    if chunks is None:
+        assert last_exception is not None
+        raise LLMUnavailableError(
+            f"Gemini unreachable after {MAX_LLM_RETRIES} retries calling model {model!r} "
+            f"(stream): {last_exception}"
+        ) from last_exception
+
+    last_usage: dict[str, int] | None = None
+    remaining = itertools.chain([first], chunks) if first is not None else chunks
+    for chunk in remaining:
+        if chunk.usage_metadata is not None:
+            last_usage = _usage_metadata(chunk)
         if chunk.text:
-            yield chunk.text
+            yield StreamChunk(text=chunk.text)
+    if last_usage is not None:
+        yield StreamChunk(text="", usage_metadata=last_usage)
 
 
 def list_model_ids() -> list[str]:

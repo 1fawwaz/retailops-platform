@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from agents.base import Agent, build_agents
 from clients.stockpilot import StockPilotClient
-from llm.providers.gemini import StructuredResult
+from llm.providers.gemini import StreamChunk, StructuredResult
 from orchestration.models.agent_step import AgentStep
 from orchestration.models.execution import Execution
 from prompts.loader import load_prompt
@@ -188,6 +188,89 @@ def test_agent_invoke_persists_the_given_iteration(db_session: Session) -> None:
 
     step = db_session.query(AgentStep).one()
     assert step.iteration == 3
+
+
+def _fake_stream(*texts: str, usage: dict[str, int] | None = None) -> Any:
+    def _stream(**kwargs: object) -> Any:
+        for text in texts:
+            yield StreamChunk(text=text)
+        if usage is not None:
+            yield StreamChunk(text="", usage_metadata=usage)
+
+    return _stream
+
+
+def test_agent_invoke_streaming_accumulates_chunks_and_calls_on_chunk(db_session: Session) -> None:
+    agent = Agent(name="decision", role="decision", prompt=load_prompt("decision"))
+    execution_id = _new_execution(db_session)
+    received: list[str] = []
+
+    with patch(
+        "agents.base.stream",
+        side_effect=_fake_stream(
+            "Hel", "lo", usage={"input_tokens": 4, "output_tokens": 2, "total_tokens": 6}
+        ),
+    ):
+        result = agent.invoke_streaming(
+            "Summarize.",
+            session_factory=lambda: db_session,
+            execution_id=execution_id,
+            on_chunk=received.append,
+        )
+
+    assert result.content == "Hello"
+    assert received == ["Hel", "lo"]
+
+    step = db_session.query(AgentStep).one()
+    assert step.execution_id == execution_id
+    assert step.agent_name == "decision"
+    assert step.status == "completed"
+    assert step.output is not None
+    assert step.output["content"] == "Hello"
+    assert step.prompt_tokens == 4
+    assert step.completion_tokens == 2
+
+
+def test_agent_invoke_streaming_works_with_no_on_chunk_callback(db_session: Session) -> None:
+    agent = Agent(name="decision", role="decision", prompt=load_prompt("decision"))
+    execution_id = _new_execution(db_session)
+
+    with patch("agents.base.stream", side_effect=_fake_stream("all at once")):
+        result = agent.invoke_streaming(
+            "q", session_factory=lambda: db_session, execution_id=execution_id
+        )
+
+    assert result.content == "all at once"
+
+
+def test_agent_invoke_streaming_rejects_agents_with_tools(db_session: Session) -> None:
+    agent = Agent(
+        name="inventory",
+        role="retriever",
+        prompt=load_prompt("inventory"),
+        tools=(_weather_tool(),),
+    )
+    with pytest.raises(ValueError, match="only for tool-less agents"):
+        agent.invoke_streaming(
+            "q", session_factory=lambda: db_session, execution_id=_new_execution(db_session)
+        )
+
+
+def test_agent_invoke_streaming_persists_a_failed_step_and_reraises(db_session: Session) -> None:
+    agent = Agent(name="decision", role="decision", prompt=load_prompt("decision"))
+    execution_id = _new_execution(db_session)
+
+    def _boom(**kwargs: object) -> Any:
+        raise RuntimeError("stream broke")
+
+    with (
+        patch("agents.base.stream", side_effect=_boom),
+        pytest.raises(RuntimeError, match="stream broke"),
+    ):
+        agent.invoke_streaming("q", session_factory=lambda: db_session, execution_id=execution_id)
+
+    step = db_session.query(AgentStep).one()
+    assert step.status == "failed"
 
 
 class _Judgement(BaseModel):

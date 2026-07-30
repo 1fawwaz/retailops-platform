@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from agents.replan import ReplanJudgement
 from clients.stockpilot import StockPilotClient
 from llm.providers.gemini import StructuredResult
-from orchestration.executor import run_execution
+from orchestration.executor import run_execution, run_execution_streaming
 from orchestration.models import Base
 from orchestration.models.conversation import Conversation
 from orchestration.models.execution import Execution
@@ -217,3 +217,71 @@ def test_run_execution_persists_citation_failures_on_the_execution_row(
     citation_failures = execution.errors["citation_failures"]
     assert len(citation_failures) == 2
     assert all(not attempt["passed"] for attempt in citation_failures)
+
+
+def test_run_execution_streaming_yields_progress_events_then_a_done_event(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Stage 6: run_execution_streaming() runs the SAME real graph
+    run_execution() does (same conversation/message/execution
+    persistence tail, verified below), but as a generator of progress
+    events ending in one "done" event carrying the identical response
+    shape api/agent.py's non-streaming path returns.
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    def fake_stream(*, model: str, messages: list[Any], tools: Any = None) -> Any:
+        from llm.providers.gemini import StreamChunk
+
+        yield StreamChunk(text="decision ")
+        yield StreamChunk(text="answer")
+        yield StreamChunk(
+            text="", usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        )
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+        patch("agents.base.stream", side_effect=fake_stream),
+    ):
+        events = list(
+            run_execution_streaming(
+                "Which products are low on stock?",
+                client=_client(),
+                session_factory=session_factory,
+            )
+        )
+
+    event_types = [e["type"] for e in events]
+    assert event_types.count("agent_completed") == 5  # 3 retrieval + report + decision
+    assert "replan_judgement" in event_types
+    assert "citation_check" in event_types
+    assert event_types[-1] == "done"
+
+    token_texts = "".join(str(e["text"]) for e in events if e["type"] == "token")
+    assert token_texts == "decision answer"
+
+    done = events[-1]
+    assert done["status"] == "completed"
+    assert done["answer"] == "decision answer"
+    assert done["replan_rounds"] == 1
+    assert done["citation_attempts"] == 1
+
+    # The persistence tail ran exactly like run_execution()'s own.
+    session = session_factory()
+    try:
+        messages = session.query(Message).order_by(Message.created_at).all()
+        executions = session.query(Execution).all()
+    finally:
+        session.close()
+    assert [(m.role, m.content) for m in messages] == [
+        ("user", "Which products are low on stock?"),
+        ("assistant", "decision answer"),
+    ]
+    assert len(executions) == 1
+    assert executions[0].status == "completed"
+    assert executions[0].final_answer == "decision answer"

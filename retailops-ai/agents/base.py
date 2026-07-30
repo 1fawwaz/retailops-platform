@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 
 from agents.envelope import envelope
 from clients.stockpilot import StockPilotClient
-from llm.providers.gemini import StructuredResult, generate, generate_structured
+from llm.providers.gemini import StructuredResult, generate, generate_structured, stream
 from model_config import get_model_config
 from orchestration.models.agent_step import AgentStep
 from prompts.loader import LoadedPrompt, load_prompt
@@ -165,6 +165,77 @@ class Agent:
             query=query,
             response=response,
             tool_calls_made=tool_calls_made,
+            status=status,
+            error=error,
+            latency_ms=latency_ms,
+            iteration=iteration,
+        )
+
+        if error is not None:
+            raise error
+        assert response is not None
+        return response
+
+    def invoke_streaming(
+        self,
+        query: str,
+        *,
+        session_factory: Callable[[], Session],
+        execution_id: uuid.UUID,
+        iteration: int = 1,
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> AIMessage:
+        """Stage 6: a streaming counterpart to invoke(), for tool-less
+        agents only -- report/decision are tool-less by design (invariant
+        1), so there's no tool-calling loop to preserve here, unlike
+        invoke() itself. Calls llm.providers.gemini.stream() instead of
+        generate(); `on_chunk` (if given) fires once per text delta as it
+        arrives. The caller decides what "arriving" means to it --
+        orchestration/graph.py wires this to LangGraph's own
+        get_stream_writer() when running inside the graph -- this module
+        stays graph-agnostic on purpose, since Agent is also invoked
+        directly OUTSIDE the graph (agents/decision.py's per-SKU
+        pipeline, Task 4.3) where there is no LangGraph stream to write
+        to at all. Persists exactly one agent_steps row, same as
+        invoke() -- the accumulated full text is what's stored, not the
+        individual chunks.
+        """
+        if self.tools:
+            raise ValueError(
+                f"invoke_streaming() is only for tool-less agents; {self.name!r} has tools"
+            )
+        started = time.monotonic()
+        messages: list[BaseMessage] = [
+            SystemMessage(content=self.prompt.text),
+            HumanMessage(content=query),
+        ]
+        status = "completed"
+        error: Exception | None = None
+        text_parts: list[str] = []
+        usage: dict[str, int] | None = None
+
+        try:
+            for chunk in stream(model=self.model_id, messages=messages):
+                if chunk.text:
+                    text_parts.append(chunk.text)
+                    if on_chunk is not None:
+                        on_chunk(chunk.text)
+                if chunk.usage_metadata is not None:
+                    usage = chunk.usage_metadata
+        except Exception as exc:  # noqa: BLE001 -- recorded below, then re-raised unchanged
+            status = "failed"
+            error = exc
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+        response = (
+            AIMessage(content="".join(text_parts), usage_metadata=usage) if error is None else None
+        )
+        self._persist_step(
+            session_factory=session_factory,
+            execution_id=execution_id,
+            query=query,
+            response=response,
+            tool_calls_made=[],
             status=status,
             error=error,
             latency_ms=latency_ms,

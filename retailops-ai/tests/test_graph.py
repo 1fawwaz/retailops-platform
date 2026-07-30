@@ -914,3 +914,82 @@ def test_replan_llm_outage_forces_sufficient_and_stops_the_loop(
     assert result["replan_history"][0]["sufficient"] is True
     assert result["final_answer"] == "decision answer"
     assert any("replan" in error for error in result["errors"])
+
+
+def test_decision_node_streams_tokens_only_when_streaming_true(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Stage 6: build_execution_graph(..., streaming=True) makes ONLY the
+    decision node emit custom LangGraph stream events as it generates --
+    proven here by mocking agents.base.stream (not just generate()) for
+    the decision agent's own call and consuming the compiled graph via
+    graph.stream(state, stream_mode="custom"), the actual mechanism
+    orchestration/executor.py's streaming path uses. The other five
+    agents never call stream() at all in this test (only generate() is
+    mocked for them) -- proving they stayed on the ordinary invoke()
+    path even though the graph run overall is a streaming one.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    def fake_stream(*, model: str, messages: list[Any], tools: Any = None) -> Any:
+        from llm.providers.gemini import StreamChunk
+
+        yield StreamChunk(text="decision ")
+        yield StreamChunk(text="answer")
+        yield StreamChunk(
+            text="", usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        )
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+        patch("agents.base.stream", side_effect=fake_stream),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id, streaming=True)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        events = list(graph.stream(state, stream_mode="custom"))
+
+    token_events = [e for e in events if e.get("type") == "token"]
+    assert token_events, f"expected at least one token event, got {events}"
+    assert all(e["node"] == "decision" for e in token_events)
+    assert "".join(e["text"] for e in token_events) == "decision answer"
+
+
+def test_decision_node_does_not_stream_when_streaming_false(
+    session_factory: Callable[[], Session],
+) -> None:
+    """The default, non-streaming graph build never calls stream() at
+    all for the decision node -- streaming=False (build_execution_graph's
+    own default) is what every existing caller (run_execution(), and
+    this whole test file) relies on; patching only agents.base.generate
+    and NOT agents.base.stream here would raise if the decision node
+    ever tried to call it, so a passing run already proves this, but the
+    explicit zero-events assertion documents the intent directly.
+    """
+    execution_id = _new_execution(session_factory)
+    agents = _six_agents()
+    prompt_to_name = _dispatch_by_prompt(agents)
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        graph = build_execution_graph(agents, session_factory, execution_id)
+        state = new_execution_state(
+            execution_id=execution_id, query="q", budgets={"max_tool_iterations": 12}
+        )
+        events = list(graph.stream(state, stream_mode="custom"))
+
+    assert events == []

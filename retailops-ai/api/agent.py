@@ -12,20 +12,40 @@ agent_steps and tool_calls row Postgres actually holds for that
 execution, including raw tool responses and prompt hashes -- the two are
 deliberately different depths, matching the spec's own two separate
 bullets for this task.
+
+Stage 6: POST /agent/query also serves Server-Sent Events on the SAME
+path and SAME request shape -- an `Accept: text/event-stream` header
+switches it from the single blocking JSON response above to a live
+stream of progress events (agent completions, the Planner's replan
+judgement, citation-validator attempts, and the Decision Engine's own
+answer streamed token-by-token), ending in one "done" event carrying
+the identical fields the JSON response has. See
+orchestration/executor.py::run_execution_streaming()'s own docstring for
+the full event-shape reference; api/agent.py's only job here is framing
+those same dicts as SSE wire format and JSON-encoding them (UUIDs need
+`default=str`, nothing else about the payload shape changes).
 """
 
 from __future__ import annotations
 
+import json
 import uuid
+from collections.abc import Iterator
 from datetime import datetime
+from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session, sessionmaker
 
 from api.deps import get_current_subject, get_db_session_factory, get_stockpilot_client
 from clients.stockpilot import StockPilotClient
-from orchestration.executor import run_execution
+from orchestration.executor import (
+    build_query_response_fields,
+    run_execution,
+    run_execution_streaming,
+)
 from orchestration.models.agent_step import AgentStep
 from orchestration.models.base import JsonDict, JsonValue
 from orchestration.models.execution import Execution
@@ -152,50 +172,77 @@ class ExecutionTraceResponse(BaseModel):
     tool_calls: list[ToolCallEntry]
 
 
+def _tool_ledger_entries(raw_entries: object) -> list[ToolLedgerEntry]:
+    entries = cast(list[dict[str, object]], raw_entries)
+    return [
+        ToolLedgerEntry(
+            tool_call_id=str(entry["tool_call_id"]),
+            tool_name=str(entry["tool_name"]),
+            status=str(entry["status"]),
+            latency_ms=entry["latency_ms"] if isinstance(entry["latency_ms"], int) else None,
+        )
+        for entry in entries
+    ]
+
+
+def _query_response_from_fields(fields: dict[str, object]) -> AgentQueryResponse:
+    """The shared response shape, built from
+    orchestration/executor.py::build_query_response_fields()'s plain
+    dict -- used for the ordinary JSON response AND (JSON-encoded, not
+    as a Pydantic model) for the streaming path's final "done" SSE
+    event, so both ways of calling this endpoint end up describing the
+    same execution the same way.
+    """
+    return AgentQueryResponse(
+        execution_id=cast(uuid.UUID, fields["execution_id"]),
+        conversation_id=cast(uuid.UUID, fields["conversation_id"]),
+        status=cast(str, fields["status"]),
+        answer=cast("str | None", fields["answer"]),
+        plan=cast("str | None", fields["plan"]),
+        agent_results=cast(dict[str, str], fields["agent_results"]),
+        tool_ledger=_tool_ledger_entries(fields["tool_ledger"]),
+        provenance_map=cast(dict[str, str], fields["provenance_map"]),
+        replan_rounds=cast(int, fields["replan_rounds"]),
+        citation_attempts=cast(int, fields["citation_attempts"]),
+        errors=cast(list[str], fields["errors"]),
+        total_tokens=cast("int | None", fields["total_tokens"]),
+    )
+
+
+def _sse_event(payload: dict[str, object]) -> str:
+    event_type = str(payload.get("type", "message"))
+    return f"event: {event_type}\ndata: {json.dumps(payload, default=str)}\n\n"
+
+
 @router.post("/query", response_model=AgentQueryResponse)
 def query_agent(
-    request: AgentQueryRequest,
+    payload: AgentQueryRequest,
+    request: Request,
     _subject: str = Depends(get_current_subject),
     client: StockPilotClient = Depends(get_stockpilot_client),
     session_factory: sessionmaker[Session] = Depends(get_db_session_factory),
-) -> AgentQueryResponse:
+) -> AgentQueryResponse | StreamingResponse:
+    if "text/event-stream" in request.headers.get("accept", ""):
+
+        def event_source() -> Iterator[str]:
+            for event in run_execution_streaming(
+                payload.query,
+                client=client,
+                session_factory=session_factory,
+                conversation_id=payload.conversation_id,
+            ):
+                yield _sse_event(event)
+
+        return StreamingResponse(event_source(), media_type="text/event-stream")
+
     state = run_execution(
-        request.query,
+        payload.query,
         client=client,
         session_factory=session_factory,
-        conversation_id=request.conversation_id,
+        conversation_id=payload.conversation_id,
     )
-
-    session = session_factory()
-    try:
-        execution = session.get(Execution, state["execution_id"])
-    finally:
-        session.close()
-    assert execution is not None, "run_execution() always persists its own Execution row"
-    assert execution.conversation_id is not None, "run_execution() always assigns a conversation"
-
-    return AgentQueryResponse(
-        execution_id=execution.id,
-        conversation_id=execution.conversation_id,
-        status=execution.status,
-        answer=execution.final_answer,
-        plan=state["plan"],
-        agent_results=state["agent_results"],
-        tool_ledger=[
-            ToolLedgerEntry(
-                tool_call_id=str(entry["tool_call_id"]),
-                tool_name=str(entry["tool_name"]),
-                status=str(entry["status"]),
-                latency_ms=entry["latency_ms"] if isinstance(entry["latency_ms"], int) else None,
-            )
-            for entry in state["tool_ledger"]
-        ],
-        provenance_map=state["provenance_map"],
-        replan_rounds=len(state["replan_history"]),
-        citation_attempts=len(state["citation_failures"]),
-        errors=state["errors"],
-        total_tokens=execution.total_tokens,
-    )
+    fields = build_query_response_fields(state, session_factory)
+    return _query_response_from_fields(fields)
 
 
 @router.get("/execution/{execution_id}", response_model=ExecutionTraceResponse)

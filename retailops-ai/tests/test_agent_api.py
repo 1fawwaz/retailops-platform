@@ -10,6 +10,7 @@ not just at the graph level.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import uuid
@@ -266,3 +267,101 @@ def test_get_execution_trace_returns_404_for_an_unknown_execution_id(
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
+
+
+def test_query_agent_streams_sse_events_when_accept_header_requests_it(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Stage 6: the SAME POST /agent/query path, switched to SSE purely
+    by the request's Accept header -- proves the whole chain end to end
+    through the real ASGI app: real graph, real streaming=True wiring in
+    orchestration/graph.py, real event framing in api/agent.py.
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    def fake_stream(*, model: str, messages: list[Any], tools: Any = None) -> Any:
+        from llm.providers.gemini import StreamChunk
+
+        yield StreamChunk(text="decision ")
+        yield StreamChunk(text="answer")
+        yield StreamChunk(
+            text="", usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        )
+
+    test_client = _test_client(session_factory, _login_only_client())
+    events: list[tuple[str, dict[str, Any]]] = []
+    try:
+        with (
+            patch("agents.base.generate", side_effect=fake_generate),
+            patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+            patch("agents.base.stream", side_effect=fake_stream),
+        ):
+            with test_client.stream(
+                "POST",
+                "/agent/query",
+                json={"query": "Which products are low on stock?"},
+                headers={"Accept": "text/event-stream"},
+            ) as response:
+                assert response.status_code == 200
+                assert "text/event-stream" in response.headers["content-type"]
+                event_type: str | None = None
+                for line in response.iter_lines():
+                    if line.startswith("event: "):
+                        event_type = line.removeprefix("event: ")
+                    elif line.startswith("data: "):
+                        assert event_type is not None
+                        events.append((event_type, json.loads(line.removeprefix("data: "))))
+    finally:
+        app.dependency_overrides.clear()
+
+    event_types = [event_type for event_type, _ in events]
+    assert event_types.count("agent_completed") == 5  # 3 retrieval + report + decision
+    assert "token" in event_types
+    assert "replan_judgement" in event_types
+    assert "citation_check" in event_types
+    assert event_types[-1] == "done"
+
+    token_text = "".join(data["text"] for event_type, data in events if event_type == "token")
+    assert token_text == "decision answer"
+
+    done_data = events[-1][1]
+    assert done_data["status"] == "completed"
+    assert done_data["answer"] == "decision answer"
+    assert uuid.UUID(done_data["execution_id"])  # a real, parseable execution id
+
+
+def test_query_agent_without_streaming_accept_header_returns_plain_json(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Regression guard: the default (no special Accept header) request
+    shape -- what the existing non-streaming tests above already send --
+    must stay a single plain JSON response, never SSE. Also proves the
+    decision node never calls stream() at all on this path: only
+    agents.base.generate is mocked here, exactly like every pre-Stage-6
+    test in this file.
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        return _ai_message(f"{name} answer")
+
+    test_client = _test_client(session_factory, _login_only_client())
+    try:
+        with (
+            patch("agents.base.generate", side_effect=fake_generate),
+            patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+        ):
+            response = test_client.post(
+                "/agent/query", json={"query": "Which products are low on stock?"}
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert "application/json" in response.headers["content-type"]
+    assert response.json()["answer"] == "decision answer"

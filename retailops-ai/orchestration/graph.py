@@ -81,6 +81,7 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from langchain_core.messages import AIMessage
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.orm import Session
@@ -359,6 +360,7 @@ def _make_synthesis_node(
     execution_id: uuid.UUID,
     *,
     is_final: bool,
+    streaming: bool = False,
 ) -> NodeFn:
     def node(state: ExecutionState) -> dict[str, object]:
         sections = [f"User query:\n{state['query']}"]
@@ -407,9 +409,40 @@ def _make_synthesis_node(
 
         started = time.monotonic()
         try:
-            response = agent.invoke(
-                prompt, session_factory=session_factory, execution_id=execution_id
-            )
+            if is_final and streaming:
+                # Stage 6: only the node whose text is the actual answer a
+                # chat UI shows live streams token-by-token, and only for
+                # a genuinely SSE-streaming execution -- `streaming` is
+                # False for every existing caller of build_execution_graph
+                # (run_execution()'s own blocking path, and the whole
+                # existing test suite, none of which mock stream()), so
+                # this branch is unreachable there and behaviour for the
+                # plain POST /agent/query JSON path is byte-for-byte
+                # unchanged. Confirmed the hard way: an early version of
+                # this streaming feature called invoke_streaming()
+                # whenever is_final was true, with no separate flag --
+                # every existing test that mocks agents.base.generate but
+                # not agents.base.stream then made a REAL Gemini call for
+                # the decision node and failed/hung. get_stream_writer()
+                # itself is safe to call unconditionally (confirmed live:
+                # a real no-op under .invoke()) -- the actual regression
+                # was routing through stream() at all when nothing
+                # upstream had mocked it.
+                writer = get_stream_writer()
+
+                def _emit_token(text: str) -> None:
+                    writer({"type": "token", "node": agent.name, "text": text})
+
+                response = agent.invoke_streaming(
+                    prompt,
+                    session_factory=session_factory,
+                    execution_id=execution_id,
+                    on_chunk=_emit_token,
+                )
+            else:
+                response = agent.invoke(
+                    prompt, session_factory=session_factory, execution_id=execution_id
+                )
         except LLMUnavailableError as exc:
             ended = time.monotonic()
             fallback = (
@@ -494,6 +527,8 @@ def build_execution_graph(
     agents: dict[str, Agent],
     session_factory: Callable[[], Session],
     execution_id: uuid.UUID,
+    *,
+    streaming: bool = False,
 ) -> CompiledStateGraph[ExecutionState, None, ExecutionState, ExecutionState]:
     """Wires the six Task 3.1 agents into the graph topology above. Node
     bodies are closures over `agents`/`session_factory`/`execution_id`
@@ -501,6 +536,14 @@ def build_execution_graph(
     machinery -- they're live runtime dependencies (a DB session
     factory, tool-bound agent instances), not serializable execution
     data, so they don't belong in `ExecutionState`.
+
+    Stage 6: `streaming` (default False, preserving every existing
+    caller's exact behaviour) is threaded only to the decision node --
+    the one node whose output is the live chat answer. When True, that
+    node streams its own generation token-by-token via
+    get_stream_writer() (orchestration/executor.py::run_execution_streaming()
+    is the only caller that passes True, when a real graph.stream() SSE
+    consumer is listening).
     """
     builder: StateGraph[ExecutionState, None, ExecutionState, ExecutionState] = StateGraph(
         ExecutionState
@@ -538,7 +581,13 @@ def build_execution_graph(
         "decision",
         cast(
             Any,
-            _make_synthesis_node(agents["decision"], session_factory, execution_id, is_final=True),
+            _make_synthesis_node(
+                agents["decision"],
+                session_factory,
+                execution_id,
+                is_final=True,
+                streaming=streaming,
+            ),
         ),
     )
     builder.add_node("validator", cast(Any, _make_validator_node(session_factory, execution_id)))
