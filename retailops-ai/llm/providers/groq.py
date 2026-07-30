@@ -44,7 +44,7 @@ import json
 import threading
 import time
 from collections.abc import Iterator
-from typing import Literal, TypeVar
+from typing import Literal, NoReturn, TypeVar
 
 import groq
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -71,6 +71,19 @@ RETRYABLE_GROQ_EXCEPTIONS: tuple[type[Exception], ...] = (
     groq.APITimeoutError,
     groq.InternalServerError,
 )
+
+# Real, live-discovered finding from Task 6.5's own TRUST GATE
+# verification (once Groq took full primary-role traffic rather than
+# only occasional post-failover calls): Groq signals "this single
+# request exceeds the per-minute token budget" as HTTP 413 with
+# body.code == "rate_limit_exceeded" -- a bare groq.APIStatusError, NOT
+# a groq.RateLimitError (that class is reserved for 429 in this SDK).
+# Semantically this IS the same quota problem a 429 represents (the
+# request cannot succeed against this window no matter how many times
+# it's retried), so it gets the identical immediate-failover treatment
+# below -- distinguished from every OTHER APIStatusError (400 bad
+# request, 401 bad key, ...), which still propagate unmodified.
+GROQ_REQUEST_TOO_LARGE_STATUS_CODE = 413
 
 _thread_local = threading.local()
 
@@ -147,6 +160,23 @@ def _usage_metadata(usage: object) -> dict[str, int]:
     }
 
 
+def _raise_for_request_too_large(
+    exc: groq.APIStatusError, *, model: str, context: str = ""
+) -> NoReturn:
+    """Re-raises `exc` as a failover-eligible ProviderUnavailableError if
+    it's the 413 "too large for this TPM window" shape (see
+    GROQ_REQUEST_TOO_LARGE_STATUS_CODE's own comment); otherwise
+    re-raises `exc` itself, unmodified -- every other groq.APIStatusError
+    (400, 401, 403, 404, 409, 422, ...) still needs a human to fix
+    configuration, not a retry or silent failover.
+    """
+    if exc.status_code == GROQ_REQUEST_TOO_LARGE_STATUS_CODE:
+        raise ProviderUnavailableError(
+            f"Groq quota exceeded calling model {model!r}{context}: {exc}"
+        ) from exc
+    raise exc
+
+
 def _response_to_ai_message(response: object, *, model: str) -> AIMessage:
     choice = response.choices[0]  # type: ignore[attr-defined]
     message = choice.message
@@ -200,9 +230,15 @@ def _create_with_retry(
                 f"Groq quota exceeded calling model {model!r}: {exc}"
             ) from exc
         except RETRYABLE_GROQ_EXCEPTIONS as exc:
+            # NOTE: groq.InternalServerError is ALSO a groq.APIStatusError
+            # subclass -- this clause MUST stay ordered before the bare
+            # APIStatusError one below, or a 5xx would stop retrying and
+            # go straight to the 413-or-reraise check instead.
             last_exception = exc
             if attempt < MAX_LLM_RETRIES:
                 time.sleep(LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
+        except groq.APIStatusError as exc:
+            _raise_for_request_too_large(exc, model=model)
     assert last_exception is not None
     raise ProviderUnavailableError(
         f"Groq unreachable after {MAX_LLM_RETRIES} retries calling model {model!r}: "
@@ -296,10 +332,15 @@ def stream(
                 f"Groq quota exceeded calling model {model!r} (stream): {exc}"
             ) from exc
         except RETRYABLE_GROQ_EXCEPTIONS as exc:
+            # NOTE: groq.InternalServerError is ALSO a groq.APIStatusError
+            # subclass -- this clause MUST stay ordered before the bare
+            # APIStatusError one below, same reasoning as _create_with_retry.
             last_exception = exc
             chunks = None
             if attempt < MAX_LLM_RETRIES:
                 time.sleep(LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
+        except groq.APIStatusError as exc:
+            _raise_for_request_too_large(exc, model=model, context=" (stream)")
     if chunks is None:
         assert last_exception is not None
         raise ProviderUnavailableError(

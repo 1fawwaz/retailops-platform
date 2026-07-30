@@ -115,7 +115,7 @@ def test_fresh_chain_tries_groq_first_by_default(
     result = registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
 
     assert result.content == "served by groq"
-    assert groq.calls == [FALLBACK_MODEL]
+    assert groq.calls == [PLANNER_MODEL]
     assert gemini.calls == []
 
 
@@ -133,7 +133,7 @@ def test_fresh_chain_tries_gemini_first_when_configured_as_primary(
     result = registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
 
     assert result.content == "served by gemini"
-    assert gemini.calls == [PLANNER_MODEL]
+    assert gemini.calls == [FALLBACK_MODEL]
     assert groq.calls == []
 
 
@@ -146,8 +146,8 @@ def test_fresh_chain_falls_over_to_the_configured_fallback_on_failure(
     result = registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
 
     assert result.content == "served by gemini"
-    assert groq.calls == [FALLBACK_MODEL]
-    assert gemini.calls == [PLANNER_MODEL]
+    assert groq.calls == [PLANNER_MODEL]
+    assert gemini.calls == [FALLBACK_MODEL]
 
 
 def test_provider_for_role_model_rejects_an_unconfigured_model() -> None:
@@ -172,30 +172,32 @@ def test_pinned_provider_reads_the_last_ai_messages_provider() -> None:
 def test_pinned_conversation_stays_on_the_same_provider_even_if_it_would_lose_to_fresh_resolution(
     fake_providers: tuple[FakeProvider, FakeProvider],
 ) -> None:
-    """The critical fix: round 2 of a Groq-served conversation must call
-    Groq again, never re-resolve away from it -- this is exactly the
-    scenario that produced the real `thought_signature` bug (see
-    registry.py's own docstring), and matters regardless of which
-    provider is configured as the default primary. Also asserts the
-    pinned round is NOT given a fresh two-provider chain: if the pinned
-    provider fails, it must raise LLMUnavailableError immediately
-    rather than trying the other one.
+    """The critical fix: round 2 of a Gemini-served conversation (e.g.
+    Groq quota-exhausted mid-conversation, Task 6.4's own scenario) must
+    call Gemini again, never re-resolve to Groq even though Groq is the
+    configured default primary -- this is exactly the scenario that
+    produced the real `thought_signature` bug (see registry.py's own
+    docstring), and matters regardless of which provider is configured
+    as the default primary. Also asserts the pinned round is NOT given
+    a fresh two-provider chain: if the pinned provider fails, it must
+    raise LLMUnavailableError immediately rather than trying the other
+    one.
     """
     gemini, groq = fake_providers
     history = [
         HumanMessage(content="hi"),
         AIMessage(
-            content="round 1, served by groq",
+            content="round 1, served by gemini",
             tool_calls=[{"name": "get_inventory", "args": {}, "id": "call_1"}],
-            response_metadata={"provider": "groq", "model": FALLBACK_MODEL},
+            response_metadata={"provider": "gemini", "model": FALLBACK_MODEL},
         ),
     ]
 
     result = registry.generate(model=PLANNER_MODEL, messages=history)
 
-    assert result.content == "served by groq"
-    assert groq.calls == [FALLBACK_MODEL]
-    assert gemini.calls == []
+    assert result.content == "served by gemini"
+    assert gemini.calls == [FALLBACK_MODEL]
+    assert groq.calls == []
 
 
 def test_pinned_conversation_does_not_fail_over_if_the_pinned_provider_fails(
@@ -207,14 +209,14 @@ def test_pinned_conversation_does_not_fail_over_if_the_pinned_provider_fails(
         HumanMessage(content="hi"),
         AIMessage(
             content="round 1",
-            response_metadata={"provider": "groq", "model": FALLBACK_MODEL},
+            response_metadata={"provider": "groq", "model": PLANNER_MODEL},
         ),
     ]
 
     with pytest.raises(LLMUnavailableError):
         registry.generate(model=PLANNER_MODEL, messages=history)
 
-    assert groq.calls == [FALLBACK_MODEL]
+    assert groq.calls == [PLANNER_MODEL]
     assert gemini.calls == []
 
 
@@ -225,15 +227,15 @@ def test_pinned_conversation_uses_the_role_model_when_pinned_to_the_roles_own_pr
     history = [
         HumanMessage(content="hi"),
         AIMessage(
-            content="round 1, served by gemini",
-            response_metadata={"provider": "gemini", "model": PLANNER_MODEL},
+            content="round 1, served by groq",
+            response_metadata={"provider": "groq", "model": PLANNER_MODEL},
         ),
     ]
 
     registry.generate(model=PLANNER_MODEL, messages=history)
 
-    assert gemini.calls == [PLANNER_MODEL]
-    assert groq.calls == []
+    assert groq.calls == [PLANNER_MODEL]
+    assert gemini.calls == []
 
 
 def test_stream_resolves_chain_from_message_history_too(
@@ -243,15 +245,15 @@ def test_stream_resolves_chain_from_message_history_too(
     history = [
         HumanMessage(content="hi"),
         AIMessage(
-            content="round 1", response_metadata={"provider": "groq", "model": FALLBACK_MODEL}
+            content="round 1", response_metadata={"provider": "gemini", "model": FALLBACK_MODEL}
         ),
     ]
 
     chunks = list(registry.stream(model=PLANNER_MODEL, messages=history))
 
     assert [c.text for c in chunks] == ["chunk"]
-    assert groq.calls == [FALLBACK_MODEL]
-    assert gemini.calls == []
+    assert gemini.calls == [FALLBACK_MODEL]
+    assert groq.calls == []
 
 
 def test_generate_structured_resolves_the_same_fresh_chain_as_generate(
@@ -266,8 +268,8 @@ def test_generate_structured_resolves_the_same_fresh_chain_as_generate(
 
     assert result.provider == "gemini"
     assert result.parsed == Sentiment(label="gemini")
-    assert groq.calls == [FALLBACK_MODEL]
-    assert gemini.calls == [PLANNER_MODEL]
+    assert groq.calls == [PLANNER_MODEL]
+    assert gemini.calls == [FALLBACK_MODEL]
 
 
 def test_provider_for_returns_the_named_provider(

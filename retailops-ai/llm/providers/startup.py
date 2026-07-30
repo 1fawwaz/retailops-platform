@@ -30,7 +30,7 @@ def validate_configured_models() -> None:
         (config.fallback.provider, config.fallback.model, "fallback"),
     ]
     # Cache each provider's own live list once -- multiple roles share
-    # the same provider today (all three roles are "gemini"), no reason
+    # the same provider today (all three roles are "groq"), no reason
     # to call list_model_ids() four times for it.
     live_ids_by_provider: dict[str, list[str]] = {}
     errors: list[str] = []

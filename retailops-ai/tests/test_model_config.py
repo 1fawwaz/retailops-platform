@@ -30,19 +30,22 @@ def test_get_model_config_is_cached() -> None:
     assert get_model_config() is get_model_config()
 
 
-def test_all_roles_are_configured_for_gemini() -> None:
-    """Every role's PRIMARY provider is gemini per CLAUDE.md's own stack
-    pin ("Gemini primary, Groq fallback") -- Groq only ever appears as
-    the one configured fallback, never a role's own primary.
+def test_all_roles_are_configured_for_groq() -> None:
+    """Every role's PRIMARY provider is groq per CLAUDE.md's own stack
+    pin ("Groq primary, Gemini fallback", Task 6.5) -- Gemini only ever
+    appears as the one configured fallback, never a role's own primary.
+    Groq is primary because this account's Gemini quota has been
+    observed hard-zero (docs/adr/007-multi-provider-fallback.md), not
+    because of any quality difference between the two providers.
     """
     config = get_model_config()
 
     for role_config in (config.roles.planner, config.roles.retriever, config.roles.decision):
-        assert role_config.provider == "gemini"
+        assert role_config.provider == "groq"
 
 
-def test_fallback_is_configured_for_groq() -> None:
+def test_fallback_is_configured_for_gemini() -> None:
     config = get_model_config()
 
-    assert config.fallback.provider == "groq"
+    assert config.fallback.provider == "gemini"
     assert config.fallback.model

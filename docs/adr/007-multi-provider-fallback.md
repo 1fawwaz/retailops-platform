@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — Stage 6 Task 6.4.
+Accepted — Stage 6 Tasks 6.4 and 6.5.
 
 ## Context
 
@@ -101,19 +101,107 @@ deprecated `@app.on_event("startup")`), confirmed live that a bare
 triggers `lifespan` at all, so this makes zero real network calls during an
 ordinary `pytest` run without any test-specific skip logic needed.
 
-**`config/models.yaml` gained one `fallback: {provider, model}` block; no
-role's own `provider`/`model` changed.** `Settings.llm_primary_provider`
-(env var `LLM_PRIMARY_PROVIDER`, default `"gemini"`, matching CLAUDE.md's own
-stack pin) controls which end of the fresh chain goes first, independent of
-which provider each role is configured for — flipping it to `"groq"` for a
-role whose own provider is `"gemini"` tries the fallback pair first, the
-role's own pair second. This is a pure ordering switch; it does not change
-which two providers exist in the chain, and needed no code change to
-support — the mechanism the spec asked for ("primary/fallback order
-switchable via env var") falls directly out of `_resolve_fresh_chain()`'s
-existing logic.
+**`config/models.yaml` gained one `fallback: {provider, model}` block.**
+`Settings.llm_primary_provider` (env var `LLM_PRIMARY_PROVIDER`) controls
+which end of the fresh chain goes first, independent of which provider each
+role is configured for — the mechanism the spec asked for ("primary/fallback
+order switchable via env var") falls directly out of `_resolve_fresh_chain()`'s
+existing logic, and needed no code change to support. See Task 6.5 below for
+which provider that setting actually points at and why.
+
+## Task 6.5: swapping which provider is primary
+
+As originally shipped in Task 6.4, `config/models.yaml` configured every
+role's own primary provider as `gemini` (matching CLAUDE.md's stack pin at
+the time), with Groq as the single fallback and `Settings.llm_primary_provider`
+defaulting to `"gemini"`. Task 6.5 swaps this: **every role's own primary
+provider is now `groq` (all three sharing `openai/gpt-oss-120b`), and Gemini
+(`gemini-3.5-flash`) is the single fallback.**
+
+**This is a deployment/config decision, not an architecture reversal.** The
+provider abstraction built in 6.4 — `LLMProvider`, `FallbackProvider`, the
+pin mechanism — is symmetric by design: nothing in `llm/providers/fallback.py`
+or the pin logic in `registry.py` references either provider by name, and
+`_resolve_fresh_chain()` already read which end was primary from
+`Settings.llm_primary_provider` rather than hardcoding an order. That
+symmetry is exactly why this swap costs nothing structurally: it is a
+`config/models.yaml` + one `Settings` default change, with zero edits to
+`fallback.py`, the pin logic, or the failover-eligibility classification
+that governs *when* a switch happens (only *which* provider ends up in which
+slot changed).
+
+**Why Groq primary, Gemini fallback — a quota-availability decision, not a
+quality judgment.** This account's `gemini-3.1-pro-preview` quota has been
+observed hard-zero for the entire build (every live check since Stage 3 Task
+3.1: `429 RESOURCE_EXHAUSTED` with `limit: 0`) — configuring any role to
+primary-default to a permanently-unusable model would waste a
+guaranteed-failed attempt, and the extra latency of failing over, on every
+single request. Groq's rate limits are generous enough for normal traffic
+(the account's actual constraint, discovered live this task, is a 8,000
+token-per-minute budget per request — see the 413 finding below — not a
+low request count). Gemini remains a fully real, live-verified fallback for
+when Groq's own per-minute limits are hit; nothing about Gemini's
+capability changed, only its role in the chain.
+
+**A third real bug surfaced during this task's own TRUST GATE re-run, fixed
+before it could pass — the same category as the two from 6.4, found the
+same way (live testing, not anticipated by the spec):** Groq signals "this
+single request exceeds the account's per-minute token budget" as an HTTP
+**413**, not a 429 — a bare `groq.APIStatusError` in this SDK, since
+`groq.RateLimitError` is reserved for 429 responses only. Before this task,
+Groq only ever received traffic *after* Gemini had already failed over
+(narrow, single-SKU-scale queries in practice), so this shape never
+surfaced; now that Groq carries full primary-role traffic, including
+broader queries with larger tool-result payloads, it's a routine failure
+mode, not an edge case. Semantically it is the identical problem a 429
+represents — the request cannot succeed against this window no matter how
+many times it's retried — so `llm/providers/groq.py::_raise_for_request_too_large()`
+now gives it the identical immediate-failover treatment, while every other
+`APIStatusError` (400, 401, 403, 404, 409, 422, ...) still propagates
+unmodified. Before this fix, a large query crashed with a raw
+`groq.APIStatusError` traceback instead of failing over — exactly the "raw
+provider error reaching the caller" CLAUDE.md's failover rules forbid.
+Ordering matters here: `groq.InternalServerError` (5xx, retried with
+backoff) is *also* an `APIStatusError` subclass, so the retryable-exceptions
+`except` clause must stay listed before the general `APIStatusError` one, or
+a genuine 5xx would stop retrying and go straight to the 413-or-reraise
+check instead — documented inline in both call sites (`_create_with_retry`,
+`stream()`) since it's a real, non-obvious ordering constraint.
+
+**TRUST GATE for this task, verified honestly, including a real gap.** (1)
+Stage 5 eval suite unchanged, zero network calls, 100%. (2) A full live
+`/agent/query`-equivalent run with Groq serving as the actual default (no
+`LLM_PRIMARY_PROVIDER` override needed) — real tool calls, citation
+validator active, every `agent_steps` row `provider="groq"`. (3) **Partially
+completed, honestly reported rather than forced:** per explicit guidance
+not to deliberately exhaust a provider's real quota during verification, the
+live failover proof used a mocked `GroqProvider` (raising
+`ProviderUnavailableError` immediately, zero real Groq calls) while letting
+the *real* `GeminiProvider` serve — the correct low-cost design. Two live
+attempts both hit Gemini's own real `gemini-3.5-flash` free-tier quota
+(20 requests/day), independently exhausted from this session's own earlier,
+legitimate testing — a genuine, pre-existing environmental constraint on
+this account, not a code defect. Both attempts correctly demonstrated the
+existing both-providers-down graceful degradation path (a clean
+`INCOMPLETE:` message, no raw error, no crash, citation validator's
+degraded-answer skip working as designed) rather than the specific "Gemini
+genuinely serves" proof requested. The underlying mechanism (Groq
+unavailable → chain proceeds to Gemini) is proven at the mocked-unit level
+(`tests/test_registry.py`, updated this task for the new arrangement,
+including `test_fresh_chain_falls_over_to_the_configured_fallback_on_failure`)
+and was already live-proven in the *reverse* direction during Task 6.4
+(Gemini unavailable → Groq serves, full graph, citation validator active) —
+the provider-symmetric design above is exactly why that reverse-direction
+proof is real evidence here too, not a stretch. Re-attempting the specific
+live "Gemini serves" direction is worth doing once this account's Gemini
+quota has headroom again; not forced today.
 
 ## Consequences
+
+*(The TRUST GATE bullet below documents Task 6.4's own original gate, run
+against the gemini-primary/groq-fallback arrangement as first shipped; see
+the Task 6.5 section above for the re-run against the current
+groq-primary/gemini-fallback arrangement.)*
 
 - **Every LLM call's trace now records the provider and model that actually
   served it**, not just the one configured — `AgentStep.provider`
@@ -161,6 +249,22 @@ existing logic.
 - **If Groq ever added a working, load-bearing `response_format=json_schema`
   model smaller/cheaper than `openai/gpt-oss-120b`**, re-verifying finding 1
   live against the real planner prompt (not a paraphrase) before switching
-  `config/models.yaml`'s `fallback.model` would still be required — the
-  finding was specific to model size and this exact prompt, not a permanent
-  property of the `gpt-oss` family.
+  `config/models.yaml`'s role models would still be required — the finding
+  was specific to model size and this exact prompt, not a permanent property
+  of the `gpt-oss` family.
+- **If this account's `gemini-3.1-pro-preview` quota is ever restored**
+  (currently hard-zero, the reason `gemini-3.5-flash` is the fallback model
+  instead), that alone would not be a reason to switch the fallback back to
+  it — `gemini-3.5-flash` is already fully verified for every call shape
+  this codebase needs. It would only become relevant if a role genuinely
+  needed `-pro`-level reasoning specifically for the fallback path, which no
+  live finding to date has shown.
+- **If Groq's own quota profile changes** (this account's real constraint is
+  an 8,000 token-per-minute budget per request, not a low request count —
+  see the Task 6.5 413 finding above), re-verifying the failover-eligibility
+  classification in `llm/providers/groq.py` against Groq's live error shapes
+  is worth repeating the same way the 413 finding was discovered: by
+  running real, moderate-sized queries live and watching for any exception
+  type that falls through both the `RateLimitError` and
+  `RETRYABLE_GROQ_EXCEPTIONS` classifications, not by assuming the current
+  set is exhaustive.

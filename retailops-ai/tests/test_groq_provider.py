@@ -241,6 +241,75 @@ def test_generate_raises_provider_unavailable_after_exhausting_retries() -> None
     assert fake_sleep.call_count == MAX_LLM_RETRIES
 
 
+def test_generate_fails_over_immediately_on_a_413_request_too_large() -> None:
+    """Real, live-discovered finding (Task 6.5): Groq signals "this
+    request exceeds the per-minute token budget" as a 413
+    groq.APIStatusError, not a groq.RateLimitError (429-only in this
+    SDK) -- semantically the same quota problem, same immediate
+    no-retry failover treatment.
+    """
+    fake_client = MagicMock()
+    fake_response = MagicMock()
+    fake_response.request = MagicMock()
+    fake_response.status_code = 413
+    too_large = groq.APIStatusError(
+        "Request too large", response=fake_response, body={"code": "rate_limit_exceeded"}
+    )
+    fake_client.chat.completions.create.side_effect = too_large
+
+    with (
+        patch("llm.providers.groq.groq.Groq", return_value=fake_client),
+        patch("llm.providers.groq.time.sleep") as fake_sleep,
+        pytest.raises(ProviderUnavailableError, match="quota exceeded"),
+    ):
+        generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+
+    assert fake_client.chat.completions.create.call_count == 1
+    fake_sleep.assert_not_called()
+
+
+def test_generate_does_not_retry_a_non_413_api_status_error() -> None:
+    fake_client = MagicMock()
+    fake_response = MagicMock()
+    fake_response.request = MagicMock()
+    fake_response.status_code = 422
+    unprocessable = groq.APIStatusError("unprocessable", response=fake_response, body=None)
+    fake_client.chat.completions.create.side_effect = unprocessable
+
+    with (
+        patch("llm.providers.groq.groq.Groq", return_value=fake_client),
+        patch("llm.providers.groq.time.sleep") as fake_sleep,
+        pytest.raises(groq.APIStatusError),
+    ):
+        generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+
+    assert fake_client.chat.completions.create.call_count == 1
+    fake_sleep.assert_not_called()
+
+
+def test_generate_still_retries_a_5xx_internal_server_error_not_the_413_path() -> None:
+    """groq.InternalServerError is ALSO a groq.APIStatusError subclass --
+    proves the except-clause ORDER keeps it on the retry-then-fail path,
+    not the 413-or-reraise one.
+    """
+    fake_client = MagicMock()
+    fake_response = MagicMock()
+    fake_response.request = MagicMock()
+    fake_response.status_code = 500
+    server_error = groq.InternalServerError("server error", response=fake_response, body=None)
+    fake_client.chat.completions.create.side_effect = server_error
+
+    with (
+        patch("llm.providers.groq.groq.Groq", return_value=fake_client),
+        patch("llm.providers.groq.time.sleep") as fake_sleep,
+        pytest.raises(ProviderUnavailableError, match="unreachable after"),
+    ):
+        generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+
+    assert fake_client.chat.completions.create.call_count == MAX_LLM_RETRIES + 1
+    assert fake_sleep.call_count == MAX_LLM_RETRIES
+
+
 def test_generate_does_not_retry_other_client_errors() -> None:
     fake_client = MagicMock()
     fake_response = MagicMock()
@@ -291,6 +360,27 @@ def test_stream_does_not_retry_a_429_rate_limit_fails_over_immediately() -> None
     fake_response.request = MagicMock()
     rate_limited = groq.RateLimitError("rate limited", response=fake_response, body=None)
     fake_client.chat.completions.create.side_effect = rate_limited
+
+    with (
+        patch("llm.providers.groq.groq.Groq", return_value=fake_client),
+        patch("llm.providers.groq.time.sleep") as fake_sleep,
+        pytest.raises(ProviderUnavailableError, match="quota exceeded"),
+    ):
+        list(stream(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")]))
+
+    assert fake_client.chat.completions.create.call_count == 1
+    fake_sleep.assert_not_called()
+
+
+def test_stream_fails_over_immediately_on_a_413_request_too_large() -> None:
+    fake_client = MagicMock()
+    fake_response = MagicMock()
+    fake_response.request = MagicMock()
+    fake_response.status_code = 413
+    too_large = groq.APIStatusError(
+        "Request too large", response=fake_response, body={"code": "rate_limit_exceeded"}
+    )
+    fake_client.chat.completions.create.side_effect = too_large
 
     with (
         patch("llm.providers.groq.groq.Groq", return_value=fake_client),
