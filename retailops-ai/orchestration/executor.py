@@ -44,6 +44,7 @@ from orchestration.models.conversation import Conversation
 from orchestration.models.execution import Execution
 from orchestration.models.message import Message
 from orchestration.state import ExecutionState, new_execution_state
+from orchestration.validator import resolve_citations
 
 
 def _setup_execution(
@@ -262,6 +263,27 @@ def build_query_response_fields(
         session.close()
     assert execution is not None, "run_execution() always persists its own Execution row"
     assert execution.conversation_id is not None, "run_execution() always assigns a conversation"
+    # ToolCall.agent_step_id is never actually populated anywhere in this
+    # codebase (a known, pre-existing gap) -- state["tool_ledger"] is the
+    # real, already-correct source for "which agent made this call" (each
+    # entry tagged since Task F3's own fix), so resolve_citations() reads
+    # agent attribution from here rather than a DB join that would always
+    # return None.
+    agent_by_tool_call_id = {
+        str(entry["tool_call_id"]): str(entry["agent"])
+        for entry in state["tool_ledger"]
+        if entry.get("agent")
+    }
+    citations = (
+        resolve_citations(
+            execution.final_answer,
+            session_factory,
+            state["execution_id"],
+            agent_by_tool_call_id=agent_by_tool_call_id,
+        )
+        if execution.final_answer
+        else []
+    )
     return {
         "execution_id": execution.id,
         "conversation_id": execution.conversation_id,
@@ -276,6 +298,21 @@ def build_query_response_fields(
         "errors": state["errors"],
         "total_tokens": execution.total_tokens,
         "serving": _serving_models_by_agent(state["execution_id"], session_factory),
+        # Task F4 ("citation drill-down"): where each numeric token in the
+        # final answer resolves to, so the frontend can render a clickable
+        # citation chip per docs/DESIGN-SPEC.md's own component rule.
+        "citations": [
+            {
+                "token": c.token,
+                "value": c.value,
+                "tool_call_id": c.tool_call_id,
+                "tool_name": c.tool_name,
+                "agent": c.agent,
+                "field_name": c.field_name,
+                "provenance": c.provenance,
+            }
+            for c in citations
+        ],
     }
 
 

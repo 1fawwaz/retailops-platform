@@ -212,6 +212,7 @@ describe("done", () => {
       errors: [],
       total_tokens: 10,
       serving: {},
+      citations: [],
     };
   }
 

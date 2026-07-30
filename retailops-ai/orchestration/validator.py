@@ -37,6 +37,14 @@ from sqlalchemy.orm import Session
 
 from orchestration.models.tool_call import ToolCall
 
+# Mirrors orchestration/graph.py's own LLM_DEGRADED_ANSWER_PREFIX and this
+# module's own insufficient_data_message() prefix EXACTLY -- duplicated as
+# literals rather than imported, since graph.py imports FROM this module
+# (validate_citations/insufficient_data_message) and importing back from
+# graph.py would create a cycle. If either prefix ever changes, both call
+# sites (_make_validator_node's own check, here) need updating together.
+_SYSTEM_GENERATED_PREFIXES = ("INCOMPLETE:", "INSUFFICIENT_DATA:")
+
 # Matches an optional currency sign, digits with optional thousands
 # separators, an optional decimal part, and an optional trailing "%" --
 # e.g. "$1,234.56", "42%", "7", "-3.5". Deliberately broad: it also
@@ -172,3 +180,132 @@ def insufficient_data_message(failures: list[CitationFailure]) -> str:
         "gathered for this execution. The following values could not be verified "
         f"against a recorded tool response with its provenance carried through: {missing}."
     )
+
+
+@dataclass(frozen=True)
+class CitationResolution:
+    """Task F4 ("citation drill-down"): WHERE a token resolves to, not
+    just whether it does. `tool_call_id` is None for a token with no
+    grounded match anywhere -- the frontend's own explicit
+    docs/DESIGN-SPEC.md "MISSING SOURCE" case. Structurally this should
+    never actually reach a client: validate_citations() already rejects
+    any draft containing an ungrounded token before it's ever returned
+    (Task 3.5). The two functions stay independent on purpose rather
+    than one trusting the other's verdict, so a future change to one
+    can't silently break the other's own guarantee.
+    """
+
+    token: str
+    value: float
+    tool_call_id: str | None
+    tool_name: str | None
+    agent: str | None
+    field_name: str | None
+    provenance: str | None
+
+
+def resolve_citations(
+    draft: str,
+    session_factory: Callable[[], Session],
+    execution_id: uuid.UUID,
+    *,
+    agent_by_tool_call_id: dict[str, str] | None = None,
+) -> list[CitationResolution]:
+    """Same numeric-token extraction and grounding rules
+    validate_citations() uses, but for a draft already known to pass
+    (the final, returned answer) -- resolves each token to the specific
+    tool call, field, and provenance label it came from, for the
+    frontend's provenance drawer (`GET /agent/execution/{id}` supplies
+    the matching raw_response once the drawer needs to render it; this
+    only needs to name WHICH tool_call_id to look up there). Skips
+    system-generated notices (the Task 3.6 LLM-outage fallback, the
+    INSUFFICIENT_DATA give-up message) the same way
+    _make_validator_node does -- these aren't LLM-authored claims about
+    business data, so citation chips on stray digits inside an error
+    sentence would be noise, not grounding.
+
+    When more than one tool call's response contains the same numeric
+    value, the first grounded match found wins -- an honest "a real
+    source", not a claim of exclusivity; validate_citations() already
+    establishes the value is grounded at all, which is the actual
+    guarantee this codebase makes.
+
+    `agent_by_tool_call_id` is an OPTIONAL map from tool_call_id to the
+    agent that made it, keyed by str(tool_call_id) -- deliberately NOT
+    resolved here via ToolCall.agent_step_id, which is never actually
+    populated anywhere in this codebase (a known, pre-existing gap
+    since Task 2.3/3.1: nothing ever writes it when a ToolCall is
+    created, confirmed live during this task's own verification when
+    every citation's "agent" came back None). The caller
+    (orchestration/executor.py::build_query_response_fields()) already
+    has the real answer sitting in ExecutionState["tool_ledger"], tagged
+    with the correct agent per entry since Task F3's own fix -- passed
+    in here rather than re-deriving it a second, broken way.
+    """
+    if draft.startswith(_SYSTEM_GENERATED_PREFIXES):
+        return []
+
+    tokens = _extract_numeric_tokens(draft)
+    if not tokens:
+        return []
+
+    agent_lookup = agent_by_tool_call_id or {}
+
+    session = session_factory()
+    try:
+        calls = session.query(ToolCall).filter(ToolCall.execution_id == execution_id).all()
+    finally:
+        session.close()
+
+    resolved: dict[float, CitationResolution] = {}
+    for call in calls:
+        if call.raw_response is None:
+            continue
+        provenance_map = call.provenance_map or {}
+        for field_name, value, containing in _iter_numeric_leaves(call.raw_response):
+            if value in resolved or not _has_provenance(field_name, containing, provenance_map):
+                continue
+            label = provenance_map.get(field_name) or containing.get("provenance")
+            resolved[value] = CitationResolution(
+                token="",  # filled in per-occurrence below
+                value=value,
+                tool_call_id=str(call.tool_call_id),
+                tool_name=call.tool_name,
+                agent=agent_lookup.get(str(call.tool_call_id)),
+                field_name=field_name,
+                provenance=str(label) if label else None,
+            )
+
+    citations: list[CitationResolution] = []
+    seen: set[float] = set()
+    for token in tokens:
+        normalized = _normalize(token)
+        if normalized is None or normalized in seen:
+            continue
+        seen.add(normalized)
+        match = resolved.get(normalized)
+        if match is None:
+            citations.append(
+                CitationResolution(
+                    token=token,
+                    value=normalized,
+                    tool_call_id=None,
+                    tool_name=None,
+                    agent=None,
+                    field_name=None,
+                    provenance=None,
+                )
+            )
+        else:
+            citations.append(
+                CitationResolution(
+                    token=token,
+                    value=match.value,
+                    tool_call_id=match.tool_call_id,
+                    tool_name=match.tool_name,
+                    agent=match.agent,
+                    field_name=match.field_name,
+                    provenance=match.provenance,
+                )
+            )
+    return citations

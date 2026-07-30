@@ -97,6 +97,26 @@ class ServingModel(BaseModel):
     model: str
 
 
+class CitationEntry(BaseModel):
+    """Task F4 ("citation drill-down"): where a numeric token in `answer`
+    resolves to. tool_call_id is null only for a token with no grounded
+    match anywhere -- the frontend's docs/DESIGN-SPEC.md "MISSING SOURCE"
+    case; structurally this should never actually appear on a real
+    answer, since the citation validator (Task 3.5) already rejects any
+    draft containing one before it's ever returned here, but the two
+    checks stay independent by design (orchestration/validator.py's own
+    docstring).
+    """
+
+    token: str
+    value: float
+    tool_call_id: str | None
+    tool_name: str | None
+    agent: str | None
+    field_name: str | None
+    provenance: str | None
+
+
 class AgentQueryResponse(BaseModel):
     execution_id: uuid.UUID
     conversation_id: uuid.UUID
@@ -111,6 +131,7 @@ class AgentQueryResponse(BaseModel):
     errors: list[str]
     total_tokens: int | None
     serving: dict[str, ServingModel]
+    citations: list[CitationEntry]
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -138,6 +159,17 @@ class AgentQueryResponse(BaseModel):
                     "errors": [],
                     "total_tokens": 4213,
                     "serving": {"inventory": {"provider": "gemini", "model": "gemini-3.5-flash"}},
+                    "citations": [
+                        {
+                            "token": "12",
+                            "value": 12.0,
+                            "tool_call_id": "5d1a6a2e-3b1a-4b2a-8b1a-3b1a4b2a8b1c",
+                            "tool_name": "get_low_stock",
+                            "agent": "inventory",
+                            "field_name": "quantity_on_hand",
+                            "provenance": "observed",
+                        }
+                    ],
                 }
             ]
         }
@@ -220,6 +252,22 @@ def _serving_models(raw_serving: object) -> dict[str, ServingModel]:
     }
 
 
+def _citation_entries(raw_entries: object) -> list[CitationEntry]:
+    entries = cast(list[dict[str, object]], raw_entries)
+    return [
+        CitationEntry(
+            token=str(entry["token"]),
+            value=float(cast(float, entry["value"])),
+            tool_call_id=cast("str | None", entry["tool_call_id"]),
+            tool_name=cast("str | None", entry["tool_name"]),
+            agent=cast("str | None", entry["agent"]),
+            field_name=cast("str | None", entry["field_name"]),
+            provenance=cast("str | None", entry["provenance"]),
+        )
+        for entry in entries
+    ]
+
+
 def _query_response_from_fields(fields: dict[str, object]) -> AgentQueryResponse:
     """The shared response shape, built from
     orchestration/executor.py::build_query_response_fields()'s plain
@@ -242,6 +290,7 @@ def _query_response_from_fields(fields: dict[str, object]) -> AgentQueryResponse
         errors=cast(list[str], fields["errors"]),
         total_tokens=cast("int | None", fields["total_tokens"]),
         serving=_serving_models(fields["serving"]),
+        citations=_citation_entries(fields["citations"]),
     )
 
 

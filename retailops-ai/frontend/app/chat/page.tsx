@@ -3,13 +3,15 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { parseSSEStream } from "@/lib/sse";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, CitationEntry } from "@/lib/types";
 import {
   applyStreamEvent,
   initialExecutionGraphState,
   type ExecutionGraphState,
 } from "@/lib/executionGraph";
 import { ExecutionGraph } from "@/components/ExecutionGraph";
+import { CitationText } from "@/components/CitationText";
+import { ProvenanceDrawer } from "@/components/ProvenanceDrawer";
 
 export default function ChatPage() {
   const router = useRouter();
@@ -19,6 +21,10 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [graph, setGraph] = useState<ExecutionGraphState | null>(null);
+  const [openCitation, setOpenCitation] = useState<{
+    citation: CitationEntry;
+    executionId: string;
+  } | null>(null);
   const conversationId = useRef<string | null>(null);
   const abortController = useRef<AbortController | null>(null);
 
@@ -64,6 +70,8 @@ export default function ChatPage() {
       }
 
       let finalAnswer: string | null = null;
+      let finalCitations: CitationEntry[] = [];
+      let finalExecutionId: string | null = null;
       let sawError = false;
       for await (const streamEvent of parseSSEStream(response.body)) {
         setGraph((current) => (current ? applyStreamEvent(current, streamEvent) : current));
@@ -88,6 +96,8 @@ export default function ChatPage() {
             break;
           case "done":
             finalAnswer = streamEvent.answer;
+            finalCitations = streamEvent.citations;
+            finalExecutionId = streamEvent.execution_id;
             conversationId.current = streamEvent.conversation_id;
             break;
           default:
@@ -98,7 +108,12 @@ export default function ChatPage() {
       if (!sawError) {
         setMessages((current) => [
           ...current,
-          { role: "assistant", content: finalAnswer ?? "No answer was produced for this query." },
+          {
+            role: "assistant",
+            content: finalAnswer ?? "No answer was produced for this query.",
+            citations: finalCitations,
+            executionId: finalExecutionId ?? undefined,
+          },
         ]);
       }
     } catch (err) {
@@ -158,7 +173,17 @@ export default function ChatPage() {
                     : "self-start border border-(--color-hairline) bg-(--color-surface) text-(--color-text-hi)"
                 }`}
               >
-                {message.content}
+                {message.role === "assistant" && message.citations && message.executionId ? (
+                  <CitationText
+                    text={message.content}
+                    citations={message.citations}
+                    onOpenCitation={(citation) =>
+                      setOpenCitation({ citation, executionId: message.executionId! })
+                    }
+                  />
+                ) : (
+                  message.content
+                )}
               </div>
             ))}
 
@@ -236,6 +261,18 @@ export default function ChatPage() {
           </div>
         </aside>
       </div>
+
+      {openCitation && (
+        <ProvenanceDrawer
+          // A distinct citation must remount, not reuse state from
+          // whichever one was open before (see ProvenanceDrawer's own
+          // comment on why it has no setState-in-effect reset).
+          key={`${openCitation.executionId}-${openCitation.citation.tool_call_id ?? openCitation.citation.token}`}
+          citation={openCitation.citation}
+          executionId={openCitation.executionId}
+          onClose={() => setOpenCitation(null)}
+        />
+      )}
     </div>
   );
 }
