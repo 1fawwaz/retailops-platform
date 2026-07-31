@@ -230,9 +230,15 @@ def _make_retrieval_node(
             ended = time.monotonic()
             return {
                 "agent_results": {
-                    agent.name: f"[unavailable: {agent.name} agent could not reach the "
-                    f"LLM after retries -- no data gathered this round: {exc}]"
+                    agent.name: f"[unavailable: {agent.name} agent could not reach any "
+                    "configured LLM provider after retries -- no data gathered this round]"
                 },
+                # The raw provider exception (which can embed account-identifying
+                # quota details, e.g. a Gemini 429 body) is kept here, in the
+                # internal trace, not in agent_results above -- agent_results is a
+                # caller-facing AgentQueryResponse field and also feeds later
+                # prompts, so CLAUDE.md's "never a raw provider error... reaching
+                # the caller" failover rule applies to it, not just final_answer.
                 "errors": [f"{agent.name} (round {iteration}): {exc}"],
                 "timings": {f"{agent.name}_{iteration}": {"start": started, "end": ended}},
             }
@@ -325,8 +331,13 @@ def _make_replan_node(
             record: dict[str, object] = {
                 "sufficient": True,
                 "missing": [],
-                "next_action": f"LLM unavailable after retries ({exc}); proceeding with "
-                "evidence gathered so far.",
+                # next_action reaches the caller directly (the SSE
+                # replan_judgement event's own reasoning text, rendered live
+                # in the frontend's execution graph panel) -- the raw
+                # exception stays out of it for the same reason as the
+                # retrieval-node catch above; it's still recorded in errors.
+                "next_action": "LLM unavailable after retries across all configured "
+                "providers; proceeding with evidence gathered so far.",
                 "agents_to_retry": [],
                 "iteration": iteration,
             }
@@ -455,10 +466,17 @@ def _make_synthesis_node(
                 )
         except LLMUnavailableError as exc:
             ended = time.monotonic()
+            # fallback can become final_answer below -- the literal text the
+            # caller receives as "the answer." The raw exception (which can
+            # embed a raw provider error body, e.g. Gemini's 429 JSON payload
+            # with account quota details) must not appear in it, per
+            # CLAUDE.md's failover rule that a both-providers-down
+            # degradation is never a raw provider error reaching the caller.
+            # It's still recorded in errors, for the full trace.
             fallback = (
-                f"{LLM_DEGRADED_ANSWER_PREFIX} the {agent.name} step could not reach the "
-                f"LLM after retries ({exc}). This answer is flagged incomplete rather "
-                "than fabricated -- retry the request."
+                f"{LLM_DEGRADED_ANSWER_PREFIX} the {agent.name} step could not reach any "
+                "configured LLM provider after retries. This answer is flagged incomplete "
+                "rather than fabricated -- retry the request."
             )
             update: dict[str, object] = {
                 "agent_results": {agent.name: fallback},
