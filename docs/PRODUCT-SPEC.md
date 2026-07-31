@@ -110,7 +110,7 @@ Small-to-mid-size retail/e-commerce operations teams: the people who manage stoc
 
 
 
-Provisional role set — \*\*confirm the exact permission model against StockPilot Core's actual auth/RBAC implementation in `contracts/auth.md` before building Stage 9\*\*; this list defines intent, `docs/ARCHITECTURE.md` § Authorization defines what's technically enforceable.
+\*\*Decided role set, not provisional\*\* — this table is now the spec for real backend functionality (`BUILD.md` Backend Module 10: Administration), not an aspiration checked against a backend that lacks it. `docs/ARCHITECTURE.md` § Authorization defines the concrete data model (a many-to-many `roles`/`user\_roles` design, since §4 above already assumes one person may hold more than one role) and exactly what's server-enforced. `lib/rbac/permissions.ts` in the frontend already implements this table's permission intent in code — that file, not a fresh redesign, is the vocabulary the backend model mirrors.
 
 
 
@@ -540,11 +540,11 @@ Every list, table, or panel that can have zero items defines what a user sees an
 
 
 
-The product is acceptance-ready for a given scope tier (ship-thin or ship-long, per `BUILD.md`) when:
+The full product (both StockPilot Core backend and StockPilot Frontend, per `BUILD.md`'s module order) is acceptance-ready when:
 
 
 
-\-   Every FR in §8 that's in scope for that tier is demonstrably working end-to-end against real StockPilot Core data, not mocked data left in place.
+\-   Every FR in §8 is demonstrably working end-to-end against real StockPilot Core data, not mocked data or a placeholder endpoint left in place.
 
 \-   Every user journey in §7 relevant to the shipped scope can be walked start to finish without a dead end or console error.
 

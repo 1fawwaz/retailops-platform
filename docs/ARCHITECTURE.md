@@ -54,6 +54,10 @@ Four deployables:
 
 
 
+\*\*Backend scope (updated 2026-07-31).\*\* StockPilot Core's live surface at the time of this update (`contracts/stockpilot-api/versions/v1.json`, 21 paths / 27 operations, verified directly against the OpenAPI export) covers Auth (login/register), Products, Suppliers, Inventory (single-location stock queries), Analytics, and Forecasting — confirmed missing entirely: Purchase Orders, Customers, Sales, Notifications, Audit Logs, and Administration (Users/Roles/Permissions/Settings), and no multi-location/warehouse model. `BUILD.md`'s Backend Module Order is now the full target surface for this project — StockPilot Core is no longer treated as a frozen, externally-owned dependency this repo only reads from; building out its remaining modules is in scope. See `docs/stockpilot-gaps.md` for the original gap analysis this decision responds to.
+
+
+
 \## 2\\. System diagram
 
 
@@ -262,39 +266,111 @@ Rules:
 
 
 
+\*\*Status: login and register are live and confirmed against the real contract (`docs/adr/001-session-management.md`); logout, refresh, current-user, and password-reset are being added as extensions of this same flow, not a rebuild.\*\* Session mechanism is settled, not open: StockPilot Core's `/auth/login` returns a bearer access token in the response body (`{access_token, token_type}`), not a `Set-Cookie` — confirmed directly against `contracts/stockpilot-api/schemas/login_auth_login_post.json`, see the ADR for the full reasoning and the real cross-domain-SSO consequence this has.
+
+
+
 &#x20;   1. User submits credentials on /login
 
-&#x20;   2. app/(auth)/login → lib/auth/login() → POST StockPilot Core /auth/login
+&#x20;   2. app/(auth)/login → lib/auth/session.ts::login() → POST StockPilot Core /auth/login
 
-&#x20;   3. StockPilot Core validates against Postgres, returns session credentials
+&#x20;   3. StockPilot Core validates against Postgres, returns { access\_token, token\_type }
 
-&#x20;      (exact mechanism — token in body vs. Set-Cookie — per § Session Management)
+&#x20;   4. lib/auth/token.ts stores the access token client-side (localStorage); no
 
-&#x20;   4. lib/auth stores/reads the session per contracts/auth.md
+&#x20;      refresh token exists yet client-side until the backend extension below ships
 
-&#x20;   5. Route guard (layout-level, app/(dashboard)/layout.tsx) checks session
+&#x20;   5. Route guard (lib/auth/RouteGuard.tsx, client-side -- see the ADR for why
 
-&#x20;      validity on every protected navigation
+&#x20;      this can't be a Server Component check under a bearer-token-in-body
 
-&#x20;   6. On expiry: fetch wrapper (lib/api/client.ts) catches 401 →
+&#x20;      session) checks session validity on every protected navigation
 
-&#x20;      attempt refresh →
+&#x20;   6. On expiry or a 401: fetch wrapper (lib/api/client.ts) clears the token and
 
-&#x20;        success: retry original request once
+&#x20;      lets the route guard redirect to /login?redirect=<original path>. Once the
 
-&#x20;        failure: clear session, redirect to /login?redirect=<original path>
+&#x20;      refresh-token extension below ships, this step attempts one silent refresh
 
-&#x20;   7. The same session is used for RetailOps AI Backend calls from the AI
+&#x20;      before falling back to redirect.
 
-&#x20;      sidebar — no second login (see § Session Management for how this is
+&#x20;   7. The same access token is sent to RetailOps AI Backend calls from the AI
 
-&#x20;      actually achieved across the two frontend domains)
+&#x20;      sidebar -- no second login for that call, though StockPilot Frontend and
+
+&#x20;      RetailOps AI Frontend remain two separate logins for a human user (§ Session Management)
 
 &#x20;   
 
 
 
-\*\*Logout:\*\* clears local session state and calls StockPilot Core's logout endpoint if one exists (invalidate refresh token server-side) — verify against `contracts/auth.md` before assuming client-side clearing alone is sufficient.
+\*\*Backend extension (`BUILD.md` Backend Module 1), designed here so the frontend contract is known before either side implements it:\*\*
+
+
+
+&#x20;   POST /auth/logout       -- body: none (uses the caller's own refresh token,
+
+&#x20;                              read the same way /auth/refresh reads it below);
+
+&#x20;                              revokes it server-side (sets revoked\_at on the
+
+&#x20;                              matching refresh\_tokens row). Idempotent: revoking
+
+&#x20;                              an already-revoked or unknown token still returns
+
+&#x20;                              204, never a 404/409 a client has to special-case.
+
+&#x20;   POST /auth/refresh      -- body: { refresh\_token }. Returns a new
+
+&#x20;                              { access\_token, token\_type } if the refresh token
+
+&#x20;                              is valid and unrevoked; 401 otherwise. Does NOT
+
+&#x20;                              rotate the refresh token itself in the first cut
+
+&#x20;                              (rotation-on-use is a real hardening step, flagged
+
+&#x20;                              here as a fast-follow, not silently assumed done).
+
+&#x20;   GET  /me                -- requires a valid access token. Returns the
+
+&#x20;                              authenticated user's profile plus their resolved
+
+&#x20;                              permission set -- see § Authorization below; this
+
+&#x20;                              is the ONE call both a profile page and the RBAC
+
+&#x20;                              layer share, not two separate endpoints computing
+
+&#x20;                              the same thing differently.
+
+&#x20;   POST /auth/password-reset/request  -- body: { email }. Always returns 202
+
+&#x20;                              regardless of whether the email matches a real
+
+&#x20;                              account (never confirms/denies account existence
+
+&#x20;                              via response shape -- a real security property,
+
+&#x20;                              not an oversight). Creates a single-use,
+
+&#x20;                              short-expiry reset token server-side.
+
+&#x20;   POST /auth/password-reset/confirm  -- body: { token, new\_password }.
+
+&#x20;                              Consumes the token (single use), sets the new
+
+&#x20;                              password, revokes every outstanding refresh token
+
+&#x20;                              for that user (a password reset ends every other
+
+&#x20;                              session, deliberately).
+
+&#x20;   
+
+
+
+\*\*Open dependency, flagged not silently assumed:\*\* `/auth/password-reset/request` needs to actually deliver the reset token to the user somehow. No email-sending infrastructure exists in this project today. Implementing this endpoint without solving delivery would mean either (a) the token never reaches a real user, or (b) returning the token directly in the API response, which defeats the entire point of an email-based reset (anyone who can call the endpoint could read any account's reset token). This is a genuine blocker for a *production* password-reset flow -- `BUILD.md` Backend Module 1 must either integrate a real transactional-email provider (a new dependency + new secret, not something to add silently) or explicitly scope password reset to "admin-initiated, in-app" for now and say so, not ship a half-real email flow.
 
 
 
@@ -306,41 +382,107 @@ Rules:
 
 
 
-Authentication (§6) establishes \_who\_ the user is; authorization determines \_what\_ they can see and do, per the roles defined in `docs/PRODUCT-SPEC.md` §6.
+Authentication (§6) establishes \_who\_ the user is; authorization determines \_what\_ they can see and do. \*\*This is now real backend functionality being built (`BUILD.md` Backend Module 10), not a client-side layer approximating a permission model the backend doesn't have\*\* -- the frontend's `lib/rbac/` (built in Stage 0, `docs/stockpilot-gaps.md` #5) already defines the exact permission vocabulary this backend model implements; that file is the spec for "which resource:action strings exist," not something being redesigned here.
 
 
 
-&#x20;   Permission source
+\*\*Data model\*\* (StockPilot Core, new tables):
 
-&#x20;     → JWT claims (if StockPilot Core embeds role/permissions in the token), or
 
-&#x20;     → GET /me/permissions (if permissions are fetched separately, e.g. because
 
-&#x20;       they can change without requiring a new token)
+&#x20;   roles
 
-&#x20;     → cached client-side for the session, re-fetched on session refresh
+&#x20;     id            serial primary key
+
+&#x20;     name          text unique not null   -- 'admin' | 'inventory\_manager' |
+
+&#x20;                                             'procurement' | 'sales' | 'analyst' |
+
+&#x20;                                             'viewer', matching lib/rbac/permissions.ts's
+
+&#x20;                                             Role union exactly -- extensible, not a
+
+&#x20;                                             hardcoded enum, since Settings > Roles
+
+&#x20;                                             (docs/PRODUCT-SPEC.md §24) lets an admin
+
+&#x20;                                             define new roles
+
+&#x20;     permissions   jsonb not null          -- array of "resource:action" strings,
+
+&#x20;                                             the exact vocabulary lib/rbac/permissions.ts
+
+&#x20;                                             already defines (Resource × Action)
+
+&#x20;     created\_at    timestamp
 
 &#x20;   
 
-&#x20;   Usage
+&#x20;   user\_roles                              -- many-to-many, deliberately: PRODUCT-SPEC.md
 
-&#x20;     → lib/rbac/ exposes useCan('resource:action') and a server-side equivalent
+&#x20;     user\_id       fk -> users.id            §4 already says "one person may hold more
 
-&#x20;       for route guards and Server Components
+&#x20;     role\_id       fk -> roles.id            than one of the roles" -- a single role\_id
 
-&#x20;     → components conditionally render/disable actions the current role can't
+&#x20;     assigned\_at   timestamp                 column on users would silently contradict
 
-&#x20;       perform
-
-&#x20;     → route segments requiring a specific permission are guarded at the
-
-&#x20;       layout level (server-side check), not just hidden via client-side nav
+&#x20;                                              a requirement the product doc already states
 
 &#x20;   
 
 
 
-\*\*The frontend is never the sole enforcement point.\*\* Every mutating request assumes StockPilot Core re-checks permission server-side regardless of what the UI allowed the user to attempt — a hidden button is a UX convenience, not a security boundary. If a task requires a permission check that has no server-side equivalent yet, that's a gap to flag, not a client-only control to ship as if it were secure.
+`users.is\_active` is kept unchanged (account enabled/disabled is orthogonal to what a role permits). `users.is\_read\_only` becomes redundant once every user has a real role assignment (a user with only the Viewer/Analyst role already gets equivalent read-only behavior) -- it is NOT removed as part of this change (that's a separate, disclosed migration decision for whoever implements Module 10, since removing a column existing code reads is a breaking change on its own timeline), but new authorization code should treat the role/permission model as authoritative and MUST NOT gate on both `is\_read\_only` and the new permission system disagreeing with each other silently.
+
+
+
+&#x20;   Permission source (settled, not "if/or")
+
+&#x20;     → GET /me returns { user, roles: string[], permissions: string[] } --
+
+&#x20;       permissions is the SERVER-COMPUTED union across every role the user
+
+&#x20;       holds; the frontend never merges per-role permission sets itself
+
+&#x20;     → fetched once per session (on login and on app load if a token already
+
+&#x20;       exists), cached client-side for the session's lifetime
+
+&#x20;     → re-fetched after any action known to change it (an admin editing their
+
+&#x20;       own roles, a fresh login) -- not polled
+
+&#x20;   
+
+&#x20;   Usage (frontend, already built against this exact shape -- Stage 0)
+
+&#x20;     → lib/rbac/ exposes useCan('resource:action') and the non-reactive can()
+
+&#x20;       equivalent for Server Components / route guards / non-component call
+
+&#x20;       sites (components/layout/LeftNav.tsx already uses the latter, since a
+
+&#x20;       React Hook can't be called inside a .map() callback)
+
+&#x20;     → components conditionally render/disable actions the current role(s)
+
+&#x20;       can't perform
+
+&#x20;     → route segments requiring a specific permission are guarded via the
+
+&#x20;       same client-side RouteGuard pattern § Authentication Flow describes
+
+&#x20;       (still not server-side-renderable under the current bearer-token
+
+&#x20;       session model -- see the ADR; this is an accepted, disclosed
+
+&#x20;       consequence, not silently different from what §6 already states)
+
+&#x20;   
+
+
+
+\*\*The frontend is never the sole enforcement point.\*\* Every mutating StockPilot Core endpoint re-checks the caller's permission server-side (a dependency reading the resolved `GET /me`-equivalent permission set from the validated JWT's subject) regardless of what the UI allowed the user to attempt -- a hidden button is a UX convenience, not a security boundary. `BUILD.md` Backend Module 10 is explicitly responsible for this server-side enforcement layer, not just the `roles`/`user\_roles` tables and the `GET /me` endpoint -- a permission model nothing actually checks is not real authorization.
 
 
 
@@ -586,17 +728,21 @@ RetailOps AI Frontend deploys identically as \*\*Project B\*\* (`ai.stockpilot.<
 
 
 
-`localStorage`\\-based token storage is origin-scoped and will \*\*not\*\* share a session across `stockpilot.<domain>` and `ai.stockpilot.<domain>` — each app would silently require its own login, contradicting the one-platform goal in `docs/PRODUCT-SPEC.md` §2/§9. To get real shared session:
+\*\*Decided (`docs/adr/001-session-management.md`, Stage 0):\*\* `localStorage`\\-based bearer token storage, origin-scoped -- confirmed against the real `/auth/login` contract (a token in the response body, no `Set-Cookie`), not assumed. This does \*\*not\*\* share a session across `stockpilot.<domain>` and `ai.stockpilot.<domain>` — each app requires its own login, a stated, deliberate limitation of the one-platform goal in `docs/PRODUCT-SPEC.md` §2/§9, not a silent gap.
 
 
 
-\-   StockPilot Core must issue the session as an `httpOnly`, `Secure` cookie with `Domain=.stockpilot.<domain>` (leading dot) at login, not just return a token in the response body for the frontend to store itself.
+To get a real shared session, if this is ever prioritized:
 
-\-   Both frontends read auth state via a cookie-forwarded request (or a `/me` check on load) rather than pulling a token out of client storage.
 
-\-   This is a \*\*backend-owned decision\*\* — neither frontend repo can retrofit it unilaterally. Confirm with StockPilot Core's auth implementation before Stage 0 writes `lib/auth/`, and record the outcome as an ADR in both frontend repos, since it changes the auth contract both consume.
 
-\-   \*\*Fallback if unsupported in the sprint timeframe:\*\* two independent logins on matching shared-looking chrome — acceptable, but must be a stated, deliberate limitation in both READMEs, not a silent gap discovered by a confused user later.
+\-   StockPilot Core would need to issue the session as an `httpOnly`, `Secure` cookie with `Domain=.stockpilot.<domain>` (leading dot) at login, not just return a token in the response body for the frontend to store itself.
+
+\-   Both frontends would read auth state via a cookie-forwarded request (or the new `GET /me`, § Authorization) rather than pulling a token out of client storage.
+
+\-   This remains a \*\*backend-owned decision\*\* — neither frontend repo can retrofit it unilaterally. Record the outcome as a new ADR in both frontend repos if pursued, since it changes the auth contract both consume.
+
+\-   \*\*Current state is the fallback described above, not a temporary gap awaiting Stage 0\*\* -- two independent logins on matching shared-looking chrome, stated plainly in both READMEs.
 
 
 
@@ -783,6 +929,80 @@ This is a portfolio/demo-scale app against a bounded dataset (\~5,243 products, 
 \-   \*\*A real-time layer\*\* (WebSockets, e.g. for live collaborative PO editing) is deliberately deferred — see `docs/PRODUCT-SPEC.md` §25 — and would introduce a new architectural pattern (persistent connections, presence state) not covered by anything in this document today; it needs its own ADR if pursued.
 
 \-   \*\*Native mobile\*\* would likely mean a shared API/contract layer reused by a React Native or platform-native client, not a rebuild of business logic — noted here so a future decision starts from "reuse contracts/" rather than from scratch.
+
+
+
+\## 24\\. Backend module architecture (StockPilot Core)
+
+
+
+\# 
+
+
+
+Added when this repo's scope grew to cover the backend, not just the frontend consuming it (see § System Architecture's "Backend scope" note). StockPilot Core stays a single FastAPI service, one PostgreSQL database, Alembic-migrated -- this is module SCOPE growing, not a new service or a database split. Existing conventions (SQLAlchemy 2.x typed models, Pydantic v2 schemas, one router per resource, `\_provenance`/`\_derivation\_ref` labeling on every derived field per `docs/PRODUCT-SPEC.md` §13, ruff + mypy --strict, pytest) are followed as-is for every new module -- extended, not reinvented; there is no separate rules doc for StockPilot Core's own code because the existing codebase's own established patterns already are that standard.
+
+
+
+Module list, matching `BUILD.md`'s Backend Module Order exactly (status as of this doc's last update):
+
+
+
+&#x20;   1. Authentication       LIVE (login, register) + EXTENDING (logout, refresh,
+
+&#x20;                            /me, password-reset) -- § Authentication Flow, § Authorization
+
+&#x20;   2. Products              LIVE (list/get/create/update/delete) + EXTENDING
+
+&#x20;                            (categories as a real resource, brands, images, sale price,
+
+&#x20;                            product history) -- docs/stockpilot-gaps.md #3-area gaps
+
+&#x20;   3. Suppliers             LIVE (list/get/create/update/delete) + EXTENDING
+
+&#x20;                            (contacts, purchase-history linkage once Module 5 exists,
+
+&#x20;                            performance metrics)
+
+&#x20;   4. Inventory             LIVE (single-location stock/low-stock/dead-stock/
+
+&#x20;                            slow-movers/valuation queries) + EXTENDING (warehouses,
+
+&#x20;                            multi-location stock, transfers, adjustments, a real
+
+&#x20;                            stock-ledger API -- the underlying stock\_levels/
+
+&#x20;                            stock\_movements tables already carry a full history per
+
+&#x20;                            docs/stockpilot-gaps.md #3, this module exposes it)
+
+&#x20;   5. Purchase Orders       NEW -- CRUD, line items, approval, receive (full/partial),
+
+&#x20;                            status workflow per docs/PRODUCT-SPEC.md §10/§12
+
+&#x20;   6. Customers             NEW
+
+&#x20;   7. Sales                 NEW -- orders, invoices, payments
+
+&#x20;   8. Analytics             LIVE (revenue/profit/turnover/abc/top-bottom-products/
+
+&#x20;                            period-comparison) + EXTENDING (supplier-aggregated
+
+&#x20;                            analytics, PO-derived KPIs like open-PO-count once
+
+&#x20;                            Module 5 exists)
+
+&#x20;   9. Forecasting           LIVE (demand forecast, forecast accuracy)
+
+&#x20;   10. Administration       NEW -- Users, Roles, Permissions (§ Authorization),
+
+&#x20;                            Audit Logs, Notifications, Settings
+
+&#x20;   
+
+
+
+Each module's real endpoint list, request/response shapes, and migration are authored as that module is built (`BUILD.md`) and immediately reflected in `contracts/stockpilot-api/` (regenerated OpenAPI export) -- this section states scope and sequence, not the exact wire contract, which lives in `contracts/` and must never drift from what's actually deployed (§ API Contracts' own rule applies here too, backend-side).
 
 
 
