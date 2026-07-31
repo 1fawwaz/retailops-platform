@@ -1,6 +1,7 @@
 from models.base import Base
 from models.brand import Brand
 from models.category import Category
+from models.customer import Customer
 from models.password_reset_token import PasswordResetToken
 from models.product import Product
 from models.product_history import ProductHistory
@@ -20,6 +21,7 @@ __all__ = [
     "Base",
     "Brand",
     "Category",
+    "Customer",
     "PasswordResetToken",
     "Product",
     "ProductHistory",

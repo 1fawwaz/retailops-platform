@@ -1,0 +1,75 @@
+{
+  "$ref": "#/$defs/CustomerRead",
+  "$defs": {
+    "CustomerRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "name": {
+          "type": "string",
+          "title": "Name"
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Email"
+        },
+        "phone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Phone"
+        },
+        "country": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Country"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "email",
+        "phone",
+        "country",
+        "created_at"
+      ],
+      "title": "CustomerRead",
+      "examples": [
+        {
+          "country": "United Kingdom",
+          "created_at": "2026-01-01T00:00:00Z",
+          "email": "priya@example.com",
+          "id": 1,
+          "name": "Priya Shah",
+          "phone": "+44 20 7946 0958"
+        }
+      ]
+    }
+  }
+}

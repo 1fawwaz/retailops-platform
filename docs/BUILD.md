@@ -22,7 +22,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 3 — Suppliers | `[~]` contacts live; performance metrics deferred to Module 5 (see note) |
 | Backend | Module 4 — Inventory | `[x]` warehouses, location-scoped stock, transfers, adjustments, ledger all live, tested, committed |
 | Backend | Module 5 — Purchase Orders | `[x]` new `purchase_order_requests` tables (existing synthetic `purchase_orders` untouched), full lifecycle + receiving, tested, committed |
-| Backend | Modules 6–10 | `[ ]` |
+| Backend | Module 6 — Customers | `[x]` CRUD live, tested, committed; order-history endpoint deferred to Module 7 (see note) |
+| Backend | Modules 7–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -145,16 +146,18 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 6 — Customers (new)
+### Backend Module 6 — Customers (new) `[x]`
+
+**Identity-space decision:** `customers` is a fresh, independent identity space — standard autoincrement IDs, real name/email/phone/country — deliberately NOT reconciled with `sales_transactions.customer_id` (the anonymized numeric IDs in the historical dataset, which have no name/contact data to attach). Presenting a customer record with `name: null` for a bare historical ID wouldn't be useful and risks looking like a fabricated identity. If reconciling the two is ever wanted, that's a real product decision for whoever revisits this, not something defaulted here.
 
 **Tasks**
 
-- [ ] `customers` table + CRUD endpoints
-- [ ] `GET /customers/{id}/orders` (depends on Module 7)
+- [x] `customers` table + full CRUD (`GET/POST /customers`, `GET/PUT/DELETE /customers/{id}`), search by name/email
+- [ ] `GET /customers/{id}/orders` — still deferred to Module 7 exactly as planned: a freshly-created `customers` row has no historical `sales_transactions` rows keyed to it (different identity space, see above), so there's nothing real to return yet.
 
-**Acceptance criteria:** a customer's order history is real, queryable data once Module 7 exists.
+**Acceptance criteria:** customer CRUD round-trips correctly and search matches name or email — verified by test.
 
-**Tests:** unit, integration, contract.
+**Tests:** `tests/test_customers.py` (new) — CRUD round-trip, search by name and by email, 404 on unknown customer, read-only user denied on create. Full suite (181 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
 **Commit checkpoint:** `feat(customers): CRUD`
 
