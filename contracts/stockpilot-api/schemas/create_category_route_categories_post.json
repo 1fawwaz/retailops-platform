@@ -1,0 +1,36 @@
+{
+  "$ref": "#/$defs/CategoryRead",
+  "$defs": {
+    "CategoryRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "name": {
+          "type": "string",
+          "title": "Name"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "created_at"
+      ],
+      "title": "CategoryRead",
+      "examples": [
+        {
+          "created_at": "2026-01-01T00:00:00Z",
+          "id": 3,
+          "name": "Decorations"
+        }
+      ]
+    }
+  }
+}

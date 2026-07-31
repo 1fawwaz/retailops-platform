@@ -18,7 +18,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Frontend | Stage 1 — Dashboard | `[x]` (against the CURRENT backend surface — see its own note below on what's still missing) |
 | Frontend | Stage 2 — Inventory | `[x]` (ditto) |
 | Backend | Module 1 — Authentication | `[x]` logout, refresh, `GET /me`, password reset (admin-mediated delivery — see note) all live, tested, committed |
-| Backend | Modules 2–10 | `[ ]` |
+| Backend | Module 2 — Products | `[~]` categories, brands, sale price, history all live; images blocked on a storage-provider decision (see note) |
+| Backend | Modules 3–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -54,23 +55,25 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 2 — Products (extend)
+### Backend Module 2 — Products (extend) `[~]`
 
-**Status:** list/get/create/update/delete are live. Missing: categories as a real resource, brands, images, sale price, product history.
+**Status:** list/get/create/update/delete are live. Categories, brands, sale price, and product history are now live too. Images remain genuinely blocked — see below.
 
 **Tasks**
 
-- [ ] `categories` table (id, name) + `GET/POST /categories` — replaces the free-floating `category_id` FK with something actually manageable
-- [ ] `brands` table + brand FK on products + `GET/POST /brands`
-- [ ] Image storage decision (object storage provider — a new infrastructure dependency, flag and confirm before implementing, don't assume one) + `product_images` table + upload/list/delete endpoints
-- [ ] `sale_price` field on products (distinct from the existing `unit_cost`) — confirm sourcing (manually set vs. derived from `sales_transactions.unit_price`, `docs/stockpilot-gaps.md` #2) before adding the column
-- [ ] `product_history` — an append-only audit trail of price/reorder-point/etc. changes to a product, `GET /products/{sku}/history`
+- [x] `categories` — the `Category` model/table already existed (used by `Product.category_id`) but had no CRUD API; added `GET/POST /categories`.
+- [x] `brands` table + `Product.brand_id` FK + `GET/POST /brands`.
+- [ ] **Image storage — deliberately not built, not silently skipped.** Requires choosing and paying for a new external object-storage provider (S3/R2/Cloudinary/etc.) plus a new secret — a real infrastructure/cost decision neither `docs/ARCHITECTURE.md` nor `docs/PRODUCT-SPEC.md` makes, unlike the password-reset email case which had a pre-authorized fallback. Not defaulted here. Revisit once a provider is chosen.
+- [x] `sale_price` field on products — sourced as decided: backfilled from each SKU's average observed `sales_transactions.unit_price` (per `docs/stockpilot-gaps.md` #2's own suggested fix), nullable, user-editable going forward via `PUT /products/{sku}` exactly like `unit_cost` already is. Products with no sales history keep `sale_price` NULL rather than a fabricated default.
+- [x] `product_history` — append-only, one row per changed field per update, records `changed_by_user_id`; `GET /products/{sku}/history`. No-op updates (new value equals current value) do not create a spurious entry.
 
-**Acceptance criteria:** creating/editing a product with a category, brand, image, and sale price round-trips correctly; history shows every change with who/when.
+**Acceptance criteria:** creating/editing a product with a category, brand, and sale price round-trips correctly; history shows every real change with who changed it — verified by test. Image round-trip is out of scope until the storage-provider decision above is made.
 
-**Tests:** unit (validation), integration (CRUD + history recording on every mutating call), contract.
+**Tests:** `tests/test_categories.py`, `tests/test_brands.py`, plus `tests/test_products.py` additions (brand/sale_price round-trip, history recording, no-op-update produces no history entry, RBAC denial for read-only users on category/brand creation). Full suite (144 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
-**Commit checkpoint:** `feat(products): categories, brands, images, sale price, history`
+**Commit checkpoint:** `feat(products): categories, brands, sale price, history`
+
+**Known limitation carried forward, not silently dropped:** product images are not implemented — see the task note above.
 
 * * *
 

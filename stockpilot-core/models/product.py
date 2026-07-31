@@ -26,9 +26,16 @@ class Product(Base):
         ForeignKey("suppliers.id"),
         comment="derived: data-derivation.md#supplier-assignment",
     )
+    brand_id: Mapped[int | None] = mapped_column(ForeignKey("brands.id"))
     unit_cost: Mapped[float | None] = mapped_column(
         Numeric(10, 2),
         comment="derived: data-derivation.md#cost-price",
+    )
+    sale_price: Mapped[float | None] = mapped_column(
+        Numeric(10, 2),
+        comment="derived: backfilled from the SKU's average observed "
+        "sales_transactions.unit_price (docs/BUILD.md Backend Module 2); "
+        "user-editable going forward via PUT /products/{sku}",
     )
     reorder_point: Mapped[int | None] = mapped_column(
         Integer,

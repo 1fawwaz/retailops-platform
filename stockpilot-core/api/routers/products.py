@@ -14,6 +14,7 @@ from schemas.product import (
     MovementHistoryEntry,
     ProductCreate,
     ProductDetail,
+    ProductHistoryEntry,
     ProductRead,
     ProductUpdate,
 )
@@ -23,6 +24,7 @@ from services.products import (
     delete_product,
     get_movement_history,
     get_product,
+    get_product_history,
     list_products,
     update_product,
 )
@@ -36,7 +38,9 @@ def _to_read_model(product: Product) -> ProductRead:
         description=product.description,
         category_id=product.category_id,
         supplier_id=product.supplier_id,
+        brand_id=product.brand_id,
         unit_cost=float(product.unit_cost) if product.unit_cost is not None else None,
+        sale_price=float(product.sale_price) if product.sale_price is not None else None,
         reorder_point=product.reorder_point,
         safety_stock=product.safety_stock,
         created_at=product.created_at,
@@ -64,7 +68,9 @@ def _to_detail_model(
         description=product.description,
         category_id=product.category_id,
         supplier_id=product.supplier_id,
+        brand_id=product.brand_id,
         unit_cost=float(product.unit_cost) if product.unit_cost is not None else None,
+        sale_price=float(product.sale_price) if product.sale_price is not None else None,
         reorder_point=product.reorder_point,
         safety_stock=product.safety_stock,
         created_at=product.created_at,
@@ -121,10 +127,10 @@ def update_product_route(
     sku: str,
     data: ProductUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    user: User = Depends(require_write_access),
 ) -> ProductRead:
     product = _get_product_or_404(db, sku)
-    return _to_read_model(update_product(db, product, data))
+    return _to_read_model(update_product(db, product, data, changed_by_user_id=user.id))
 
 
 @router.delete("/{sku}", status_code=status.HTTP_204_NO_CONTENT)
@@ -135,3 +141,13 @@ def delete_product_route(
 ) -> None:
     product = _get_product_or_404(db, sku)
     delete_product(db, product)
+
+
+@router.get("/{sku}/history", response_model=list[ProductHistoryEntry])
+def get_product_history_route(
+    sku: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[ProductHistoryEntry]:
+    _get_product_or_404(db, sku)
+    return [ProductHistoryEntry.model_validate(h) for h in get_product_history(db, sku)]

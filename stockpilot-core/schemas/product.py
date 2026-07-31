@@ -14,7 +14,9 @@ class ProductCreate(BaseModel):
                     "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
                     "category_id": 3,
                     "supplier_id": 7,
+                    "brand_id": 1,
                     "unit_cost": 2.15,
+                    "sale_price": 4.99,
                     "reorder_point": 120,
                     "safety_stock": 40,
                 }
@@ -26,7 +28,9 @@ class ProductCreate(BaseModel):
     description: str | None = None
     category_id: int | None = None
     supplier_id: int | None = None
+    brand_id: int | None = None
     unit_cost: float | None = None
+    sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
 
@@ -39,7 +43,9 @@ class ProductUpdate(BaseModel):
     description: str | None = None
     category_id: int | None = None
     supplier_id: int | None = None
+    brand_id: int | None = None
     unit_cost: float | None = None
+    sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
 
@@ -55,7 +61,9 @@ class ProductRead(ProvenanceMixin):
                     "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
                     "category_id": 3,
                     "supplier_id": 7,
+                    "brand_id": 1,
                     "unit_cost": 2.15,
+                    "sale_price": 4.99,
                     "reorder_point": 120,
                     "safety_stock": 40,
                     "created_at": "2026-01-01T00:00:00Z",
@@ -63,11 +71,13 @@ class ProductRead(ProvenanceMixin):
                         "sku": "observed",
                         "description": "observed",
                         "unit_cost": "derived",
+                        "sale_price": "derived",
                         "reorder_point": "derived",
                         "safety_stock": "derived",
                     },
                     "_derivation_ref": {
                         "unit_cost": "data-derivation.md#cost-price",
+                        "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
                         "reorder_point": "data-derivation.md#reorder-point",
                         "safety_stock": "data-derivation.md#reorder-point",
                     },
@@ -80,7 +90,9 @@ class ProductRead(ProvenanceMixin):
     description: str | None
     category_id: int | None
     supplier_id: int | None
+    brand_id: int | None
     unit_cost: float | None
+    sale_price: float | None
     reorder_point: int | None
     safety_stock: int | None
     created_at: datetime
@@ -90,11 +102,13 @@ PRODUCT_PROVENANCE = {
     "sku": "observed",
     "description": "observed",
     "unit_cost": "derived",
+    "sale_price": "derived",
     "reorder_point": "derived",
     "safety_stock": "derived",
 }
 PRODUCT_DERIVATION_REF = {
     "unit_cost": "data-derivation.md#cost-price",
+    "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
     "reorder_point": "data-derivation.md#reorder-point",
     "safety_stock": "data-derivation.md#reorder-point",
 }
@@ -138,7 +152,9 @@ class ProductDetail(ProductRead):
                     "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
                     "category_id": 3,
                     "supplier_id": 7,
+                    "brand_id": 1,
                     "unit_cost": 2.15,
+                    "sale_price": 4.99,
                     "reorder_point": 120,
                     "safety_stock": 40,
                     "created_at": "2026-01-01T00:00:00Z",
@@ -155,12 +171,14 @@ class ProductDetail(ProductRead):
                         "sku": "observed",
                         "description": "observed",
                         "unit_cost": "derived",
+                        "sale_price": "derived",
                         "reorder_point": "derived",
                         "safety_stock": "derived",
                         "quantity_on_hand": "derived",
                     },
                     "_derivation_ref": {
                         "unit_cost": "data-derivation.md#cost-price",
+                        "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
                         "reorder_point": "data-derivation.md#reorder-point",
                         "safety_stock": "data-derivation.md#reorder-point",
                         "quantity_on_hand": "data-derivation.md#stock-ledger",
@@ -182,3 +200,32 @@ PRODUCT_DETAIL_DERIVATION_REF = {
     **PRODUCT_DERIVATION_REF,
     "quantity_on_hand": "data-derivation.md#stock-ledger",
 }
+
+
+class ProductHistoryEntry(BaseModel):
+    """One product_history row: a single field-level change. old_value
+    and new_value are stringified since the changed field's type varies
+    (int, float, str) -- an audit trail, not business data, so no
+    provenance labelling.
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "field_name": "unit_cost",
+                    "old_value": "2.15",
+                    "new_value": "2.25",
+                    "changed_by_user_id": 4,
+                    "changed_at": "2026-02-01T09:00:00Z",
+                }
+            ]
+        },
+    )
+
+    field_name: str
+    old_value: str | None
+    new_value: str | None
+    changed_by_user_id: int | None
+    changed_at: datetime

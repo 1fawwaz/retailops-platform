@@ -475,6 +475,205 @@
         }
       }
     },
+    "/products/{sku}/history": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Get Product History Route",
+        "operationId": "get_product_history_route_products__sku__history_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sku"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductHistoryEntry"
+                  },
+                  "title": "Response Get Product History Route Products  Sku  History Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "List Categories Route",
+        "operationId": "list_categories_route_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Categories Route Categories Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Create Category Route",
+        "operationId": "create_category_route_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/brands": {
+      "get": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "List Brands Route",
+        "operationId": "list_brands_route_brands_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrandRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Brands Route Brands Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "Create Brand Route",
+        "operationId": "create_brand_route_brands_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
     "/suppliers": {
       "get": {
         "tags": [
@@ -1984,6 +2183,104 @@
         ],
         "title": "Body_login_auth_login_post"
       },
+      "BrandCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "BrandCreate",
+        "examples": [
+          {
+            "name": "Acme Housewares"
+          }
+        ]
+      },
+      "BrandRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "title": "BrandRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 1,
+            "name": "Acme Housewares"
+          }
+        ]
+      },
+      "CategoryCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CategoryCreate",
+        "examples": [
+          {
+            "name": "Decorations"
+          }
+        ]
+      },
+      "CategoryRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "title": "CategoryRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 3,
+            "name": "Decorations"
+          }
+        ]
+      },
       "DeadStockItem": {
         "properties": {
           "_provenance": {
@@ -2640,6 +2937,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -2650,6 +2958,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [
@@ -2681,10 +3000,12 @@
         "title": "ProductCreate",
         "examples": [
           {
+            "brand_id": 1,
             "category_id": 3,
             "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
             "reorder_point": 120,
             "safety_stock": 40,
+            "sale_price": 4.99,
             "sku": "85048",
             "supplier_id": 7,
             "unit_cost": 2.15
@@ -2744,6 +3065,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -2754,6 +3086,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [
@@ -2808,7 +3151,9 @@
           "description",
           "category_id",
           "supplier_id",
+          "brand_id",
           "unit_cost",
+          "sale_price",
           "reorder_point",
           "safety_stock",
           "created_at",
@@ -2822,6 +3167,7 @@
               "quantity_on_hand": "data-derivation.md#stock-ledger",
               "reorder_point": "data-derivation.md#reorder-point",
               "safety_stock": "data-derivation.md#reorder-point",
+              "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
               "unit_cost": "data-derivation.md#cost-price"
             },
             "_provenance": {
@@ -2829,9 +3175,11 @@
               "quantity_on_hand": "derived",
               "reorder_point": "derived",
               "safety_stock": "derived",
+              "sale_price": "derived",
               "sku": "observed",
               "unit_cost": "derived"
             },
+            "brand_id": 1,
             "category_id": 3,
             "created_at": "2026-01-01T00:00:00Z",
             "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
@@ -2846,9 +3194,75 @@
             "quantity_on_hand": 96,
             "reorder_point": 120,
             "safety_stock": 40,
+            "sale_price": 4.99,
             "sku": "85048",
             "supplier_id": 7,
             "unit_cost": 2.15
+          }
+        ]
+      },
+      "ProductHistoryEntry": {
+        "properties": {
+          "field_name": {
+            "type": "string",
+            "title": "Field Name"
+          },
+          "old_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Value"
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          },
+          "changed_by_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed By User Id"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Changed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field_name",
+          "old_value",
+          "new_value",
+          "changed_by_user_id",
+          "changed_at"
+        ],
+        "title": "ProductHistoryEntry",
+        "description": "One product_history row: a single field-level change. old_value\nand new_value are stringified since the changed field's type varies\n(int, float, str) -- an audit trail, not business data, so no\nprovenance labelling.",
+        "examples": [
+          {
+            "changed_at": "2026-02-01T09:00:00Z",
+            "changed_by_user_id": 4,
+            "field_name": "unit_cost",
+            "new_value": "2.25",
+            "old_value": "2.15"
           }
         ]
       },
@@ -2982,6 +3396,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -2992,6 +3417,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [
@@ -3028,7 +3464,9 @@
           "description",
           "category_id",
           "supplier_id",
+          "brand_id",
           "unit_cost",
+          "sale_price",
           "reorder_point",
           "safety_stock",
           "created_at"
@@ -3039,20 +3477,24 @@
             "_derivation_ref": {
               "reorder_point": "data-derivation.md#reorder-point",
               "safety_stock": "data-derivation.md#reorder-point",
+              "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
               "unit_cost": "data-derivation.md#cost-price"
             },
             "_provenance": {
               "description": "observed",
               "reorder_point": "derived",
               "safety_stock": "derived",
+              "sale_price": "derived",
               "sku": "observed",
               "unit_cost": "derived"
             },
+            "brand_id": 1,
             "category_id": 3,
             "created_at": "2026-01-01T00:00:00Z",
             "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
             "reorder_point": 120,
             "safety_stock": 40,
+            "sale_price": 4.99,
             "sku": "85048",
             "supplier_id": 7,
             "unit_cost": 2.15
@@ -3094,6 +3536,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -3104,6 +3557,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [

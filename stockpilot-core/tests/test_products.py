@@ -8,7 +8,7 @@ from models.stock_movement import StockMovement
 from services.security import create_access_token
 from services.users import create_user
 
-NUMERIC_PRODUCT_FIELDS = {"unit_cost", "reorder_point", "safety_stock"}
+NUMERIC_PRODUCT_FIELDS = {"unit_cost", "sale_price", "reorder_point", "safety_stock"}
 
 
 def _auth_headers(client: TestClient, email: str = "writer@example.com") -> dict[str, str]:
@@ -124,6 +124,55 @@ def test_product_detail_includes_current_stock_and_recent_history(
     assert body["movement_history"][0]["movement_type"] == "sale"
     assert body["movement_history"][0]["provenance"] == "observed"
     assert "quantity_on_hand" in body["_provenance"]
+
+
+def test_create_and_read_product_with_brand_and_sale_price(client: TestClient) -> None:
+    headers = _auth_headers(client)
+    client.post("/brands", json={"name": "Acme Housewares"}, headers=headers)
+    brand_id = client.get("/brands", headers=headers).json()[0]["id"]
+
+    create_response = client.post(
+        "/products",
+        json={"sku": "SKU-1", "brand_id": brand_id, "sale_price": 9.99},
+        headers=headers,
+    )
+    assert create_response.status_code == 201, create_response.text
+    assert create_response.json()["brand_id"] == brand_id
+    assert create_response.json()["sale_price"] == 9.99
+
+    get_response = client.get("/products/SKU-1", headers=headers)
+    body = get_response.json()
+    assert body["brand_id"] == brand_id
+    assert body["sale_price"] == 9.99
+
+
+def test_update_records_product_history_with_the_changing_user(
+    client: TestClient, db_session: Session
+) -> None:
+    headers = _auth_headers(client)
+    client.post("/products", json={"sku": "SKU-1", "unit_cost": 1.0}, headers=headers)
+
+    update_response = client.put("/products/SKU-1", json={"unit_cost": 2.5}, headers=headers)
+    assert update_response.status_code == 200
+
+    history_response = client.get("/products/SKU-1/history", headers=headers)
+    assert history_response.status_code == 200
+    entries = history_response.json()
+    assert len(entries) == 1
+    assert entries[0]["field_name"] == "unit_cost"
+    assert entries[0]["old_value"] == "1.0"
+    assert entries[0]["new_value"] == "2.5"
+    assert entries[0]["changed_by_user_id"] is not None
+
+
+def test_update_with_no_actual_change_does_not_add_a_history_entry(client: TestClient) -> None:
+    headers = _auth_headers(client)
+    client.post("/products", json={"sku": "SKU-1", "unit_cost": 1.0}, headers=headers)
+
+    client.put("/products/SKU-1", json={"unit_cost": 1.0}, headers=headers)
+
+    history_response = client.get("/products/SKU-1/history", headers=headers)
+    assert history_response.json() == []
 
 
 def test_read_only_user_can_read_but_not_write(client: TestClient, db_session: Session) -> None:

@@ -1,0 +1,74 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/ProductHistoryEntry"
+  },
+  "title": "Response Get Product History Route Products  Sku  History Get",
+  "$defs": {
+    "ProductHistoryEntry": {
+      "properties": {
+        "field_name": {
+          "type": "string",
+          "title": "Field Name"
+        },
+        "old_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Old Value"
+        },
+        "new_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "New Value"
+        },
+        "changed_by_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Changed By User Id"
+        },
+        "changed_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Changed At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "field_name",
+        "old_value",
+        "new_value",
+        "changed_by_user_id",
+        "changed_at"
+      ],
+      "title": "ProductHistoryEntry",
+      "description": "One product_history row: a single field-level change. old_value\nand new_value are stringified since the changed field's type varies\n(int, float, str) -- an audit trail, not business data, so no\nprovenance labelling.",
+      "examples": [
+        {
+          "changed_at": "2026-02-01T09:00:00Z",
+          "changed_by_user_id": 4,
+          "field_name": "unit_cost",
+          "new_value": "2.25",
+          "old_value": "2.15"
+        }
+      ]
+    }
+  }
+}
