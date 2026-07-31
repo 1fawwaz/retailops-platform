@@ -18,6 +18,7 @@ from database import get_engine, get_session_factory  # noqa: E402
 from scripts.etl.categories import assign_categories, load_cluster_labels  # noqa: E402
 from scripts.etl.clean import DEFAULT_CHUNK_SIZE, clean, iter_raw_chunks  # noqa: E402
 from scripts.etl.cost_price import compute_unit_costs, sample_margin_factors  # noqa: E402
+from scripts.etl.dataset_scope import SkuVolumeCounter  # noqa: E402
 from scripts.etl.load import (  # noqa: E402
     insert_categories,
     insert_products,
@@ -40,6 +41,7 @@ from scripts.etl.suppliers import (  # noqa: E402
     assign_suppliers,
     generate_supplier_roster,
 )
+from settings import get_settings  # noqa: E402
 
 
 def step_a_and_b_clean_and_product_master() -> None:
@@ -51,22 +53,42 @@ def step_a_and_b_clean_and_product_master() -> None:
     docstring. Two passes are required (rather than one) because
     sales_transactions.sku has a foreign key to products.sku: every product
     must exist before any transaction referencing it can be inserted.
+
+    If ETL_MAX_TRANSACTIONS is set (see docs/data-derivation.md#demo-dataset-scope),
+    only the top SKUs by transaction volume -- covering up to that many
+    transactions -- are kept, each with its full observed history. This is a
+    disclosed, deliberate scope reduction for storage-constrained deployments,
+    not a change to the derivation logic itself: every kept row is cleaned and
+    derived exactly as documented, just over fewer products.
     """
     print("Step (a)+(b): clean, product master, sales transactions (streaming)")
+    max_transactions = get_settings().etl_max_transactions
+    if max_transactions is not None:
+        print(
+            f"  ETL_MAX_TRANSACTIONS={max_transactions}: loading a scoped subset, "
+            "not the full dataset -- see docs/data-derivation.md#demo-dataset-scope"
+        )
 
     print("Pass 1/2: accumulating product master...")
     total_counts: dict[str, int] = {}
     accumulator = ProductMasterAccumulator()
+    sku_volume_counter = SkuVolumeCounter()
     for i, raw_chunk in enumerate(iter_raw_chunks(chunk_size=DEFAULT_CHUNK_SIZE), start=1):
         cleaned_chunk, counts = clean(raw_chunk)
         for key, value in counts.items():
             total_counts[key] = total_counts.get(key, 0) + value
         accumulator.add_chunk(cleaned_chunk)
+        sku_volume_counter.add_chunk(cleaned_chunk)
         print(f"  chunk {i}: {len(raw_chunk)} raw -> {len(cleaned_chunk)} cleaned")
     for key, value in total_counts.items():
         print(f"  {key}: {value}")
 
     product_df = accumulator.build()
+    selected_skus: set[str] | None = None
+    if max_transactions is not None:
+        selected_skus = sku_volume_counter.top_skus_by_target_volume(max_transactions)
+        product_df = product_df[product_df["sku"].isin(selected_skus)].reset_index(drop=True)
+        print(f"  demo scope: keeping {len(selected_skus)} of the full distinct-SKU count")
     print(f"  distinct_products: {len(product_df)}")
 
     engine = get_engine()
@@ -75,10 +97,15 @@ def step_a_and_b_clean_and_product_master() -> None:
 
     print("Pass 2/2: inserting sales transactions...")
     transactions_inserted = 0
+    checkpoint_every_n_chunks = 5
     for i, raw_chunk in enumerate(iter_raw_chunks(chunk_size=DEFAULT_CHUNK_SIZE), start=1):
         cleaned_chunk, _ = clean(raw_chunk)
+        if selected_skus is not None:
+            cleaned_chunk = cleaned_chunk[cleaned_chunk["StockCode"].isin(selected_skus)]
         transactions_inserted += insert_sales_transactions(engine, cleaned_chunk)
         print(f"  chunk {i}: sales_transactions_inserted so far = {transactions_inserted}")
+        if i % checkpoint_every_n_chunks == 0:
+            checkpoint()
     print(f"  sales_transactions_inserted: {transactions_inserted}")
 
 
@@ -200,6 +227,7 @@ def step_f_stock_ledger() -> None:
             f"{len(batch_skus)} skus, running totals -- "
             f"movements={total_movements} levels={total_levels} pos={total_purchase_orders}"
         )
+        checkpoint()
 
     print(f"  stock_movements_inserted: {total_movements}")
     print(f"  stock_levels_inserted: {total_levels}")
@@ -235,14 +263,29 @@ def step_g_reorder() -> None:
         session.close()
 
 
+def checkpoint() -> None:
+    """Forces Postgres to recycle WAL segments now rather than waiting for
+    its own checkpoint_timeout. On a storage-constrained volume, WAL from a
+    write-heavy step can otherwise sit around consuming disk long after the
+    step's own data has committed -- found live: 192MB of WAL remained after
+    inserting only 55% of sales_transactions, on a 500MB volume.
+    """
+    engine = get_engine()
+    with engine.connect() as conn:
+        conn.execute(text("CHECKPOINT"))
+        conn.commit()
+
+
 def main() -> None:
     rng = create_rng()
 
     step_a_and_b_clean_and_product_master()
+    checkpoint()
     step_c_categories()
     step_d_cost_price(rng)
     step_e_suppliers(rng)
     step_f_stock_ledger()
+    checkpoint()
     step_g_reorder()
 
 

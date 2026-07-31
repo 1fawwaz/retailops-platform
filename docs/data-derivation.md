@@ -320,3 +320,50 @@ orders per SKU to backfill bursty demand reactively. `safety_stock` here
 explicitly prices in *how bursty* (`demand_std_dev`) each SKU actually is, so
 a downstream reorder recommendation (Stage 1 Task 4, not built yet) can hold
 enough buffer to not need constant reactive backfilling in the first place.
+
+## #demo-dataset-scope
+
+**Local development and any self-hosted deployment run the full pipeline
+above, unmodified**, producing the exact measured counts documented in each
+section (1,039,713 cleaned transactions; 2,292,303 `stock_levels` rows; etc.).
+
+**The Railway production deployment of this portfolio project loads a scoped
+subset instead**, because Railway's free-tier Postgres volume is 500MB and
+the full dataset's base table data alone (before indexes or write-ahead-log
+overhead) measures well over that. Storage was found live at 97% capacity
+partway through loading `sales_transactions` alone (436,762 of 1,039,713 rows
+using 88MB of table data plus 192MB of WAL, on a 500MB volume) — this was
+measured directly against the deployed instance, not estimated in advance.
+Upgrading Railway's volume requires a paid subscription; this project intentionally
+runs on free-tier infrastructure only, so the dataset is scoped down instead.
+
+**How the scope reduction works** (`scripts/etl/dataset_scope.py`,
+`SkuVolumeCounter`): during the streaming pass over the raw workbook, each
+SKU's transaction count is tallied. The SKUs are then ranked by transaction
+volume, descending, and kept greedily until their *combined* transaction
+count reaches `ETL_MAX_TRANSACTIONS` (an env var, unset/`None` by default —
+meaning "no limit, full dataset" — and set only in the Railway production
+environment). Every kept SKU retains its **complete** observed transaction
+history end to end; no SKU's date range is truncated. This means:
+
+- Seasonal patterns, per-SKU demand variability, and forecasting signal are
+  preserved for every product that's included, not thinned out.
+- The stock ledger (step f) still replays each kept SKU's full daily history,
+  so `stock_levels` granularity is identical to the full-dataset case — the
+  row count shrinks only because fewer SKUs are replayed, not because any
+  SKU's history is shortened.
+- Steps (c) through (g) require no changes at all: they already read
+  `products`/`sales_transactions` from the database rather than an in-memory
+  DataFrame, so they automatically operate on whichever subset was loaded.
+
+**What's different from the full dataset:** fewer distinct products (and
+therefore fewer categories/suppliers exercised, proportionally), and the
+long tail of rarely-sold SKUs is absent — the kept SKUs are deliberately the
+*highest-volume* ones, which is the direction that best preserves forecasting
+and analytics signal for a demo, at the cost of catalog breadth.
+
+This is a disclosed limitation of the Railway production deployment
+specifically, not a change to the derivation methodology documented above,
+and not something to be inferred quietly from row counts — it's recorded
+here, and the ETL prints it plainly (`ETL_MAX_TRANSACTIONS=... loading a
+scoped subset, not the full dataset`) whenever it's active.

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 60
     demo_user_email: str
     demo_user_password: str
+    etl_max_transactions: int | None = None
 
 
 @lru_cache
