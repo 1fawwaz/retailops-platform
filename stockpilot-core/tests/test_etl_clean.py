@@ -1,6 +1,9 @@
+from pathlib import Path
+
+import openpyxl
 import pandas as pd
 
-from scripts.etl.clean import clean
+from scripts.etl.clean import clean, iter_raw_chunks
 
 
 def _row(
@@ -130,3 +133,58 @@ def test_clean_reports_remaining_rows() -> None:
 
     assert counts["raw_rows"] == 3
     assert counts["remaining_rows"] == 3
+
+
+def _write_workbook(path: Path, sheets: dict[str, list[tuple[object, ...]]]) -> None:
+    header = ["Invoice", "StockCode", "Description", "Quantity"]
+    workbook = openpyxl.Workbook()
+    default_sheet = workbook.active
+    assert default_sheet is not None
+    workbook.remove(default_sheet)
+    for sheet_name, rows in sheets.items():
+        sheet = workbook.create_sheet(sheet_name)
+        sheet.append(header)
+        for row in rows:
+            sheet.append(row)
+    workbook.save(path)
+
+
+def test_iter_raw_chunks_splits_into_chunk_size_pieces(tmp_path: Path) -> None:
+    path = tmp_path / "raw.xlsx"
+    rows: list[tuple[object, ...]] = [(f"{i}", "A1", "Widget", 1) for i in range(10)]
+    _write_workbook(path, {"Sheet1": rows})
+
+    chunks = list(iter_raw_chunks(path, chunk_size=3))
+
+    assert [len(chunk) for chunk in chunks] == [3, 3, 3, 1]
+    assert sum(len(chunk) for chunk in chunks) == 10
+    assert list(chunks[0].columns) == ["Invoice", "StockCode", "Description", "Quantity"]
+
+
+def test_iter_raw_chunks_reads_every_sheet(tmp_path: Path) -> None:
+    path = tmp_path / "raw.xlsx"
+    _write_workbook(
+        path,
+        {
+            "Year1": [("1", "A1", "Widget", 1), ("2", "A1", "Widget", 1)],
+            "Year2": [("3", "B2", "Gadget", 1)],
+        },
+    )
+
+    chunks = list(iter_raw_chunks(path, chunk_size=50_000))
+
+    assert sum(len(chunk) for chunk in chunks) == 3
+    all_invoices = {invoice for chunk in chunks for invoice in chunk["Invoice"]}
+    assert all_invoices == {"1", "2", "3"}
+
+
+def test_iter_raw_chunks_preserves_row_values(tmp_path: Path) -> None:
+    path = tmp_path / "raw.xlsx"
+    _write_workbook(path, {"Sheet1": [("536365", "A1", "Widget", 5)]})
+
+    (chunk,) = list(iter_raw_chunks(path, chunk_size=50_000))
+
+    assert chunk.iloc[0]["Invoice"] == "536365"
+    assert chunk.iloc[0]["StockCode"] == "A1"
+    assert chunk.iloc[0]["Description"] == "Widget"
+    assert chunk.iloc[0]["Quantity"] == 5

@@ -5,13 +5,17 @@ See docs/data-derivation.md#cleaning for why each filter exists.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
+import openpyxl
 import pandas as pd
 
 RAW_DATA_PATH = (
     Path(__file__).resolve().parent.parent.parent.parent / "data" / "online_retail_II.xlsx"
 )
+
+DEFAULT_CHUNK_SIZE = 50_000
 
 TEST_STOCK_CODES = {"TEST001", "TEST002"}
 
@@ -45,9 +49,33 @@ ADMIN_STOCK_CODES = {
 GIFT_VOUCHER_STOCKCODE_PREFIX = "gift_"
 
 
-def load_raw(path: Path = RAW_DATA_PATH) -> pd.DataFrame:
-    sheets = pd.read_excel(path, sheet_name=None)
-    return pd.concat(sheets.values(), ignore_index=True)
+def iter_raw_chunks(
+    path: Path = RAW_DATA_PATH, chunk_size: int = DEFAULT_CHUNK_SIZE
+) -> Iterator[pd.DataFrame]:
+    """Streams the raw workbook chunk_size rows at a time, sheet by sheet.
+
+    pandas' own read_excel(sheet_name=None) parses every sheet's full XML
+    into memory before handing back a DataFrame -- with the two ~530k-row
+    sheets in this workbook, that overhead OOM-killed the Railway container
+    before a single row reached the database. openpyxl's read_only mode
+    iterates the XML instead of materializing it, so peak memory here is
+    bounded by chunk_size regardless of workbook size.
+    """
+    workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        for sheet in workbook.worksheets:
+            rows = sheet.iter_rows(values_only=True)
+            header = list(next(rows))
+            buffer: list[tuple[object, ...]] = []
+            for row in rows:
+                buffer.append(row)
+                if len(buffer) >= chunk_size:
+                    yield pd.DataFrame(buffer, columns=header)
+                    buffer = []
+            if buffer:
+                yield pd.DataFrame(buffer, columns=header)
+    finally:
+        workbook.close()
 
 
 def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:

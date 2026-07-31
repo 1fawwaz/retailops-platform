@@ -16,7 +16,7 @@ from sqlalchemy import text  # noqa: E402
 
 from database import get_engine, get_session_factory  # noqa: E402
 from scripts.etl.categories import assign_categories, load_cluster_labels  # noqa: E402
-from scripts.etl.clean import clean, load_raw  # noqa: E402
+from scripts.etl.clean import DEFAULT_CHUNK_SIZE, clean, iter_raw_chunks  # noqa: E402
 from scripts.etl.cost_price import compute_unit_costs, sample_margin_factors  # noqa: E402
 from scripts.etl.load import (  # noqa: E402
     insert_categories,
@@ -31,7 +31,7 @@ from scripts.etl.load import (  # noqa: E402
     update_product_suppliers,
     update_product_unit_costs,
 )
-from scripts.etl.product_master import build_product_master  # noqa: E402
+from scripts.etl.product_master import ProductMasterAccumulator  # noqa: E402
 from scripts.etl.random_seed import create_rng  # noqa: E402
 from scripts.etl.reorder import compute_daily_demand_stats, compute_reorder_points  # noqa: E402
 from scripts.etl.stock_ledger import replay_stock_ledger  # noqa: E402
@@ -42,27 +42,43 @@ from scripts.etl.suppliers import (  # noqa: E402
 )
 
 
-def step_a_clean() -> pd.DataFrame:
-    print("Step (a): clean")
-    print("Loading raw data...")
-    raw_df = load_raw()
+def step_a_and_b_clean_and_product_master() -> None:
+    """Steps (a) clean + (b) product master, in two streaming passes over
+    the raw workbook so the ~1M-row dataset is never held in memory as one
+    DataFrame. The first attempt at this step held the full raw workbook in
+    memory via pd.read_excel(sheet_name=None) and was OOM-killed on Railway
+    before a single row reached the database -- see iter_raw_chunks's own
+    docstring. Two passes are required (rather than one) because
+    sales_transactions.sku has a foreign key to products.sku: every product
+    must exist before any transaction referencing it can be inserted.
+    """
+    print("Step (a)+(b): clean, product master, sales transactions (streaming)")
 
-    cleaned_df, counts = clean(raw_df)
-    for key, value in counts.items():
+    print("Pass 1/2: accumulating product master...")
+    total_counts: dict[str, int] = {}
+    accumulator = ProductMasterAccumulator()
+    for i, raw_chunk in enumerate(iter_raw_chunks(chunk_size=DEFAULT_CHUNK_SIZE), start=1):
+        cleaned_chunk, counts = clean(raw_chunk)
+        for key, value in counts.items():
+            total_counts[key] = total_counts.get(key, 0) + value
+        accumulator.add_chunk(cleaned_chunk)
+        print(f"  chunk {i}: {len(raw_chunk)} raw -> {len(cleaned_chunk)} cleaned")
+    for key, value in total_counts.items():
         print(f"  {key}: {value}")
-    return cleaned_df
 
-
-def step_b_product_master(cleaned_df: pd.DataFrame) -> None:
-    print("Step (b): product master")
-    product_df = build_product_master(cleaned_df)
+    product_df = accumulator.build()
     print(f"  distinct_products: {len(product_df)}")
 
     engine = get_engine()
     products_inserted = insert_products(engine, product_df)
     print(f"  products_inserted: {products_inserted}")
 
-    transactions_inserted = insert_sales_transactions(engine, cleaned_df)
+    print("Pass 2/2: inserting sales transactions...")
+    transactions_inserted = 0
+    for i, raw_chunk in enumerate(iter_raw_chunks(chunk_size=DEFAULT_CHUNK_SIZE), start=1):
+        cleaned_chunk, _ = clean(raw_chunk)
+        transactions_inserted += insert_sales_transactions(engine, cleaned_chunk)
+        print(f"  chunk {i}: sales_transactions_inserted so far = {transactions_inserted}")
     print(f"  sales_transactions_inserted: {transactions_inserted}")
 
 
@@ -222,8 +238,7 @@ def step_g_reorder() -> None:
 def main() -> None:
     rng = create_rng()
 
-    cleaned_df = step_a_clean()
-    step_b_product_master(cleaned_df)
+    step_a_and_b_clean_and_product_master()
     step_c_categories()
     step_d_cost_price(rng)
     step_e_suppliers(rng)
