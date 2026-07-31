@@ -36,11 +36,29 @@ before. Any OTHER ClientError (400 bad request, 401 bad key, ...)
 propagates immediately and unmodified either way -- those need a human
 to fix configuration, not a retry or a silent failover that would hide
 a broken deployment forever.
+
+Multiple Gemini API keys: `settings.py::Settings.gemini_api_keys` is an
+ordered list, not a single key (see its own docstring for the
+GEMINI_API_KEY / GEMINI_API_KEY_N precedence -- the same underscored
+numbered scheme as GROQ_API_KEY_N, standardized to match Groq exactly).
+Mirrors llm/providers/groq.py's own key-rotation shape exactly:
+on a 429 RESOURCE_EXHAUSTED THIS module rotates to the next configured
+key and retries the same request before ever raising
+ProviderUnavailableError to FallbackProvider. Only once every configured
+Gemini key has been tried does this module raise a terminal "Gemini
+providers exhausted" ProviderUnavailableError -- that's the signal
+FallbackProvider reacts to (moving on to Groq if Gemini isn't last in
+the chain, or propagating as the final LLMUnavailableError if it is),
+never a retry or replan loop above this layer. Rotation state/logic
+lives in the shared `llm/providers/key_rotation.py::KeyRotationPool`,
+identical to groq.py's own pool -- see that module's own docstring for
+the full detail, not repeated here since it applies unchanged.
 """
 
 from __future__ import annotations
 
 import itertools
+import logging
 import threading
 import time
 from collections.abc import Iterator
@@ -66,9 +84,12 @@ from llm.providers.base import LLMUnavailableError as LLMUnavailableError
 from llm.providers.base import ProviderUnavailableError as ProviderUnavailableError
 from llm.providers.base import StreamChunk as StreamChunk
 from llm.providers.base import StructuredResult as StructuredResult
+from llm.providers.key_rotation import KeyRotationPool
 from settings import get_settings
 
 T = TypeVar("T", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
 
 THOUGHT_SIGNATURES_KEY = "thought_signatures"
 
@@ -92,28 +113,85 @@ PROVIDER_NAME = "gemini"
 
 _thread_local = threading.local()
 
+# Multiple-key rotation state, module-wide -- shared architecture with
+# llm/providers/groq.py's identically-shaped pool (see
+# llm/providers/key_rotation.py's own docstring), only the
+# provider_label differs.
+_key_pool = KeyRotationPool(provider_label="Gemini", logger=logger)
+
+
+class _GeminiKeyRateLimited(Exception):
+    """Internal signal only, never raised past this module: the
+    CURRENTLY ACTIVE Gemini key hit a 429 RESOURCE_EXHAUSTED. The caller
+    (_generate_content_with_retry / stream) catches this, tries rotating
+    to the next configured key, and only converts it to a caller-facing
+    ProviderUnavailableError ("Gemini providers exhausted") once every
+    key has been tried -- that's the point at which FallbackProvider
+    should move on to the next provider in the chain.
+    """
+
+
+def _api_keys() -> list[str]:
+    keys = get_settings().gemini_api_keys
+    if not keys:
+        raise RuntimeError(
+            "No Gemini API keys configured -- set at least GEMINI_API_KEY "
+            "(or GEMINI_API_KEY_1, GEMINI_API_KEY_2, ... for additional rotation "
+            "keys) in .env. See .env.example."
+        )
+    return keys
+
+
+def _rotate_to_next_key() -> bool:
+    """Advances the shared "current Gemini key" pointer to the next
+    configured key via the shared KeyRotationPool (see its own
+    docstring). Returns True if it did (a next key existed), False if
+    the current key was already the last one configured -- the caller's
+    cue to give up on Gemini entirely for this request and raise a
+    terminal "Gemini providers exhausted" error.
+    """
+    return _key_pool.rotate(key_count=len(_api_keys()))
+
+
+def _reset_key_rotation() -> None:
+    """Test-only: resets the shared key-rotation pointer back to the
+    first configured key, mirroring _reset_client_cache() below.
+    """
+    _key_pool.reset()
+
 
 def _client() -> genai.Client:
-    """Cached per thread, not per process. google-genai shares an
-    underlying httpx connection pool across Client instances constructed
-    with the same API key, and closes it when an instance is garbage
-    collected -- a fresh, unbound genai.Client() per call gets collected
-    immediately after use and silently breaks every later call in the
-    process. A single process-wide cached instance (the original fix)
-    avoids that, but introduces a second bug confirmed live once Task
-    3.2's graph started running retrieval agents concurrently: two
-    threads calling .models.generate_content() at the same time on one
-    shared Client fail with "Cannot send a request, as the client has
-    been closed" -- the SDK isn't safe for truly concurrent use of a
-    single instance either. Caching one instance per thread instead
-    avoids both failure modes: each thread's client survives for that
-    thread's lifetime (no premature GC) and is never touched by another
-    thread (no concurrent-use closure).
+    """Cached per thread, keyed to WHICH Gemini API key is currently
+    active -- extends the original per-thread cache (still needed for
+    the reasons below) so a thread's cached client is rebuilt whenever
+    the shared key pointer has moved past what it was built with, e.g.
+    another thread just rotated away from a key this thread was still
+    caching a client for.
+
+    google-genai shares an underlying httpx connection pool across
+    Client instances constructed with the same API key, and closes it
+    when an instance is garbage collected -- a fresh, unbound
+    genai.Client() per call gets collected immediately after use and
+    silently breaks every later call in the process. A single
+    process-wide cached instance (the original fix) avoids that, but
+    introduces a second bug confirmed live once Task 3.2's graph started
+    running retrieval agents concurrently: two threads calling
+    .models.generate_content() at the same time on one shared Client
+    fail with "Cannot send a request, as the client has been closed" --
+    the SDK isn't safe for truly concurrent use of a single instance
+    either. Caching one instance per thread instead avoids both failure
+    modes: each thread's client survives for that thread's lifetime (no
+    premature GC) and is never touched by another thread (no
+    concurrent-use closure).
     """
+    keys = _api_keys()
+    index = min(_key_pool.current_index, len(keys) - 1)
     client = getattr(_thread_local, "client", None)
-    if client is None:
-        client = genai.Client(api_key=get_settings().gemini_api_key)
+    cached_index = getattr(_thread_local, "client_key_index", None)
+    if client is None or cached_index != index:
+        client = genai.Client(api_key=keys[index])
         _thread_local.client = client
+        _thread_local.client_key_index = index
     return client
 
 
@@ -124,6 +202,7 @@ def _reset_client_cache() -> None:
     clearing only the calling thread's slot is sufficient.
     """
     _thread_local.client = None
+    _thread_local.client_key_index = None
 
 
 def _message_to_content(message: BaseMessage) -> types.Content:
@@ -244,14 +323,15 @@ def _response_to_ai_message(response: types.GenerateContentResponse, *, model: s
     )
 
 
-def _generate_content_with_retry(
+def _generate_content_with_retry_one_key(
     *, model: str, contents: list[types.Content], config: types.GenerateContentConfig
 ) -> types.GenerateContentResponse:
-    """Retries a real Gemini call on transient network errors and 5xx
-    responses, exponential backoff (base * 2**attempt). A 429 (quota)
-    is NOT retried here at all -- see module docstring. Raises
-    ProviderUnavailableError in both failure shapes; FallbackProvider is
-    what decides whether to try Groq next.
+    """The original per-key retry loop (transient errors only) --
+    raises _GeminiKeyRateLimited, not ProviderUnavailableError, for a
+    429, so the caller (_generate_content_with_retry) can try rotating
+    to the next configured key first. Retries transient network errors
+    and 5xx responses with exponential backoff (base * 2**attempt),
+    exactly as before rotation existed.
     """
     last_exception: Exception | None = None
     for attempt in range(MAX_LLM_RETRIES + 1):
@@ -260,7 +340,7 @@ def _generate_content_with_retry(
         except genai_errors.ClientError as exc:
             if exc.code != RATE_LIMITED_STATUS_CODE:
                 raise
-            raise ProviderUnavailableError(
+            raise _GeminiKeyRateLimited(
                 f"Gemini quota exceeded calling model {model!r}: {exc}"
             ) from exc
         except RETRYABLE_LLM_EXCEPTIONS as exc:
@@ -272,6 +352,32 @@ def _generate_content_with_retry(
         f"Gemini unreachable after {MAX_LLM_RETRIES} retries calling model "
         f"{model!r}: {last_exception}"
     ) from last_exception
+
+
+def _generate_content_with_retry(
+    *, model: str, contents: list[types.Content], config: types.GenerateContentConfig
+) -> types.GenerateContentResponse:
+    """Wraps _generate_content_with_retry_one_key with key rotation: a
+    _GeminiKeyRateLimited signal tries the next configured key (a fresh
+    call, not a resumption -- generate_content is stateless per request,
+    so retrying the identical request against a different key is safe);
+    once no next key exists, raises a terminal "Gemini providers
+    exhausted" ProviderUnavailableError so llm/providers/fallback.py can
+    move on to the next provider in the chain. A transient-error
+    ProviderUnavailableError raised directly by the one-key loop
+    (retries exhausted) is NOT caught here -- rotating keys wouldn't
+    plausibly fix a connection/timeout/5xx problem, so that path is
+    unaffected by rotation.
+    """
+    while True:
+        try:
+            return _generate_content_with_retry_one_key(
+                model=model, contents=contents, config=config
+            )
+        except _GeminiKeyRateLimited as exc:
+            if _rotate_to_next_key():
+                continue
+            raise ProviderUnavailableError(f"Gemini providers exhausted: {exc}") from exc
 
 
 def generate(
@@ -338,39 +444,17 @@ def generate_structured(
     )
 
 
-def stream(
-    *,
-    model: str,
-    messages: list[BaseMessage],
-    tools: list[StructuredTool] | None = None,
-    max_output_tokens: int | None = None,
-    temperature: float | None = None,
+def _stream_one_key(
+    *, model: str, contents: list[types.Content], config: types.GenerateContentConfig
 ) -> Iterator[StreamChunk]:
-    """Yields StreamChunks as text arrives, with a final chunk carrying
-    usage_metadata/provider/model once generation completes. Tool-calling
-    is not supported mid-stream (a streamed response is assumed to be
-    the final answer, not a step in a tool-use loop) -- callers that
-    need tools should use generate() for those turns and reserve
-    stream() for the final response to a user.
-
-    Retries ONLY establishing the stream (the SDK call plus fetching the
-    first chunk) with the same policy as generate() -- immediate failure
-    on quota, backoff-then-fail for other transient errors. A failure
-    partway through an already-started stream (after some chunks have
-    already reached the caller, e.g. already relayed onward as SSE
-    tokens) is NOT retried -- transparently restarting a stream a caller
-    has already partially consumed and relayed isn't safe, so this
-    deliberately doesn't attempt it; the stream simply ends with the
-    exception propagating, same as any other mid-stream network failure.
+    """The original retry-only-the-connection-and-first-chunk generator
+    -- raises _GeminiKeyRateLimited, not ProviderUnavailableError, for a
+    429. Because that can only happen inside the connection-
+    establishment loop below, BEFORE this generator's first `yield`, the
+    caller (stream()) can safely catch it and rotate keys:
+    _GeminiKeyRateLimited is never raised after a chunk has already been
+    yielded to a client.
     """
-    system_instruction, contents = _split_messages(messages)
-    config = types.GenerateContentConfig(
-        system_instruction=system_instruction,
-        max_output_tokens=max_output_tokens,
-        temperature=temperature,
-        tools=[_tool_to_gemini(tool) for tool in tools] if tools else None,
-    )
-
     last_exception: Exception | None = None
     chunks: Iterator[types.GenerateContentResponse] | None = None
     first: types.GenerateContentResponse | None = None
@@ -386,7 +470,7 @@ def stream(
         except genai_errors.ClientError as exc:
             if exc.code != RATE_LIMITED_STATUS_CODE:
                 raise
-            raise ProviderUnavailableError(
+            raise _GeminiKeyRateLimited(
                 f"Gemini quota exceeded calling model {model!r} (stream): {exc}"
             ) from exc
         except RETRYABLE_LLM_EXCEPTIONS as exc:
@@ -410,6 +494,52 @@ def stream(
             yield StreamChunk(text=chunk.text)
     if last_usage is not None:
         yield StreamChunk(text="", usage_metadata=last_usage, provider=PROVIDER_NAME, model=model)
+
+
+def stream(
+    *,
+    model: str,
+    messages: list[BaseMessage],
+    tools: list[StructuredTool] | None = None,
+    max_output_tokens: int | None = None,
+    temperature: float | None = None,
+) -> Iterator[StreamChunk]:
+    """Yields StreamChunks as text arrives, with a final chunk carrying
+    usage_metadata/provider/model once generation completes. Tool-calling
+    is not supported mid-stream (a streamed response is assumed to be
+    the final answer, not a step in a tool-use loop) -- callers that
+    need tools should use generate() for those turns and reserve
+    stream() for the final response to a user.
+
+    Retries ONLY establishing the stream (the SDK call plus fetching the
+    first chunk) with the same policy as generate() -- rotates to the
+    next configured key on quota, backoff-then-fail for other transient
+    errors, terminal "Gemini providers exhausted" once every key has
+    been tried. A failure partway through an already-started stream
+    (after some chunks have already reached the caller, e.g. already
+    relayed onward as SSE tokens) is NOT retried or rotated -- see
+    _stream_one_key's own docstring for why that's safe to assume never
+    happens for the rotation-triggering case, and
+    llm/providers/fallback.py's own docstring for the general
+    never-silently-restart-a-partially-delivered-stream principle this
+    matches.
+    """
+    system_instruction, contents = _split_messages(messages)
+    config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+        tools=[_tool_to_gemini(tool) for tool in tools] if tools else None,
+    )
+
+    while True:
+        try:
+            yield from _stream_one_key(model=model, contents=contents, config=config)
+            return
+        except _GeminiKeyRateLimited as exc:
+            if _rotate_to_next_key():
+                continue
+            raise ProviderUnavailableError(f"Gemini providers exhausted: {exc}") from exc
 
 
 def list_model_ids() -> list[str]:

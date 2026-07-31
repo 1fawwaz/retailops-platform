@@ -20,6 +20,7 @@ from llm.providers.gemini import (
     generate_structured,
     stream,
 )
+from settings import get_settings
 
 
 class GetWeatherArgs(BaseModel):
@@ -451,3 +452,312 @@ def test_stream_raises_provider_unavailable_after_exhausting_retries() -> None:
 
     assert fake_client.models.generate_content_stream.call_count == MAX_LLM_RETRIES + 1
     assert fake_sleep.call_count == MAX_LLM_RETRIES
+
+
+# ---------------------------------------------------------------------------
+# Multiple Gemini API keys: rotation on a 429 before raising the terminal
+# "Gemini providers exhausted" error. Standardized to the exact same
+# architecture as test_groq_provider.py's own rotation suite (both providers
+# now share llm/providers/key_rotation.py::KeyRotationPool) -- these tests
+# are the Gemini-side proof that refactor didn't change observable behavior.
+# ---------------------------------------------------------------------------
+
+
+def _rate_limited_client_error(*, stream: bool = False) -> genai_errors.ClientError:
+    suffix = " (stream)" if stream else ""
+    return genai_errors.ClientError(
+        429, {"error": {"message": f"quota exceeded{suffix}", "status": "RESOURCE_EXHAUSTED"}}
+    )
+
+
+def _two_keys_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY_1", "key-1")
+    monkeypatch.setenv("GEMINI_API_KEY_2", "key-2")
+    get_settings.cache_clear()
+
+
+def test_generate_rotates_to_the_next_key_after_a_rate_limit_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Requirement: rotate to the next configured key on a 429, before
+    raising a terminal error. Two distinct fake clients (keyed by which
+    api_key the SDK constructor received) prove genuine rotation
+    happened, not just a retry against the same client.
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.models.generate_content.side_effect = _rate_limited_client_error()
+    key_2_client = MagicMock()
+    key_2_client.models.generate_content.return_value = _fake_generate_content_response(
+        text="from key 2"
+    )
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.gemini.genai.Client",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.gemini.time.sleep") as fake_sleep,
+        ):
+            result = generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.content == "from key 2"
+    key_1_client.models.generate_content.assert_called_once()
+    key_2_client.models.generate_content.assert_called_once()
+    # Rotation is not the transient-error retry-with-backoff path -- a
+    # rate limit on one key never sleeps, it moves to the next key.
+    fake_sleep.assert_not_called()
+
+
+def test_rotation_logs_the_key_index_never_the_secret_value(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Requirement: log which key index was used (e.g. "Gemini API key
+    #2"), never the actual secret. Asserts both halves: the index
+    appears, and neither configured key's literal value appears
+    anywhere in the captured log text.
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.models.generate_content.side_effect = _rate_limited_client_error()
+    key_2_client = MagicMock()
+    key_2_client.models.generate_content.return_value = _fake_generate_content_response(
+        text="from key 2"
+    )
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.gemini.genai.Client",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.gemini.time.sleep"),
+            caplog.at_level("WARNING", logger="llm.providers.gemini"),
+        ):
+            generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    log_text = caplog.text
+    assert "Gemini API key #1" in log_text
+    assert "rotating to key #2 of 2 configured" in log_text
+    assert "key-1" not in log_text
+    assert "key-2" not in log_text
+
+
+def test_rotation_cascades_through_every_configured_key_before_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """key 1 rate-limited -> key 2 rate-limited -> key 3 rate-limited ->
+    key 4 succeeds. Proves rotation isn't hardcoded to a two-key case.
+    """
+    monkeypatch.setenv("GEMINI_API_KEY_1", "key-1")
+    monkeypatch.setenv("GEMINI_API_KEY_2", "key-2")
+    monkeypatch.setenv("GEMINI_API_KEY_3", "key-3")
+    monkeypatch.setenv("GEMINI_API_KEY_4", "key-4")
+    get_settings.cache_clear()
+
+    rate_limited_clients = {}
+    for name in ("key-1", "key-2", "key-3"):
+        client = MagicMock()
+        client.models.generate_content.side_effect = _rate_limited_client_error()
+        rate_limited_clients[name] = client
+    key_4_client = MagicMock()
+    key_4_client.models.generate_content.return_value = _fake_generate_content_response(
+        text="from key 4"
+    )
+    clients_by_key = {**rate_limited_clients, "key-4": key_4_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.gemini.genai.Client",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.gemini.time.sleep") as fake_sleep,
+        ):
+            result = generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.content == "from key 4"
+    for client in rate_limited_clients.values():
+        client.models.generate_content.assert_called_once()
+    key_4_client.models.generate_content.assert_called_once()
+    fake_sleep.assert_not_called()
+
+
+def test_generate_does_not_rotate_keys_on_a_normal_successful_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Requirement: do NOT rotate keys for normal successful requests --
+    keep using the current key until it reaches a rate limit. Proven
+    across two separate calls: both must be served by key 1's client.
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.models.generate_content.return_value = _fake_generate_content_response(text="ok")
+    key_2_client = MagicMock()
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with patch(
+            "llm.providers.gemini.genai.Client", side_effect=lambda api_key: clients_by_key[api_key]
+        ):
+            generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+            generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi again")])
+    finally:
+        get_settings.cache_clear()
+
+    assert key_1_client.models.generate_content.call_count == 2
+    key_2_client.models.generate_content.assert_not_called()
+
+
+def test_generate_raises_provider_unavailable_once_every_configured_key_is_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once every configured Gemini key has hit a 429, generate() gives
+    up on Gemini entirely with a terminal "Gemini providers exhausted"
+    ProviderUnavailableError, rather than looping forever -- this is the
+    exact signal llm/providers/fallback.py needs to move on to the next
+    provider in the chain (proven end-to-end below).
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.models.generate_content.side_effect = _rate_limited_client_error()
+    key_2_client = MagicMock()
+    key_2_client.models.generate_content.side_effect = _rate_limited_client_error()
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.gemini.genai.Client",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.gemini.time.sleep") as fake_sleep,
+            pytest.raises(ProviderUnavailableError, match="Gemini providers exhausted"),
+        ):
+            generate(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    key_1_client.models.generate_content.assert_called_once()
+    key_2_client.models.generate_content.assert_called_once()
+    fake_sleep.assert_not_called()
+
+
+def test_all_gemini_keys_exhausted_falls_over_to_groq_via_fallback_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end proof of the literal requirement: once every configured
+    Gemini key is rate-limited, FallbackProvider (which only ever reacts
+    to ProviderUnavailableError -- see its own module docstring) sees
+    Gemini as unavailable and proceeds to the next provider in the chain,
+    unaware that key rotation is what happened underneath.
+    """
+    from collections.abc import Iterator
+
+    from llm.providers.base import StreamChunk, StructuredResult
+    from llm.providers.fallback import FallbackProvider
+    from llm.providers.gemini import GeminiProvider
+
+    _two_keys_configured(monkeypatch)
+    exhausted_client = MagicMock()
+    exhausted_client.models.generate_content.side_effect = _rate_limited_client_error()
+    clients_by_key = {"key-1": exhausted_client, "key-2": exhausted_client}
+
+    class FakeGroq:
+        """Implements the full LLMProvider Protocol (only .generate() is
+        actually exercised here) -- matching test_groq_provider.py's own
+        FakeGemini convention of a complete stand-in rather than a
+        partial one narrowed with a type: ignore.
+        """
+
+        name = "groq"
+
+        def generate(self, *, model: str, messages: list[Any], **_: Any) -> AIMessage:
+            return AIMessage(
+                content="served by groq", response_metadata={"provider": "groq", "model": model}
+            )
+
+        def generate_structured(
+            self, *, model: str, messages: list[Any], response_schema: type[Any], **_: Any
+        ) -> StructuredResult[Any]:
+            raise NotImplementedError
+
+        def stream(self, *, model: str, messages: list[Any], **_: Any) -> Iterator[StreamChunk]:
+            raise NotImplementedError
+            yield  # pragma: no cover -- makes this a generator function
+
+        def list_model_ids(self) -> list[str]:
+            raise NotImplementedError
+
+    try:
+        with patch(
+            "llm.providers.gemini.genai.Client", side_effect=lambda api_key: clients_by_key[api_key]
+        ):
+            chain = FallbackProvider(
+                [(GeminiProvider(), "gemini-3.5-flash"), (FakeGroq(), "openai/gpt-oss-120b")]
+            )
+            result = chain.generate(model="unused", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.content == "served by groq"
+    assert exhausted_client.models.generate_content.call_count == 2
+
+
+def test_stream_rotates_to_the_next_key_after_a_rate_limit_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.models.generate_content_stream.side_effect = _rate_limited_client_error(
+        stream=True
+    )
+    key_2_client = MagicMock()
+    key_2_client.models.generate_content_stream.return_value = [
+        SimpleNamespace(text="from key 2", usage_metadata=None)
+    ]
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with patch(
+            "llm.providers.gemini.genai.Client", side_effect=lambda api_key: clients_by_key[api_key]
+        ):
+            chunks = list(stream(model="gemini-3.5-flash", messages=[HumanMessage(content="hi")]))
+    finally:
+        get_settings.cache_clear()
+
+    assert [c.text for c in chunks] == ["from key 2"]
+    key_1_client.models.generate_content_stream.assert_called_once()
+    key_2_client.models.generate_content_stream.assert_called_once()
+
+
+def test_client_raises_clearly_when_no_gemini_api_keys_are_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No Gemini keys configured -> existing startup validation behavior:
+    llm/providers/startup.py::validate_configured_models() calls
+    list_model_ids() -> _client() at boot, with no try/except of its own
+    -- a clear, immediate failure here is what makes the app fail fast
+    with a real explanation, the same contract test_groq_provider.py's
+    own equivalent test already established for Groq.
+    """
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    get_settings.cache_clear()
+
+    from llm.providers.gemini import list_model_ids
+
+    try:
+        with pytest.raises(RuntimeError, match="No Gemini API keys configured"):
+            list_model_ids()
+    finally:
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-for-production")
+        get_settings.cache_clear()

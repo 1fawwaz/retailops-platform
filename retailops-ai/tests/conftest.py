@@ -103,13 +103,19 @@ def _clear_gemini_client_cache() -> Generator[None]:
     """llm.providers.gemini._client() is cached per thread (see its own
     docstring for why); tests that patch google.genai.Client need the
     cache cleared first, or they'll silently get an earlier test's stale
-    cached instance instead of their own patch.
+    cached instance instead of their own patch. Also resets the module-
+    wide key-rotation pointer -- same reasoning as
+    _clear_groq_client_cache below, mirrored here since
+    llm/providers/gemini.py now shares the identical rotation
+    architecture (llm/providers/key_rotation.py).
     """
-    from llm.providers.gemini import _reset_client_cache
+    from llm.providers.gemini import _reset_client_cache, _reset_key_rotation
 
     _reset_client_cache()
+    _reset_key_rotation()
     yield
     _reset_client_cache()
+    _reset_key_rotation()
 
 
 @pytest.fixture(autouse=True)

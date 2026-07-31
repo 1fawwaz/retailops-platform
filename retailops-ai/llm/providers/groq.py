@@ -43,14 +43,16 @@ GROQ_API_KEY / GROQ_API_KEY_N precedence). On a rate-limit-class failure
 shape below) THIS module rotates to the next configured key and retries
 the same request before ever raising ProviderUnavailableError -- Gemini
 failover (llm/providers/fallback.py) only sees Groq as "unavailable"
-once every configured key has been tried. Rotation is a one-way,
-process-wide ratchet (`_rotate_to_next_key`/`_current_key_index`): it
-never un-rotates back to an earlier key within a process's lifetime, and
-it's shared across threads (not thread-local like the client cache)
-specifically so one agent thread's discovery that a key is exhausted
-immediately benefits the other concurrently-running retrieval agents
-instead of each independently re-discovering the same 429. Rotation is
-NOT a retry-on-transient-error mechanism -- connection/timeout/5xx
+once every configured key has been tried. Rotation state/logic itself
+lives in the shared `llm/providers/key_rotation.py::KeyRotationPool`
+(a one-way, process-wide ratchet: it never un-rotates back to an earlier
+key within a process's lifetime, and it's shared across threads, not
+thread-local like the client cache, specifically so one agent thread's
+discovery that a key is exhausted immediately benefits the other
+concurrently-running retrieval agents instead of each independently
+re-discovering the same 429) -- see that module's own docstring for the
+full detail, identical for llm/providers/gemini.py's own pool. Rotation
+is NOT a retry-on-transient-error mechanism -- connection/timeout/5xx
 errors still use the existing per-key retry-with-backoff loop
 unchanged; only a genuine rate-limit signal advances the key pointer.
 """
@@ -71,6 +73,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
 from llm.providers.base import ProviderUnavailableError, StreamChunk, StructuredResult
+from llm.providers.key_rotation import KeyRotationPool
 from settings import get_settings
 
 T = TypeVar("T", bound=BaseModel)
@@ -108,15 +111,11 @@ GROQ_REQUEST_TOO_LARGE_STATUS_CODE = 413
 
 _thread_local = threading.local()
 
-# Multiple-key rotation state, module-wide (not thread-local -- see the
-# module docstring for why). _current_key_index is a plain int; CPython's
-# GIL makes a bare read/write of it safe enough for this purpose (worst
-# case under a race is one thread briefly using a slightly stale index,
-# which self-corrects on its next call), but every INCREMENT goes through
-# _rotate_to_next_key() under _key_lock so two threads racing to rotate
-# past the same rate-limited key can't both advance it twice.
-_key_lock = threading.Lock()
-_current_key_index = 0
+# Multiple-key rotation state, module-wide (not thread-local -- see
+# llm/providers/key_rotation.py's own docstring for why). Shared
+# architecture with llm/providers/gemini.py's identically-shaped pool --
+# only the provider_label differs.
+_key_pool = KeyRotationPool(provider_label="Groq", logger=logger)
 
 
 class _GroqKeyRateLimited(Exception):
@@ -142,46 +141,20 @@ def _api_keys() -> list[str]:
 
 def _rotate_to_next_key() -> bool:
     """Advances the shared "current Groq key" pointer to the next
-    configured key. Returns True if it did (a next key existed), False
-    if the current key was already the last one configured -- the
-    caller's cue to give up on Groq entirely for this request and let
-    Gemini failover take over.
-
-    Logs which key INDEX was exhausted and which index it's rotating to
-    (1-based, human-readable -- "Groq API key #2") -- never the key
-    value itself. `keys` (the actual secrets) only ever appears as an
-    argument to `groq.Groq(api_key=...)` in `_client()` below; nothing
-    in this module logs, formats, or otherwise surfaces it.
+    configured key via the shared KeyRotationPool (see its own
+    docstring). Returns True if it did (a next key existed), False if
+    the current key was already the last one configured -- the caller's
+    cue to give up on Groq entirely for this request and let Gemini
+    failover take over.
     """
-    global _current_key_index
-    keys = _api_keys()
-    with _key_lock:
-        exhausted_position = _current_key_index + 1
-        if _current_key_index + 1 < len(keys):
-            _current_key_index += 1
-            logger.warning(
-                "Groq API key #%d rate-limited; rotating to key #%d of %d configured",
-                exhausted_position,
-                _current_key_index + 1,
-                len(keys),
-            )
-            return True
-        logger.warning(
-            "Groq API key #%d rate-limited; all %d configured Groq API key(s) exhausted, "
-            "failing over to the next provider",
-            exhausted_position,
-            len(keys),
-        )
-        return False
+    return _key_pool.rotate(key_count=len(_api_keys()))
 
 
 def _reset_key_rotation() -> None:
     """Test-only: resets the shared key-rotation pointer back to the
     first configured key, mirroring _reset_client_cache() below.
     """
-    global _current_key_index
-    with _key_lock:
-        _current_key_index = 0
+    _key_pool.reset()
 
 
 def _client() -> groq.Groq:
@@ -195,7 +168,7 @@ def _client() -> groq.Groq:
     a key this thread was still caching a client for.
     """
     keys = _api_keys()
-    index = min(_current_key_index, len(keys) - 1)
+    index = min(_key_pool.current_index, len(keys) - 1)
     client = getattr(_thread_local, "client", None)
     cached_index = getattr(_thread_local, "client_key_index", None)
     if client is None or cached_index != index:
