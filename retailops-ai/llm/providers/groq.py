@@ -35,6 +35,24 @@ configured ID EXISTS on its provider's list, not that it supports every
 call shape this codebase needs -- worth remembering if the fallback
 model is ever changed; re-verify both properties live, the same way
 this module's own docstring history did.
+
+Multiple Groq API keys: `settings.py::Settings.groq_api_keys` is an
+ordered list, not a single key (see its own docstring for the
+GROQ_API_KEY / GROQ_API_KEY_N precedence). On a rate-limit-class failure
+(a 429 groq.RateLimitError, or the 413 "too large for this TPM window"
+shape below) THIS module rotates to the next configured key and retries
+the same request before ever raising ProviderUnavailableError -- Gemini
+failover (llm/providers/fallback.py) only sees Groq as "unavailable"
+once every configured key has been tried. Rotation is a one-way,
+process-wide ratchet (`_rotate_to_next_key`/`_current_key_index`): it
+never un-rotates back to an earlier key within a process's lifetime, and
+it's shared across threads (not thread-local like the client cache)
+specifically so one agent thread's discovery that a key is exhausted
+immediately benefits the other concurrently-running retrieval agents
+instead of each independently re-discovering the same 429. Rotation is
+NOT a retry-on-transient-error mechanism -- connection/timeout/5xx
+errors still use the existing per-key retry-with-backoff loop
+unchanged; only a genuine rate-limit signal advances the key pointer.
 """
 
 from __future__ import annotations
@@ -87,25 +105,88 @@ GROQ_REQUEST_TOO_LARGE_STATUS_CODE = 413
 
 _thread_local = threading.local()
 
+# Multiple-key rotation state, module-wide (not thread-local -- see the
+# module docstring for why). _current_key_index is a plain int; CPython's
+# GIL makes a bare read/write of it safe enough for this purpose (worst
+# case under a race is one thread briefly using a slightly stale index,
+# which self-corrects on its next call), but every INCREMENT goes through
+# _rotate_to_next_key() under _key_lock so two threads racing to rotate
+# past the same rate-limited key can't both advance it twice.
+_key_lock = threading.Lock()
+_current_key_index = 0
+
+
+class _GroqKeyRateLimited(Exception):
+    """Internal signal only, never raised past this module: the
+    CURRENTLY ACTIVE Groq key hit a rate-limit-class error (429, or the
+    413 "too large" shape). The caller (_create_with_retry / stream)
+    catches this, tries rotating to the next configured key, and only
+    converts it to a caller-facing ProviderUnavailableError once every
+    key has been tried -- that's the point at which Groq is genuinely
+    "unavailable" and Gemini failover should take over.
+    """
+
+
+def _api_keys() -> list[str]:
+    keys = get_settings().groq_api_keys
+    if not keys:
+        raise RuntimeError(
+            "No Groq API keys configured -- set at least GROQ_API_KEY_1 "
+            "(or the bare GROQ_API_KEY alias) in .env. See .env.example."
+        )
+    return keys
+
+
+def _rotate_to_next_key() -> bool:
+    """Advances the shared "current Groq key" pointer to the next
+    configured key. Returns True if it did (a next key existed), False
+    if the current key was already the last one configured -- the
+    caller's cue to give up on Groq entirely for this request and let
+    Gemini failover take over.
+    """
+    global _current_key_index
+    keys = _api_keys()
+    with _key_lock:
+        if _current_key_index + 1 < len(keys):
+            _current_key_index += 1
+            return True
+        return False
+
+
+def _reset_key_rotation() -> None:
+    """Test-only: resets the shared key-rotation pointer back to the
+    first configured key, mirroring _reset_client_cache() below.
+    """
+    global _current_key_index
+    with _key_lock:
+        _current_key_index = 0
+
 
 def _client() -> groq.Groq:
-    """Cached per thread -- same defensive pattern as
-    llm/providers/gemini.py::_client(), even though nothing has (yet)
-    proven Groq's SDK shares the same cross-instance connection-pool
-    gotcha google-genai has. Consistent, cheap, and avoids rediscovering
-    that class of bug a second time if it turns out Groq's client isn't
-    safe for concurrent use either.
+    """Cached per thread, keyed to WHICH Groq API key is currently
+    active -- same defensive per-thread pattern as
+    llm/providers/gemini.py::_client() (nothing has proven Groq's SDK
+    shares google-genai's cross-instance connection-pool gotcha, but
+    it's consistent and cheap either way), extended so a thread's cached
+    client is rebuilt whenever the shared key pointer has moved past
+    what it was built with -- e.g. another thread just rotated away from
+    a key this thread was still caching a client for.
     """
+    keys = _api_keys()
+    index = min(_current_key_index, len(keys) - 1)
     client = getattr(_thread_local, "client", None)
-    if client is None:
-        client = groq.Groq(api_key=get_settings().groq_api_key)
+    cached_index = getattr(_thread_local, "client_key_index", None)
+    if client is None or cached_index != index:
+        client = groq.Groq(api_key=keys[index])
         _thread_local.client = client
+        _thread_local.client_key_index = index
     return client
 
 
 def _reset_client_cache() -> None:
     """Test-only: see llm/providers/gemini.py::_reset_client_cache()."""
     _thread_local.client = None
+    _thread_local.client_key_index = None
 
 
 def _message_to_dict(message: BaseMessage) -> dict[str, object]:
@@ -163,15 +244,15 @@ def _usage_metadata(usage: object) -> dict[str, int]:
 def _raise_for_request_too_large(
     exc: groq.APIStatusError, *, model: str, context: str = ""
 ) -> NoReturn:
-    """Re-raises `exc` as a failover-eligible ProviderUnavailableError if
-    it's the 413 "too large for this TPM window" shape (see
-    GROQ_REQUEST_TOO_LARGE_STATUS_CODE's own comment); otherwise
+    """Re-raises `exc` as _GroqKeyRateLimited (the current key should be
+    rotated past) if it's the 413 "too large for this TPM window" shape
+    (see GROQ_REQUEST_TOO_LARGE_STATUS_CODE's own comment); otherwise
     re-raises `exc` itself, unmodified -- every other groq.APIStatusError
     (400, 401, 403, 404, 409, 422, ...) still needs a human to fix
-    configuration, not a retry or silent failover.
+    configuration, not a retry, rotation, or silent failover.
     """
     if exc.status_code == GROQ_REQUEST_TOO_LARGE_STATUS_CODE:
-        raise ProviderUnavailableError(
+        raise _GroqKeyRateLimited(
             f"Groq quota exceeded calling model {model!r}{context}: {exc}"
         ) from exc
     raise exc
@@ -197,13 +278,18 @@ def _response_to_ai_message(response: object, *, model: str) -> AIMessage:
     )
 
 
-def _create_with_retry(
+def _create_with_retry_one_key(
     *,
     model: str,
     messages: list[dict[str, object]],
     tools: list[dict[str, object]] | None,
     response_format: dict[str, object] | None,
 ) -> object:
+    """The original per-key retry loop (transient errors only) --
+    raises _GroqKeyRateLimited, not ProviderUnavailableError, for the
+    two rate-limit-class cases, so the caller (_create_with_retry) can
+    try rotating to the next configured key first.
+    """
     # Real, live-discovered bug (Task 6.4's own TRUST GATE verification):
     # with tools=None and tool_choice left at Groq's own default, the
     # gpt-oss family sometimes attempts a tool call anyway (some
@@ -226,7 +312,7 @@ def _create_with_retry(
                 response_format=response_format,  # type: ignore[arg-type]
             )
         except groq.RateLimitError as exc:
-            raise ProviderUnavailableError(
+            raise _GroqKeyRateLimited(
                 f"Groq quota exceeded calling model {model!r}: {exc}"
             ) from exc
         except RETRYABLE_GROQ_EXCEPTIONS as exc:
@@ -244,6 +330,36 @@ def _create_with_retry(
         f"Groq unreachable after {MAX_LLM_RETRIES} retries calling model {model!r}: "
         f"{last_exception}"
     ) from last_exception
+
+
+def _create_with_retry(
+    *,
+    model: str,
+    messages: list[dict[str, object]],
+    tools: list[dict[str, object]] | None,
+    response_format: dict[str, object] | None,
+) -> object:
+    """Wraps _create_with_retry_one_key with key rotation: a
+    _GroqKeyRateLimited signal tries the next configured key (a fresh
+    call, not a resumption -- Groq's chat completions API is stateless
+    per request, so retrying the identical request against a different
+    key is safe); once no next key exists, converts to
+    ProviderUnavailableError so llm/providers/fallback.py can fail over
+    to Gemini. A transient-error ProviderUnavailableError raised
+    directly by the one-key loop (retries exhausted) is NOT caught here
+    -- rotating keys wouldn't plausibly fix a connection/timeout/5xx
+    problem, so that path is unaffected by rotation, unchanged from
+    before this feature existed.
+    """
+    while True:
+        try:
+            return _create_with_retry_one_key(
+                model=model, messages=messages, tools=tools, response_format=response_format
+            )
+        except _GroqKeyRateLimited as exc:
+            if _rotate_to_next_key():
+                continue
+            raise ProviderUnavailableError(str(exc)) from exc
 
 
 def generate(
@@ -296,21 +412,21 @@ def generate_structured(
     )
 
 
-def stream(
+def _stream_one_key(
     *,
     model: str,
-    messages: list[BaseMessage],
-    tools: list[StructuredTool] | None = None,
-    max_output_tokens: int | None = None,
-    temperature: float | None = None,
+    groq_messages: list[dict[str, object]],
+    groq_tools: list[dict[str, object]] | None,
 ) -> Iterator[StreamChunk]:
-    """Same retry-only-the-connection-and-first-chunk policy as
-    llm/providers/gemini.py::stream() -- see that module's docstring for
-    the full reasoning, identical here.
+    """The original retry-only-the-connection-and-first-chunk generator
+    (see llm/providers/gemini.py::stream()'s docstring for the full
+    reasoning) -- raises _GroqKeyRateLimited, not ProviderUnavailableError,
+    for the two rate-limit-class cases. Because that can only happen
+    inside the connection-establishment loop below, BEFORE this
+    generator's first `yield`, the caller (stream()) can safely catch it
+    and rotate keys: by construction, _GroqKeyRateLimited is never
+    raised after a chunk has already been yielded to a client.
     """
-    groq_messages = [_message_to_dict(m) for m in messages]
-    groq_tools = [_tool_to_groq(t) for t in tools] if tools else None
-
     last_exception: Exception | None = None
     chunks: Iterator[object] | None = None
     first: object | None = None
@@ -328,7 +444,7 @@ def stream(
             first = next(chunks, None)
             break
         except groq.RateLimitError as exc:
-            raise ProviderUnavailableError(
+            raise _GroqKeyRateLimited(
                 f"Groq quota exceeded calling model {model!r} (stream): {exc}"
             ) from exc
         except RETRYABLE_GROQ_EXCEPTIONS as exc:
@@ -360,6 +476,34 @@ def stream(
             last_usage = _usage_metadata(usage)
     if last_usage is not None:
         yield StreamChunk(text="", usage_metadata=last_usage, provider=PROVIDER_NAME, model=model)
+
+
+def stream(
+    *,
+    model: str,
+    messages: list[BaseMessage],
+    tools: list[StructuredTool] | None = None,
+    max_output_tokens: int | None = None,
+    temperature: float | None = None,
+) -> Iterator[StreamChunk]:
+    """Wraps _stream_one_key with key rotation, the same before-first-
+    token-only safety window _stream_one_key's own docstring establishes
+    -- see _create_with_retry's docstring for the general rotation
+    reasoning, identical here.
+    """
+    groq_messages = [_message_to_dict(m) for m in messages]
+    groq_tools = [_tool_to_groq(t) for t in tools] if tools else None
+
+    while True:
+        try:
+            yield from _stream_one_key(
+                model=model, groq_messages=groq_messages, groq_tools=groq_tools
+            )
+            return
+        except _GroqKeyRateLimited as exc:
+            if _rotate_to_next_key():
+                continue
+            raise ProviderUnavailableError(str(exc)) from exc
 
 
 def list_model_ids() -> list[str]:

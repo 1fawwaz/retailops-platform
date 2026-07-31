@@ -4,21 +4,27 @@ class-wraps-functions shape), covering the parts specific to Groq: the
 OpenAI-compatible message/tool dict conversion, and the two live-found
 behaviors documented in this module's own docstring (429 fails over
 immediately with no retry; tool_choice is always explicit).
+
+Multiple-Groq-key rotation tests live at the bottom of this file --
+same module, since rotation is entirely internal to groq.py's own retry
+machinery (_create_with_retry / stream), not a separate concern.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import groq
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from llm.providers.base import ProviderUnavailableError
+from llm.providers.base import ProviderUnavailableError, StreamChunk, StructuredResult
+from llm.providers.fallback import FallbackProvider
 from llm.providers.groq import (
     MAX_LLM_RETRIES,
     GroqProvider,
@@ -28,6 +34,7 @@ from llm.providers.groq import (
     generate_structured,
     stream,
 )
+from settings import get_settings
 
 
 class GetWeatherArgs(BaseModel):
@@ -505,3 +512,197 @@ def test_stream_raises_provider_unavailable_after_exhausting_retries() -> None:
 
     assert fake_client.chat.completions.create.call_count == MAX_LLM_RETRIES + 1
     assert fake_sleep.call_count == MAX_LLM_RETRIES
+
+
+# ---------------------------------------------------------------------------
+# Multiple Groq API keys: rotation on a rate limit, before Gemini failover.
+# ---------------------------------------------------------------------------
+
+
+def _rate_limited() -> groq.RateLimitError:
+    fake_response = MagicMock()
+    fake_response.request = MagicMock()
+    return groq.RateLimitError("rate limited", response=fake_response, body=None)
+
+
+def _two_keys_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROQ_API_KEY_1", "key-1")
+    monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
+    get_settings.cache_clear()
+
+
+def test_generate_rotates_to_the_next_key_after_a_rate_limit_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Requirement: rotate to the next configured key on a rate limit,
+    before failing over to Gemini. Two distinct fake clients (keyed by
+    which api_key the SDK constructor received) prove genuine rotation
+    happened, not just a retry against the same client.
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.chat.completions.create.side_effect = _rate_limited()
+    key_2_client = MagicMock()
+    key_2_client.chat.completions.create.return_value = _fake_response(content="from key 2")
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.groq.groq.Groq",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.groq.time.sleep") as fake_sleep,
+        ):
+            result = generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.content == "from key 2"
+    key_1_client.chat.completions.create.assert_called_once()
+    key_2_client.chat.completions.create.assert_called_once()
+    # Rotation is not the transient-error retry-with-backoff path -- a
+    # rate limit on one key never sleeps, it moves to the next key.
+    fake_sleep.assert_not_called()
+
+
+def test_generate_does_not_rotate_keys_on_a_normal_successful_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Requirement: do NOT rotate keys for normal successful requests --
+    keep using the current key until it reaches a rate limit. Proven
+    across two separate calls: both must be served by key 1's client.
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.chat.completions.create.return_value = _fake_response(content="ok")
+    key_2_client = MagicMock()
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with patch(
+            "llm.providers.groq.groq.Groq", side_effect=lambda api_key: clients_by_key[api_key]
+        ):
+            generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+            generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi again")])
+    finally:
+        get_settings.cache_clear()
+
+    assert key_1_client.chat.completions.create.call_count == 2
+    key_2_client.chat.completions.create.assert_not_called()
+
+
+def test_generate_raises_provider_unavailable_once_every_configured_key_is_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "All Groq keys exhausted" from groq.py's own point of view: once
+    every configured key has hit a rate limit, it gives up on Groq
+    entirely (a plain ProviderUnavailableError) rather than looping
+    forever -- this is the exact signal llm/providers/fallback.py needs
+    to move on to Gemini (proven end-to-end in the test below).
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.chat.completions.create.side_effect = _rate_limited()
+    key_2_client = MagicMock()
+    key_2_client.chat.completions.create.side_effect = _rate_limited()
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.groq.groq.Groq",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.groq.time.sleep") as fake_sleep,
+            pytest.raises(ProviderUnavailableError, match="quota exceeded"),
+        ):
+            generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    key_1_client.chat.completions.create.assert_called_once()
+    key_2_client.chat.completions.create.assert_called_once()
+    fake_sleep.assert_not_called()
+
+
+def test_all_groq_keys_exhausted_falls_over_to_gemini_via_fallback_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end proof of the literal requirement: once every configured
+    Groq key is rate-limited, FallbackProvider (which only ever reacts to
+    ProviderUnavailableError -- see its own module docstring) sees Groq
+    as unavailable and proceeds to the next provider in the chain, unaware
+    that key rotation is what happened underneath.
+    """
+    _two_keys_configured(monkeypatch)
+    exhausted_client = MagicMock()
+    exhausted_client.chat.completions.create.side_effect = _rate_limited()
+    clients_by_key = {"key-1": exhausted_client, "key-2": exhausted_client}
+
+    class FakeGemini:
+        """Implements the full LLMProvider Protocol (only .generate() is
+        actually exercised here) -- matching tests/test_fallback_provider.py's
+        own FakeProvider convention of a complete stand-in rather than a
+        partial one narrowed with a type: ignore.
+        """
+
+        name = "gemini"
+
+        def generate(self, *, model: str, messages: list[BaseMessage], **_: Any) -> AIMessage:
+            return AIMessage(
+                content="served by gemini",
+                response_metadata={"provider": "gemini", "model": model},
+            )
+
+        def generate_structured(
+            self, *, model: str, messages: list[BaseMessage], response_schema: type[Any], **_: Any
+        ) -> StructuredResult[Any]:
+            raise NotImplementedError
+
+        def stream(
+            self, *, model: str, messages: list[BaseMessage], **_: Any
+        ) -> Iterator[StreamChunk]:
+            raise NotImplementedError
+            yield  # pragma: no cover -- makes this a generator function
+
+        def list_model_ids(self) -> list[str]:
+            raise NotImplementedError
+
+    try:
+        with patch(
+            "llm.providers.groq.groq.Groq", side_effect=lambda api_key: clients_by_key[api_key]
+        ):
+            chain = FallbackProvider(
+                [(GroqProvider(), "openai/gpt-oss-120b"), (FakeGemini(), "gemini-3.5-flash")]
+            )
+            result = chain.generate(model="unused", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.content == "served by gemini"
+    assert exhausted_client.chat.completions.create.call_count == 2
+
+
+def test_client_raises_clearly_when_no_groq_api_keys_are_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "No Groq keys configured -> existing startup validation behavior":
+    llm/providers/startup.py::validate_configured_models() calls
+    list_model_ids() -> _client() at boot, with no try/except of its own
+    -- a clear, immediate failure here is what makes the app fail fast
+    with a real explanation, the same "fails fast with a clear error"
+    contract the spec already required when a single required
+    groq_api_key field being unset raised a pydantic ValidationError.
+    """
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    get_settings.cache_clear()
+
+    from llm.providers.groq import list_model_ids
+
+    try:
+        with pytest.raises(RuntimeError, match="No Groq API keys configured"):
+            list_model_ids()
+    finally:
+        monkeypatch.setenv("GROQ_API_KEY", "test-key-not-for-production")
+        get_settings.cache_clear()

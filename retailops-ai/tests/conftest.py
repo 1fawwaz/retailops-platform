@@ -1,4 +1,6 @@
 import os
+import tempfile
+from pathlib import Path
 
 os.environ.setdefault("RETAILOPS_DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("STOCKPILOT_BASE_URL", "http://localhost:8000")
@@ -8,6 +10,26 @@ os.environ.setdefault("GEMINI_API_KEY", "test-key-not-for-production")
 os.environ.setdefault("GROQ_API_KEY", "test-key-not-for-production")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-0123456789")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
+
+import settings as _settings_module  # noqa: E402
+
+# settings.py::Settings.groq_api_keys' default_factory scans the real
+# .env file (SERVICE_ROOT / ".env") directly, not just os.environ --
+# unlike every other Settings field, which pydantic-settings itself
+# resolves with os.environ always winning over that same file for a
+# matching name (why the setdefault calls above are enough on their
+# own). A GROQ_API_KEY_2/_3/... present ONLY in a developer's real local
+# .env has no os.environ counterpart to be overridden BY, so it would
+# otherwise leak straight into every test run -- reassigning
+# SERVICE_ROOT to an empty temp directory (no .env file inside it)
+# before any Settings() is ever constructed points that one scan at
+# nothing, leaving GROQ_API_KEY/GROQ_API_KEY_N resolution to os.environ
+# only, exactly like every other field. Safe: model_config's own
+# env_file path (used for gemini_api_key, jwt_secret, ...) is baked in
+# at class-definition time, already evaluated by the time this module
+# is first imported, so this reassignment can't affect it -- only the
+# default_factory lambda re-reads SERVICE_ROOT fresh on each call.
+_settings_module.SERVICE_ROOT = Path(tempfile.mkdtemp(prefix="retailops-test-env-"))
 
 from collections.abc import Generator  # noqa: E402
 from datetime import UTC, datetime, timedelta  # noqa: E402
@@ -93,13 +115,19 @@ def _clear_gemini_client_cache() -> Generator[None]:
 @pytest.fixture(autouse=True)
 def _clear_groq_client_cache() -> Generator[None]:
     """Same reasoning as _clear_gemini_client_cache above, for
-    llm.providers.groq._client()'s own per-thread cache.
+    llm.providers.groq._client()'s own per-thread cache -- plus the
+    module-wide key-rotation pointer (_current_key_index), which is
+    process-lifetime shared state just like api/rate_limit.py's own,
+    and needs the same per-test reset or an earlier test's rotation
+    would leak into a later one.
     """
-    from llm.providers.groq import _reset_client_cache
+    from llm.providers.groq import _reset_client_cache, _reset_key_rotation
 
     _reset_client_cache()
+    _reset_key_rotation()
     yield
     _reset_client_cache()
+    _reset_key_rotation()
 
 
 @pytest.fixture

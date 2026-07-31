@@ -759,7 +759,8 @@ PRIORITY ORDER: if time runs short, F1–F4 are what matter.
 DEPLOY
   Both services live — backend on Railway or Render, frontend on
   Vercel, managed Postgres. Secrets via platform env vars (including
-  GROQ_API_KEY, GEMINI_API_KEY, and LLM_PRIMARY_PROVIDER).
+  GROQ_API_KEY_1 [+ optional GROQ_API_KEY_2, ...], GEMINI_API_KEY, and
+  LLM_PRIMARY_PROVIDER).
   Seeded demo database and read-only demo login: no signup friction.
   CI running tests, type checks, contract tests, and the eval
   grounding gate.

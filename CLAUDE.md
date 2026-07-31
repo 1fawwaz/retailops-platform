@@ -96,6 +96,8 @@ No provider SDK may be imported outside `retailops-ai/llm/providers/`. The rest 
 
 **Why Groq is primary and Gemini is the fallback:** this is a deployment/config decision, not a reversal of the architecture — the provider abstraction is symmetric by design, which is why the swap cost nothing structurally. Practically: the configured Gemini account's quota has been observed at hard-zero, so defaulting to it would waste a guaranteed-failed attempt on every request. Groq's rate limits are generous enough for normal traffic; Gemini remains available as fallback for when Groq's own per-minute limits are hit. `LLM_PRIMARY_PROVIDER` in `.env` controls which provider is primary; the failover logic below is symmetric and does not care which slot each provider occupies.
 
+**Groq key rotation happens before Gemini failover, entirely inside the Groq provider.** Multiple `GROQ_API_KEY_N` values form an ordered pool; a rate-limit-class error on the currently active key rotates to the next configured key and retries the same request, rather than immediately declaring Groq unavailable. Only once every configured Groq key has been tried does Groq raise the failover-eligible error that lets Gemini take over — from `llm/providers/fallback.py`'s point of view, Groq is one provider, key rotation is invisible to it. Rotation never fires on a successful request (the current key is reused until it hits a rate limit) and never un-rotates back to an earlier key within a process's lifetime.
+
 **Failover rules:**
 
 - Fallback fires **only** on failover-eligible error classes from the error taxonomy: quota exceeded (429), timeout after retries, provider unavailable. Never on validation failures, malformed output, or citation-validator rejections — those are not provider problems, and they follow their existing paths on whichever provider is serving.
@@ -173,11 +175,14 @@ POSTGRES_DB=
 RETAILOPS_DATABASE_URL=
 STOCKPILOT_BASE_URL=
 GEMINI_API_KEY=
-GROQ_API_KEY=
+GROQ_API_KEY_1=
+GROQ_API_KEY_2=
 LLM_PRIMARY_PROVIDER=
 JWT_SECRET=
 JWT_ALGORITHM=HS256
 ```
+
+Groq supports multiple rotating API keys: `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, ... (the bare `GROQ_API_KEY`, no suffix, is accepted as an alias for `GROQ_API_KEY_1`, for backward compatibility). At least one is required. `llm/providers/groq.py` rotates to the next configured key on a rate-limit-class error (429, or the 413 "too large for this window" shape) before failing over to Gemini — key rotation happens entirely inside the Groq provider, below the `LLMProvider` interface; Gemini failover only sees Groq as unavailable once every configured key has been tried.
 
 Never print a secret's value. Never suggest committing one. If a key is needed and missing, say which one and stop.
 
