@@ -20,7 +20,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 1 — Authentication | `[x]` logout, refresh, `GET /me`, password reset (admin-mediated delivery — see note) all live, tested, committed |
 | Backend | Module 2 — Products | `[~]` categories, brands, sale price, history all live; images blocked on a storage-provider decision (see note) |
 | Backend | Module 3 — Suppliers | `[~]` contacts live; performance metrics deferred to Module 5 (see note) |
-| Backend | Modules 4–10 | `[ ]` |
+| Backend | Module 4 — Inventory | `[x]` warehouses, location-scoped stock, transfers, adjustments, ledger all live, tested, committed |
+| Backend | Modules 5–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -96,27 +97,28 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 **Known limitation carried forward, not silently dropped:** performance metrics and PO linkage — see the task note above.
 
-**Commit checkpoint:** `feat(suppliers): contacts, performance metrics, PO linkage`
-
 * * *
 
-### Backend Module 4 — Inventory (extend: warehouses, multi-location, transfers, adjustments, ledger)
+### Backend Module 4 — Inventory (extend: warehouses, multi-location, transfers, adjustments, ledger) `[x]`
 
-**Status:** single-location stock/low-stock/dead-stock/slow-movers/valuation queries are live. The underlying `stock_levels`/`stock_movements` tables already carry full history (`docs/stockpilot-gaps.md` #3) — this module exposes what already exists in the data plus adds real multi-location support.
+**Status:** single-location stock/low-stock/dead-stock/slow-movers/valuation queries were live; all now genuinely location-aware underneath, plus real transfers/adjustments/ledger.
 
 **Tasks**
 
-- [ ] `warehouses` table + location field on stock queries
-- [ ] Multi-location stock levels — every inventory endpoint gains a location dimension without breaking the existing single-location callers (additive, not breaking)
-- [ ] `POST /inventory/transfers` — move stock between locations, real ledger entries, not a silent quantity edit
-- [ ] `POST /inventory/adjustments` — manual stock correction with a required reason, logged
-- [ ] `GET /inventory/{sku}/ledger` — the real movement history already in `stock_movements`, finally queryable directly instead of only replayed internally
+- [x] `warehouses` table, seeded with one `Main Warehouse` row that every pre-existing `stock_levels`/`stock_movements` row is backfilled to via the migration — an explicit label for the one real location the historical data already represented, not a fabricated split.
+- [x] `stock_levels` and `stock_movements` both gained a required `warehouse_id`. The "latest quantity per SKU" query (used by `/inventory/stock`, `/low-stock`, `/dead-stock`, `/slow-movers`, `/valuation`) now sums each warehouse's own latest row per SKU rather than assuming one global row — with today's single seeded warehouse this is numerically identical to the old behavior (verified: all pre-existing tests pass unchanged), but it will stay correct once a second warehouse genuinely has stock, instead of silently under-counting. **Deferred, not fabricated:** per-warehouse *filtering* on these five read endpoints (e.g. `?warehouse_id=`) isn't added yet — not useful until real multi-warehouse data exists beyond transfers/adjustments made through the new endpoints below; these endpoints already report cross-warehouse totals correctly.
+- [x] `POST /inventory/transfers` — moves stock between two warehouses for a SKU; rejects a same-warehouse transfer (400) and a transfer that would drive the source below zero (400); writes two real `stock_movements` rows (`movement_type='transfer'`), not a silent quantity edit.
+- [x] `POST /inventory/adjustments` — manual correction with a required `reason`, rejects an adjustment that would drive stock below zero (400); writes one real `stock_movements` row (`movement_type='adjustment'`).
+- [x] `GET /inventory/{sku}/ledger` — the real, un-capped movement history already in `stock_movements`, across every warehouse, finally queryable directly (distinct from `ProductDetail.movement_history`, which stays capped at 90 days for the product page).
+- [x] `GET/POST /warehouses` — needed so a transfer has somewhere to move stock to.
 
-**Acceptance criteria:** a transfer between two locations is reflected correctly at both ends and in the ledger; an adjustment requires and records a reason.
+**Acceptance criteria:** a transfer between two warehouses is reflected correctly at both ends and in the ledger — verified by test that the cross-warehouse total is unchanged while the per-warehouse ledger entries show the split; an adjustment requires and records a reason; both reject a resulting negative quantity; pre-existing single-warehouse behavior is unchanged (regression-verified, not just asserted).
 
-**Tests:** unit (ledger math), integration (transfer/adjustment flows, multi-location queries), contract.
+**Tests:** `tests/test_warehouses.py` (new), plus `tests/test_inventory.py` additions — adjustment changes stock and records a ledger entry, adjustment below zero rejected, transfer moves stock and preserves the cross-warehouse total, transfer with insufficient stock rejected, same-warehouse transfer rejected, unknown SKU/warehouse is 404, read-only user denied on both mutating endpoints, ledger for unknown SKU is 404. Full suite (159 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
 **Commit checkpoint:** `feat(inventory): warehouses, transfers, adjustments, ledger API`
+
+**Known limitation carried forward, not silently dropped:** per-warehouse filtering on the five existing read endpoints — see the task note above.
 
 * * *
 

@@ -7,6 +7,7 @@ from models.stock_level import StockLevel
 from models.stock_movement import StockMovement
 from services.security import create_access_token
 from services.users import create_user
+from services.warehouses import get_or_create_main_warehouse
 
 NUMERIC_PRODUCT_FIELDS = {"unit_cost", "sale_price", "reorder_point", "safety_stock"}
 
@@ -94,11 +95,15 @@ def test_product_detail_includes_current_stock_and_recent_history(
     headers = _auth_headers(client)
     client.post("/products", json={"sku": "SKU-1"}, headers=headers)
     now = datetime.now(UTC).replace(tzinfo=None)
+    warehouse = get_or_create_main_warehouse(db_session)
     db_session.add_all(
         [
-            StockLevel(sku="SKU-1", as_of_date=date.today(), quantity_on_hand=42),
+            StockLevel(
+                sku="SKU-1", warehouse_id=warehouse.id, as_of_date=date.today(), quantity_on_hand=42
+            ),
             StockMovement(
                 sku="SKU-1",
+                warehouse_id=warehouse.id,
                 movement_date=now - timedelta(days=1),
                 quantity_delta=-2,
                 movement_type="sale",
@@ -106,6 +111,7 @@ def test_product_detail_includes_current_stock_and_recent_history(
             ),
             StockMovement(
                 sku="SKU-1",
+                warehouse_id=warehouse.id,
                 movement_date=now - timedelta(days=200),
                 quantity_delta=50,
                 movement_type="opening_balance",

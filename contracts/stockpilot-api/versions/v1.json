@@ -1107,6 +1107,80 @@
         }
       }
     },
+    "/warehouses": {
+      "get": {
+        "tags": [
+          "warehouses"
+        ],
+        "summary": "List Warehouses Route",
+        "operationId": "list_warehouses_route_warehouses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WarehouseRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Warehouses Route Warehouses Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "warehouses"
+        ],
+        "summary": "Create Warehouse Route",
+        "operationId": "create_warehouse_route_warehouses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarehouseRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
     "/inventory/stock": {
       "get": {
         "tags": [
@@ -1516,6 +1590,135 @@
             }
           }
         }
+      }
+    },
+    "/inventory/{sku}/ledger": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Get Inventory Ledger",
+        "operationId": "get_inventory_ledger_inventory__sku__ledger_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sku"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerEntry"
+                  },
+                  "title": "Response Get Inventory Ledger Inventory  Sku  Ledger Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/transfers": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Create Transfer",
+        "operationId": "create_transfer_inventory_transfers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/inventory/adjustments": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Create Adjustment",
+        "operationId": "create_adjustment_inventory_adjustments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/analytics/revenue": {
@@ -2343,6 +2546,43 @@
           }
         ]
       },
+      "AdjustmentRequest": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "quantity_delta": {
+            "type": "integer",
+            "title": "Quantity Delta"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "warehouse_id",
+          "quantity_delta",
+          "reason"
+        ],
+        "title": "AdjustmentRequest",
+        "examples": [
+          {
+            "quantity_delta": -3,
+            "reason": "Cycle count correction",
+            "sku": "85048",
+            "warehouse_id": 1
+          }
+        ]
+      },
       "Body_login_auth_login_post": {
         "properties": {
           "grant_type": {
@@ -2809,6 +3049,62 @@
             ],
             "total_inventory_value": 297512.1,
             "total_quantity_on_hand": 128400
+          }
+        ]
+      },
+      "LedgerEntry": {
+        "properties": {
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "movement_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Movement Date"
+          },
+          "quantity_delta": {
+            "type": "integer",
+            "title": "Quantity Delta"
+          },
+          "movement_type": {
+            "type": "string",
+            "title": "Movement Type"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "provenance": {
+            "type": "string",
+            "title": "Provenance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "warehouse_id",
+          "movement_date",
+          "quantity_delta",
+          "movement_type",
+          "reference",
+          "provenance"
+        ],
+        "title": "LedgerEntry",
+        "description": "One stock_movements row for a SKU, across all warehouses. Carries\nits own provenance label rather than the ProvenanceMixin dict, since\nsale-driven and injected-PO rows are derived/observed differently\nper row -- same reasoning as MovementHistoryEntry in schemas/product.py.",
+        "examples": [
+          {
+            "movement_date": "2026-01-14T00:00:00Z",
+            "movement_type": "sale",
+            "provenance": "observed",
+            "quantity_delta": -12,
+            "warehouse_id": 1
           }
         ]
       },
@@ -4677,6 +4973,55 @@
           }
         ]
       },
+      "TransferRequest": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "from_warehouse_id": {
+            "type": "integer",
+            "title": "From Warehouse Id"
+          },
+          "to_warehouse_id": {
+            "type": "integer",
+            "title": "To Warehouse Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "from_warehouse_id",
+          "to_warehouse_id",
+          "quantity"
+        ],
+        "title": "TransferRequest",
+        "examples": [
+          {
+            "from_warehouse_id": 1,
+            "quantity": 20,
+            "reason": "Rebalancing ahead of regional promotion",
+            "sku": "85048",
+            "to_warehouse_id": 2
+          }
+        ]
+      },
       "TurnoverRow": {
         "properties": {
           "_provenance": {
@@ -4915,6 +5260,55 @@
             "category": "Decorations",
             "inventory_value": 26832.5,
             "quantity_on_hand": 12480
+          }
+        ]
+      },
+      "WarehouseCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "WarehouseCreate",
+        "examples": [
+          {
+            "name": "North Depot"
+          }
+        ]
+      },
+      "WarehouseRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "title": "WarehouseRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 1,
+            "name": "Main Warehouse"
           }
         ]
       }

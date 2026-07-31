@@ -17,7 +17,8 @@ class StockMovement(Base):
     __table_args__ = (
         Index("ix_stock_movements_sku_movement_date", "sku", "movement_date"),
         CheckConstraint(
-            "movement_type IN ('sale', 'purchase_order', 'opening_balance')",
+            "movement_type IN ('sale', 'purchase_order', 'opening_balance', "
+            "'transfer', 'adjustment')",
             name="ck_stock_movements_movement_type",
         ),
         CheckConstraint(
@@ -28,6 +29,7 @@ class StockMovement(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     sku: Mapped[str] = mapped_column(ForeignKey("products.sku"))
+    warehouse_id: Mapped[int] = mapped_column(ForeignKey("warehouses.id"))
     movement_date: Mapped[datetime] = mapped_column(DateTime)
     quantity_delta: Mapped[int] = mapped_column(
         Integer,

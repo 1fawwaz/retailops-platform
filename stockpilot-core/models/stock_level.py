@@ -13,12 +13,15 @@ class StockLevel(Base):
 
     __tablename__ = "stock_levels"
     __table_args__ = (
-        UniqueConstraint("sku", "as_of_date", name="uq_stock_levels_sku_as_of_date"),
+        UniqueConstraint(
+            "sku", "warehouse_id", "as_of_date", name="uq_stock_levels_sku_warehouse_as_of_date"
+        ),
         Index("ix_stock_levels_sku_as_of_date", "sku", "as_of_date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     sku: Mapped[str] = mapped_column(ForeignKey("products.sku"))
+    warehouse_id: Mapped[int] = mapped_column(ForeignKey("warehouses.id"))
     as_of_date: Mapped[date] = mapped_column(Date)
     quantity_on_hand: Mapped[int] = mapped_column(
         Integer,

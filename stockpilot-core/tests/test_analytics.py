@@ -9,6 +9,7 @@ from models.sales_transaction import SalesTransaction
 from models.stock_level import StockLevel
 from services.security import create_access_token
 from services.users import create_user
+from services.warehouses import get_or_create_main_warehouse
 
 
 def _auth_headers(db_session: Session) -> dict[str, str]:
@@ -32,12 +33,28 @@ def _seed_sales(db_session: Session) -> None:
     )
     db_session.add_all([best_seller, mid, worst])
     db_session.flush()
+    warehouse = get_or_create_main_warehouse(db_session)
 
     db_session.add_all(
         [
-            StockLevel(sku="BEST-1", as_of_date=date(2026, 1, 15), quantity_on_hand=100),
-            StockLevel(sku="MID-1", as_of_date=date(2026, 1, 15), quantity_on_hand=50),
-            StockLevel(sku="WORST-1", as_of_date=date(2026, 1, 15), quantity_on_hand=20),
+            StockLevel(
+                sku="BEST-1",
+                warehouse_id=warehouse.id,
+                as_of_date=date(2026, 1, 15),
+                quantity_on_hand=100,
+            ),
+            StockLevel(
+                sku="MID-1",
+                warehouse_id=warehouse.id,
+                as_of_date=date(2026, 1, 15),
+                quantity_on_hand=50,
+            ),
+            StockLevel(
+                sku="WORST-1",
+                warehouse_id=warehouse.id,
+                as_of_date=date(2026, 1, 15),
+                quantity_on_hand=20,
+            ),
         ]
     )
     db_session.add_all(

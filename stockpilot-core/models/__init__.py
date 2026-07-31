@@ -12,6 +12,7 @@ from models.stock_movement import StockMovement
 from models.supplier import Supplier
 from models.supplier_contact import SupplierContact
 from models.user import User
+from models.warehouse import Warehouse
 
 __all__ = [
     "Base",
@@ -28,4 +29,5 @@ __all__ = [
     "Supplier",
     "SupplierContact",
     "User",
+    "Warehouse",
 ]

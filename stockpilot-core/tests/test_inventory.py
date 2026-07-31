@@ -10,6 +10,7 @@ from models.stock_level import StockLevel
 from models.stock_movement import StockMovement
 from services.security import create_access_token
 from services.users import create_user
+from services.warehouses import get_or_create_main_warehouse
 
 TODAY = date(2026, 7, 29)
 NOW = datetime(2026, 7, 29, 12, 0, tzinfo=UTC).replace(tzinfo=None)
@@ -18,6 +19,12 @@ NOW = datetime(2026, 7, 29, 12, 0, tzinfo=UTC).replace(tzinfo=None)
 def _auth_headers(db_session: Session) -> dict[str, str]:
     create_user(db_session, email="reader@example.com", password="hunter22!!", is_read_only=True)
     token = create_access_token(subject="reader@example.com")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _writer_headers(db_session: Session) -> dict[str, str]:
+    create_user(db_session, email="writer@example.com", password="hunter22!!", is_read_only=False)
+    token = create_access_token(subject="writer@example.com")
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -52,18 +59,26 @@ def _seed_widgets(db_session: Session) -> None:
     )
     db_session.add_all([low, healthy, dead])
     db_session.flush()
+    warehouse = get_or_create_main_warehouse(db_session)
 
     db_session.add_all(
         [
-            StockLevel(sku="LOW-1", as_of_date=TODAY, quantity_on_hand=3),
-            StockLevel(sku="OK-1", as_of_date=TODAY, quantity_on_hand=500),
-            StockLevel(sku="DEAD-1", as_of_date=TODAY, quantity_on_hand=20),
+            StockLevel(
+                sku="LOW-1", warehouse_id=warehouse.id, as_of_date=TODAY, quantity_on_hand=3
+            ),
+            StockLevel(
+                sku="OK-1", warehouse_id=warehouse.id, as_of_date=TODAY, quantity_on_hand=500
+            ),
+            StockLevel(
+                sku="DEAD-1", warehouse_id=warehouse.id, as_of_date=TODAY, quantity_on_hand=20
+            ),
         ]
     )
     db_session.add_all(
         [
             StockMovement(
                 sku="LOW-1",
+                warehouse_id=warehouse.id,
                 movement_date=NOW - timedelta(days=1),
                 quantity_delta=-1,
                 movement_type="sale",
@@ -71,6 +86,7 @@ def _seed_widgets(db_session: Session) -> None:
             ),
             StockMovement(
                 sku="OK-1",
+                warehouse_id=warehouse.id,
                 movement_date=NOW - timedelta(days=1),
                 quantity_delta=-1,
                 movement_type="sale",
@@ -78,6 +94,7 @@ def _seed_widgets(db_session: Session) -> None:
             ),
             StockMovement(
                 sku="DEAD-1",
+                warehouse_id=warehouse.id,
                 movement_date=NOW - timedelta(days=200),
                 quantity_delta=20,
                 movement_type="opening_balance",
@@ -189,3 +206,201 @@ def test_valuation_endpoint(client: TestClient, db_session: Session) -> None:
     assert body["total_inventory_value"] == expected_value
     for field in ("total_quantity_on_hand", "total_inventory_value"):
         assert field in body["_provenance"]
+
+
+def test_adjustment_changes_stock_and_records_a_ledger_entry(
+    client: TestClient, db_session: Session
+) -> None:
+    _seed_widgets(db_session)
+    headers = _writer_headers(db_session)
+    warehouse_id = get_or_create_main_warehouse(db_session).id
+
+    response = client.post(
+        "/inventory/adjustments",
+        json={
+            "sku": "OK-1",
+            "warehouse_id": warehouse_id,
+            "quantity_delta": -5,
+            "reason": "Cycle count correction",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 204, response.text
+
+    stock_response = client.get("/inventory/stock", params={"search": "OK-1"}, headers=headers)
+    assert stock_response.json()[0]["quantity_on_hand"] == 500 - 5  # seeded snapshot + adjustment
+
+    ledger_response = client.get("/inventory/OK-1/ledger", headers=headers)
+    entries = ledger_response.json()
+    adjustment_entries = [e for e in entries if e["movement_type"] == "adjustment"]
+    assert len(adjustment_entries) == 1
+    assert adjustment_entries[0]["quantity_delta"] == -5
+    assert adjustment_entries[0]["reference"] == "Cycle count correction"
+    assert adjustment_entries[0]["warehouse_id"] == warehouse_id
+
+
+def test_adjustment_driving_stock_below_zero_is_rejected(
+    client: TestClient, db_session: Session
+) -> None:
+    _seed_widgets(db_session)
+    headers = _writer_headers(db_session)
+    warehouse_id = get_or_create_main_warehouse(db_session).id
+
+    response = client.post(
+        "/inventory/adjustments",
+        json={"sku": "LOW-1", "warehouse_id": warehouse_id, "quantity_delta": -999, "reason": "x"},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+
+
+def test_transfer_moves_stock_between_warehouses(client: TestClient, db_session: Session) -> None:
+    _seed_widgets(db_session)
+    headers = _writer_headers(db_session)
+    main_id = get_or_create_main_warehouse(db_session).id
+    other_response = client.post("/warehouses", json={"name": "North Depot"}, headers=headers)
+    other_id = other_response.json()["id"]
+
+    response = client.post(
+        "/inventory/transfers",
+        json={
+            "sku": "OK-1",
+            "from_warehouse_id": main_id,
+            "to_warehouse_id": other_id,
+            "quantity": 50,
+            "reason": "Rebalancing",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 204, response.text
+
+    # Total across both warehouses is unchanged; the split moved.
+    stock_response = client.get("/inventory/stock", params={"search": "OK-1"}, headers=headers)
+    assert stock_response.json()[0]["quantity_on_hand"] == 500  # unchanged total
+
+    ledger_response = client.get("/inventory/OK-1/ledger", headers=headers)
+    transfer_entries = [e for e in ledger_response.json() if e["movement_type"] == "transfer"]
+    assert len(transfer_entries) == 2
+    deltas_by_warehouse = {e["warehouse_id"]: e["quantity_delta"] for e in transfer_entries}
+    assert deltas_by_warehouse[main_id] == -50
+    assert deltas_by_warehouse[other_id] == 50
+
+
+def test_transfer_with_insufficient_stock_is_rejected(
+    client: TestClient, db_session: Session
+) -> None:
+    _seed_widgets(db_session)
+    headers = _writer_headers(db_session)
+    main_id = get_or_create_main_warehouse(db_session).id
+    other_response = client.post("/warehouses", json={"name": "North Depot"}, headers=headers)
+    other_id = other_response.json()["id"]
+
+    response = client.post(
+        "/inventory/transfers",
+        json={
+            "sku": "LOW-1",
+            "from_warehouse_id": main_id,
+            "to_warehouse_id": other_id,
+            "quantity": 999,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+
+
+def test_transfer_to_the_same_warehouse_is_rejected(
+    client: TestClient, db_session: Session
+) -> None:
+    _seed_widgets(db_session)
+    headers = _writer_headers(db_session)
+    main_id = get_or_create_main_warehouse(db_session).id
+
+    response = client.post(
+        "/inventory/transfers",
+        json={
+            "sku": "OK-1",
+            "from_warehouse_id": main_id,
+            "to_warehouse_id": main_id,
+            "quantity": 1,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+
+
+def test_transfer_for_unknown_sku_is_404(client: TestClient, db_session: Session) -> None:
+    _seed_widgets(db_session)
+    headers = _writer_headers(db_session)
+    main_id = get_or_create_main_warehouse(db_session).id
+    other_response = client.post("/warehouses", json={"name": "North Depot"}, headers=headers)
+    other_id = other_response.json()["id"]
+
+    response = client.post(
+        "/inventory/transfers",
+        json={
+            "sku": "DOES-NOT-EXIST",
+            "from_warehouse_id": main_id,
+            "to_warehouse_id": other_id,
+            "quantity": 1,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_transfer_to_unknown_warehouse_is_404(client: TestClient, db_session: Session) -> None:
+    _seed_widgets(db_session)
+    headers = _writer_headers(db_session)
+    main_id = get_or_create_main_warehouse(db_session).id
+
+    response = client.post(
+        "/inventory/transfers",
+        json={
+            "sku": "OK-1",
+            "from_warehouse_id": main_id,
+            "to_warehouse_id": 999999,
+            "quantity": 1,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_read_only_user_cannot_create_adjustments_or_transfers(
+    client: TestClient, db_session: Session
+) -> None:
+    _seed_widgets(db_session)
+    headers = _auth_headers(db_session)
+    warehouse_id = get_or_create_main_warehouse(db_session).id
+
+    adjustment_response = client.post(
+        "/inventory/adjustments",
+        json={"sku": "OK-1", "warehouse_id": warehouse_id, "quantity_delta": 1, "reason": "x"},
+        headers=headers,
+    )
+    assert adjustment_response.status_code == 403
+
+    transfer_response = client.post(
+        "/inventory/transfers",
+        json={
+            "sku": "OK-1",
+            "from_warehouse_id": warehouse_id,
+            "to_warehouse_id": warehouse_id,
+            "quantity": 1,
+        },
+        headers=headers,
+    )
+    assert transfer_response.status_code == 403
+
+
+def test_ledger_for_unknown_sku_is_404(client: TestClient, db_session: Session) -> None:
+    headers = _auth_headers(db_session)
+
+    response = client.get("/inventory/DOES-NOT-EXIST/ledger", headers=headers)
+
+    assert response.status_code == 404

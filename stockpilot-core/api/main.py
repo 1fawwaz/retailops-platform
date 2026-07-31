@@ -9,6 +9,7 @@ from api.routers import (
     inventory,
     products,
     suppliers,
+    warehouses,
 )
 
 app = FastAPI(title="StockPilot Core")
@@ -19,6 +20,7 @@ app.include_router(products.router)
 app.include_router(categories.router)
 app.include_router(brands.router)
 app.include_router(suppliers.router)
+app.include_router(warehouses.router)
 app.include_router(inventory.router)
 app.include_router(analytics.router)
 app.include_router(forecast.router)

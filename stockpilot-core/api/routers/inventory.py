@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user
+from api.deps import get_current_user, require_write_access
 from database import get_db
 from models.user import User
 from schemas.inventory import (
@@ -14,25 +14,36 @@ from schemas.inventory import (
     STOCK_ITEM_PROVENANCE,
     VALUATION_ROW_DERIVATION_REF,
     VALUATION_ROW_PROVENANCE,
+    AdjustmentRequest,
     DeadStockItem,
     InventoryValuation,
+    LedgerEntry,
     SlowMoverItem,
     StockItem,
+    TransferRequest,
     ValuationRow,
 )
 from services.inventory import (
     DeadStockRow,
+    InsufficientStockError,
+    LedgerRow,
+    SameWarehouseTransferError,
     SlowMoverRow,
     StockRow,
     Valuation,
+    adjust_stock,
+    get_ledger,
     get_valuation,
     list_dead_stock,
     list_slow_movers,
     list_stock,
+    transfer_stock,
 )
 from services.inventory import (
     ValuationRow as ValuationRowData,
 )
+from services.products import get_product
+from services.warehouses import get_warehouse
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -93,6 +104,29 @@ def _to_valuation(valuation: Valuation) -> InventoryValuation:
         total_inventory_value=valuation.total_inventory_value,
         provenance=INVENTORY_VALUATION_PROVENANCE,
     )
+
+
+def _to_ledger_entry(row: LedgerRow) -> LedgerEntry:
+    return LedgerEntry(
+        warehouse_id=row.warehouse_id,
+        movement_date=row.movement_date,
+        quantity_delta=row.quantity_delta,
+        movement_type=row.movement_type,
+        reference=row.reference,
+        provenance=row.provenance,
+    )
+
+
+def _get_product_or_404(db: Session, sku: str) -> None:
+    if get_product(db, sku) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+
+def _get_warehouse_or_404(db: Session, warehouse_id: int) -> None:
+    if get_warehouse(db, warehouse_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Warehouse {warehouse_id} not found"
+        )
 
 
 @router.get("/stock", response_model=list[StockItem])
@@ -161,3 +195,57 @@ def get_inventory_valuation(
     _: User = Depends(get_current_user),
 ) -> InventoryValuation:
     return _to_valuation(get_valuation(db, category=category))
+
+
+@router.get("/{sku}/ledger", response_model=list[LedgerEntry])
+def get_inventory_ledger(
+    sku: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[LedgerEntry]:
+    _get_product_or_404(db, sku)
+    return [_to_ledger_entry(row) for row in get_ledger(db, sku)]
+
+
+@router.post("/transfers", status_code=status.HTTP_204_NO_CONTENT)
+def create_transfer(
+    data: TransferRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_write_access),
+) -> None:
+    _get_product_or_404(db, data.sku)
+    _get_warehouse_or_404(db, data.from_warehouse_id)
+    _get_warehouse_or_404(db, data.to_warehouse_id)
+    try:
+        transfer_stock(
+            db,
+            sku=data.sku,
+            from_warehouse_id=data.from_warehouse_id,
+            to_warehouse_id=data.to_warehouse_id,
+            quantity=data.quantity,
+            reason=data.reason,
+        )
+    except SameWarehouseTransferError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except InsufficientStockError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/adjustments", status_code=status.HTTP_204_NO_CONTENT)
+def create_adjustment(
+    data: AdjustmentRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_write_access),
+) -> None:
+    _get_product_or_404(db, data.sku)
+    _get_warehouse_or_404(db, data.warehouse_id)
+    try:
+        adjust_stock(
+            db,
+            sku=data.sku,
+            warehouse_id=data.warehouse_id,
+            quantity_delta=data.quantity_delta,
+            reason=data.reason,
+        )
+    except InsufficientStockError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

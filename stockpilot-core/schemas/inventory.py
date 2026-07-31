@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.provenance import ProvenanceMixin
 
@@ -209,3 +209,76 @@ INVENTORY_VALUATION_PROVENANCE = {
     "total_quantity_on_hand": "derived",
     "total_inventory_value": "derived",
 }
+
+
+class TransferRequest(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "sku": "85048",
+                    "from_warehouse_id": 1,
+                    "to_warehouse_id": 2,
+                    "quantity": 20,
+                    "reason": "Rebalancing ahead of regional promotion",
+                }
+            ]
+        }
+    )
+
+    sku: str
+    from_warehouse_id: int
+    to_warehouse_id: int
+    quantity: int = Field(gt=0)
+    reason: str | None = None
+
+
+class AdjustmentRequest(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "sku": "85048",
+                    "warehouse_id": 1,
+                    "quantity_delta": -3,
+                    "reason": "Cycle count correction",
+                }
+            ]
+        }
+    )
+
+    sku: str
+    warehouse_id: int
+    quantity_delta: int
+    reason: str = Field(min_length=1)
+
+
+class LedgerEntry(BaseModel):
+    """One stock_movements row for a SKU, across all warehouses. Carries
+    its own provenance label rather than the ProvenanceMixin dict, since
+    sale-driven and injected-PO rows are derived/observed differently
+    per row -- same reasoning as MovementHistoryEntry in schemas/product.py.
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "warehouse_id": 1,
+                    "movement_date": "2026-01-14T00:00:00Z",
+                    "quantity_delta": -12,
+                    "movement_type": "sale",
+                    "reference": None,
+                    "provenance": "observed",
+                }
+            ]
+        },
+    )
+
+    warehouse_id: int
+    movement_date: datetime
+    quantity_delta: int
+    movement_type: str
+    reference: str | None
+    provenance: str

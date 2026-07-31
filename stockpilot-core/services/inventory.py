@@ -17,41 +17,62 @@ from models.stock_level import StockLevel
 from models.stock_movement import StockMovement
 
 
-def _latest_stock_level_subquery() -> Subquery:
-    """Per-SKU stock_levels row with the most recent as_of_date."""
+def _latest_stock_level_by_warehouse_subquery() -> Subquery:
+    """Per (sku, warehouse) stock_levels row with the most recent
+    as_of_date. A SKU can have one current row per warehouse now that
+    stock is location-scoped (docs/BUILD.md Backend Module 4).
+    """
     latest_dates = (
         select(
             StockLevel.sku.label("sku"),
+            StockLevel.warehouse_id.label("warehouse_id"),
             func.max(StockLevel.as_of_date).label("max_date"),
         )
-        .group_by(StockLevel.sku)
+        .group_by(StockLevel.sku, StockLevel.warehouse_id)
         .subquery()
     )
     return (
         select(
             StockLevel.sku.label("sku"),
+            StockLevel.warehouse_id.label("warehouse_id"),
             StockLevel.quantity_on_hand.label("quantity_on_hand"),
             StockLevel.as_of_date.label("as_of_date"),
         )
         .join(
             latest_dates,
             (StockLevel.sku == latest_dates.c.sku)
+            & (StockLevel.warehouse_id == latest_dates.c.warehouse_id)
             & (StockLevel.as_of_date == latest_dates.c.max_date),
         )
         .subquery()
     )
 
 
-def get_current_stock(db: Session, sku: str) -> int | None:
-    """Most recent quantity_on_hand for a single SKU, or None if it has
-    no stock_levels rows yet.
+def _latest_stock_level_subquery() -> Subquery:
+    """Per-SKU total quantity_on_hand: each warehouse's own latest row,
+    summed. With a single warehouse (today's only real case) this is
+    numerically identical to the pre-Module-4 single-location query --
+    it only starts summing across locations once a second warehouse
+    genuinely has stock.
     """
-    stmt = (
-        select(StockLevel.quantity_on_hand)
-        .where(StockLevel.sku == sku)
-        .order_by(StockLevel.as_of_date.desc())
-        .limit(1)
+    per_warehouse = _latest_stock_level_by_warehouse_subquery()
+    return (
+        select(
+            per_warehouse.c.sku.label("sku"),
+            func.sum(per_warehouse.c.quantity_on_hand).label("quantity_on_hand"),
+            func.max(per_warehouse.c.as_of_date).label("as_of_date"),
+        )
+        .group_by(per_warehouse.c.sku)
+        .subquery()
     )
+
+
+def get_current_stock(db: Session, sku: str) -> int | None:
+    """Most recent total quantity_on_hand for a single SKU across every
+    warehouse, or None if it has no stock_levels rows yet.
+    """
+    per_warehouse = _latest_stock_level_by_warehouse_subquery()
+    stmt = select(func.sum(per_warehouse.c.quantity_on_hand)).where(per_warehouse.c.sku == sku)
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -302,3 +323,150 @@ def get_valuation(db: Session, *, category: str | None = None) -> Valuation:
         total_quantity_on_hand=total_quantity,
         total_inventory_value=total_value,
     )
+
+
+class InsufficientStockError(Exception):
+    """A transfer or adjustment would drive a SKU's quantity at a
+    warehouse below zero."""
+
+
+class SameWarehouseTransferError(Exception):
+    """A transfer's from_warehouse_id and to_warehouse_id are the same."""
+
+
+def _get_latest_quantity(db: Session, sku: str, warehouse_id: int) -> int:
+    stmt = (
+        select(StockLevel.quantity_on_hand)
+        .where(StockLevel.sku == sku, StockLevel.warehouse_id == warehouse_id)
+        .order_by(StockLevel.as_of_date.desc())
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none() or 0
+
+
+def _apply_stock_delta(db: Session, sku: str, warehouse_id: int, delta: int, as_of: date) -> int:
+    """Upsert the (sku, warehouse_id, as_of) stock_levels row, carrying
+    forward the most recent known quantity at that warehouse. Multiple
+    same-day calls compose correctly: each reads the running total left
+    by the previous one, since a same-day row (if already created by an
+    earlier call today) is itself the "most recent" row.
+    """
+    new_quantity = _get_latest_quantity(db, sku, warehouse_id) + delta
+    row = db.scalar(
+        select(StockLevel).where(
+            StockLevel.sku == sku,
+            StockLevel.warehouse_id == warehouse_id,
+            StockLevel.as_of_date == as_of,
+        )
+    )
+    if row is not None:
+        row.quantity_on_hand = new_quantity
+    else:
+        db.add(
+            StockLevel(
+                sku=sku, warehouse_id=warehouse_id, as_of_date=as_of, quantity_on_hand=new_quantity
+            )
+        )
+    return new_quantity
+
+
+def transfer_stock(
+    db: Session,
+    *,
+    sku: str,
+    from_warehouse_id: int,
+    to_warehouse_id: int,
+    quantity: int,
+    reason: str | None,
+) -> None:
+    if from_warehouse_id == to_warehouse_id:
+        raise SameWarehouseTransferError("from_warehouse_id and to_warehouse_id must differ")
+    source_current = _get_latest_quantity(db, sku, from_warehouse_id)
+    if source_current < quantity:
+        raise InsufficientStockError(
+            f"Only {source_current} units of '{sku}' at warehouse {from_warehouse_id}, "
+            f"cannot transfer {quantity}"
+        )
+    today = datetime.now(UTC).date()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    _apply_stock_delta(db, sku, from_warehouse_id, -quantity, today)
+    _apply_stock_delta(db, sku, to_warehouse_id, quantity, today)
+    db.add(
+        StockMovement(
+            sku=sku,
+            warehouse_id=from_warehouse_id,
+            movement_date=now,
+            quantity_delta=-quantity,
+            movement_type="transfer",
+            reference=reason,
+            provenance="observed",
+        )
+    )
+    db.add(
+        StockMovement(
+            sku=sku,
+            warehouse_id=to_warehouse_id,
+            movement_date=now,
+            quantity_delta=quantity,
+            movement_type="transfer",
+            reference=reason,
+            provenance="observed",
+        )
+    )
+    db.commit()
+
+
+def adjust_stock(
+    db: Session, *, sku: str, warehouse_id: int, quantity_delta: int, reason: str
+) -> int:
+    current = _get_latest_quantity(db, sku, warehouse_id)
+    if current + quantity_delta < 0:
+        raise InsufficientStockError(
+            f"Adjustment would drive '{sku}' at warehouse {warehouse_id} below zero "
+            f"({current} + {quantity_delta})"
+        )
+    today = datetime.now(UTC).date()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    new_quantity = _apply_stock_delta(db, sku, warehouse_id, quantity_delta, today)
+    db.add(
+        StockMovement(
+            sku=sku,
+            warehouse_id=warehouse_id,
+            movement_date=now,
+            quantity_delta=quantity_delta,
+            movement_type="adjustment",
+            reference=reason,
+            provenance="observed",
+        )
+    )
+    db.commit()
+    return new_quantity
+
+
+@dataclass(frozen=True)
+class LedgerRow:
+    warehouse_id: int
+    movement_date: datetime
+    quantity_delta: int
+    movement_type: str
+    reference: str | None
+    provenance: str
+
+
+def get_ledger(db: Session, sku: str) -> list[LedgerRow]:
+    stmt = (
+        select(StockMovement)
+        .where(StockMovement.sku == sku)
+        .order_by(StockMovement.movement_date.desc())
+    )
+    return [
+        LedgerRow(
+            warehouse_id=m.warehouse_id,
+            movement_date=m.movement_date,
+            quantity_delta=m.quantity_delta,
+            movement_type=m.movement_type,
+            reference=m.reference,
+            provenance=m.provenance,
+        )
+        for m in db.scalars(stmt)
+    ]
