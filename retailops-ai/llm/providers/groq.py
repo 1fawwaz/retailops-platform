@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import threading
 import time
 from collections.abc import Iterator
@@ -73,6 +74,8 @@ from llm.providers.base import ProviderUnavailableError, StreamChunk, Structured
 from settings import get_settings
 
 T = TypeVar("T", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
 
 PROVIDER_NAME = "groq"
 
@@ -143,13 +146,32 @@ def _rotate_to_next_key() -> bool:
     if the current key was already the last one configured -- the
     caller's cue to give up on Groq entirely for this request and let
     Gemini failover take over.
+
+    Logs which key INDEX was exhausted and which index it's rotating to
+    (1-based, human-readable -- "Groq API key #2") -- never the key
+    value itself. `keys` (the actual secrets) only ever appears as an
+    argument to `groq.Groq(api_key=...)` in `_client()` below; nothing
+    in this module logs, formats, or otherwise surfaces it.
     """
     global _current_key_index
     keys = _api_keys()
     with _key_lock:
+        exhausted_position = _current_key_index + 1
         if _current_key_index + 1 < len(keys):
             _current_key_index += 1
+            logger.warning(
+                "Groq API key #%d rate-limited; rotating to key #%d of %d configured",
+                exhausted_position,
+                _current_key_index + 1,
+                len(keys),
+            )
             return True
+        logger.warning(
+            "Groq API key #%d rate-limited; all %d configured Groq API key(s) exhausted, "
+            "failing over to the next provider",
+            exhausted_position,
+            len(keys),
+        )
         return False
 
 

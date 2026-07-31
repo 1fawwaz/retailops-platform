@@ -566,6 +566,116 @@ def test_generate_rotates_to_the_next_key_after_a_rate_limit_then_succeeds(
     fake_sleep.assert_not_called()
 
 
+def test_rotation_logs_the_key_index_never_the_secret_value(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Requirement: log which key index was used (e.g. "Groq API key
+    #2"), never the actual secret. Asserts both halves: the index
+    appears, and neither configured key's literal value appears
+    anywhere in the captured log text.
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.chat.completions.create.side_effect = _rate_limited()
+    key_2_client = MagicMock()
+    key_2_client.chat.completions.create.return_value = _fake_response(content="from key 2")
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.groq.groq.Groq",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.groq.time.sleep"),
+            caplog.at_level("WARNING", logger="llm.providers.groq"),
+        ):
+            generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    log_text = caplog.text
+    assert "Groq API key #1" in log_text
+    assert "rotating to key #2 of 2 configured" in log_text
+    assert "key-1" not in log_text
+    assert "key-2" not in log_text
+
+
+def test_rotation_cascades_through_every_configured_key_before_gemini_failover(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact scenario described when this feature was requested:
+    key 1 rate-limited -> key 2 rate-limited -> key 3 rate-limited ->
+    key 4 succeeds. Proves rotation isn't hardcoded to a two-key case.
+    """
+    monkeypatch.setenv("GROQ_API_KEY_1", "key-1")
+    monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
+    monkeypatch.setenv("GROQ_API_KEY_3", "key-3")
+    monkeypatch.setenv("GROQ_API_KEY_4", "key-4")
+    get_settings.cache_clear()
+
+    rate_limited_clients = {}
+    for name in ("key-1", "key-2", "key-3"):
+        client = MagicMock()
+        client.chat.completions.create.side_effect = _rate_limited()
+        rate_limited_clients[name] = client
+    key_4_client = MagicMock()
+    key_4_client.chat.completions.create.return_value = _fake_response(content="from key 4")
+    clients_by_key = {**rate_limited_clients, "key-4": key_4_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.groq.groq.Groq",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.groq.time.sleep") as fake_sleep,
+        ):
+            result = generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.content == "from key 4"
+    for client in rate_limited_clients.values():
+        client.chat.completions.create.assert_called_once()
+    key_4_client.chat.completions.create.assert_called_once()
+    fake_sleep.assert_not_called()
+
+
+def test_no_restart_needed_switching_between_two_already_configured_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Requirement: no server restart or manual .env edit needed to
+    rotate between keys that are ALREADY configured -- proven by never
+    touching get_settings.cache_clear() or reconstructing anything
+    process-level between the two calls below, only the mocked SDK
+    responses change.
+    """
+    _two_keys_configured(monkeypatch)
+    key_1_client = MagicMock()
+    key_1_client.chat.completions.create.side_effect = _rate_limited()
+    key_2_client = MagicMock()
+    key_2_client.chat.completions.create.return_value = _fake_response(content="from key 2")
+    clients_by_key = {"key-1": key_1_client, "key-2": key_2_client}
+
+    try:
+        with (
+            patch(
+                "llm.providers.groq.groq.Groq",
+                side_effect=lambda api_key: clients_by_key[api_key],
+            ),
+            patch("llm.providers.groq.time.sleep"),
+        ):
+            # No get_settings.cache_clear(), no re-import, no process
+            # restart between "key 1 configured" and "key 1 exhausted,
+            # key 2 takes over" -- a single already-running process.
+            result = generate(model="openai/gpt-oss-120b", messages=[HumanMessage(content="hi")])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.content == "from key 2"
+
+
 def test_generate_does_not_rotate_keys_on_a_normal_successful_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
