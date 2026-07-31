@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user, require_write_access
 from database import get_db
 from models.supplier import Supplier
+from models.supplier_contact import SupplierContact
 from models.user import User
 from schemas.supplier import (
     SUPPLIER_DERIVATION_REF,
@@ -12,6 +13,18 @@ from schemas.supplier import (
     SupplierDetail,
     SupplierRead,
     SupplierUpdate,
+)
+from schemas.supplier_contact import (
+    SupplierContactCreate,
+    SupplierContactRead,
+    SupplierContactUpdate,
+)
+from services.supplier_contacts import (
+    create_contact,
+    delete_contact,
+    get_contact,
+    list_contacts,
+    update_contact,
 )
 from services.suppliers import (
     create_supplier,
@@ -104,3 +117,60 @@ def delete_supplier_route(
 ) -> None:
     supplier = _get_supplier_or_404(db, supplier_id)
     delete_supplier(db, supplier)
+
+
+@router.get("/{supplier_id}/contacts", response_model=list[SupplierContactRead])
+def list_contacts_route(
+    supplier_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[SupplierContactRead]:
+    _get_supplier_or_404(db, supplier_id)
+    return [SupplierContactRead.model_validate(c) for c in list_contacts(db, supplier_id)]
+
+
+@router.post(
+    "/{supplier_id}/contacts",
+    response_model=SupplierContactRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_contact_route(
+    supplier_id: int,
+    data: SupplierContactCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_write_access),
+) -> SupplierContactRead:
+    _get_supplier_or_404(db, supplier_id)
+    return SupplierContactRead.model_validate(create_contact(db, supplier_id, data))
+
+
+def _get_contact_or_404(db: Session, supplier_id: int, contact_id: int) -> SupplierContact:
+    contact = get_contact(db, supplier_id, contact_id)
+    if contact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    return contact
+
+
+@router.put("/{supplier_id}/contacts/{contact_id}", response_model=SupplierContactRead)
+def update_contact_route(
+    supplier_id: int,
+    contact_id: int,
+    data: SupplierContactUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_write_access),
+) -> SupplierContactRead:
+    _get_supplier_or_404(db, supplier_id)
+    contact = _get_contact_or_404(db, supplier_id, contact_id)
+    return SupplierContactRead.model_validate(update_contact(db, contact, data))
+
+
+@router.delete("/{supplier_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_contact_route(
+    supplier_id: int,
+    contact_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_write_access),
+) -> None:
+    _get_supplier_or_404(db, supplier_id)
+    contact = _get_contact_or_404(db, supplier_id, contact_id)
+    delete_contact(db, contact)

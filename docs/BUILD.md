@@ -19,7 +19,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Frontend | Stage 2 — Inventory | `[x]` (ditto) |
 | Backend | Module 1 — Authentication | `[x]` logout, refresh, `GET /me`, password reset (admin-mediated delivery — see note) all live, tested, committed |
 | Backend | Module 2 — Products | `[~]` categories, brands, sale price, history all live; images blocked on a storage-provider decision (see note) |
-| Backend | Modules 3–10 | `[ ]` |
+| Backend | Module 3 — Suppliers | `[~]` contacts live; performance metrics deferred to Module 5 (see note) |
+| Backend | Modules 4–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -77,19 +78,23 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 3 — Suppliers (extend)
+### Backend Module 3 — Suppliers (extend) `[~]`
 
-**Status:** list/get/create/update/delete are live. Missing: contacts, purchase-history linkage (depends on Module 5), performance metrics.
+**Status:** list/get/create/update/delete are live. Contacts are now live too.
 
 **Tasks**
 
-- [ ] `supplier_contacts` table (multiple contacts per supplier) + CRUD endpoints
-- [ ] Supplier performance metrics — on-time delivery rate, defect/return rate; defer the exact computation until Module 5 (Purchase Orders) exists to source it from, don't fabricate an interim number
+- [x] `supplier_contacts` table (multiple contacts per supplier) + full CRUD (`GET/POST /suppliers/{id}/contacts`, `PUT/DELETE /suppliers/{id}/contacts/{contact_id}`); a contact scoped to the wrong supplier ID returns 404, not another supplier's data.
+- [ ] Supplier performance metrics — on-time delivery rate, defect/return rate. **Still deferred, not fabricated:** no real PO lifecycle data exists yet (Module 5 isn't built, and the existing `purchase_orders` table is synthetic stock-ledger-replay data, not real receiving history — `docs/stockpilot-gaps.md` #6). Computing a metric now would mean estimating or defaulting a number with no real basis. Revisit once Module 5 ships.
 - [ ] `GET /suppliers/{id}/purchase-orders` once Module 5 exists
 
-**Acceptance criteria:** a supplier's contacts and (once Module 5 ships) linked POs are real, queryable data.
+**Acceptance criteria:** a supplier's contacts are real, queryable, and correctly scoped — verified by test. Performance metrics and PO linkage remain out of scope until Module 5.
 
-**Tests:** unit, integration (contact CRUD), contract.
+**Tests:** `tests/test_suppliers.py` additions — contact CRUD, cross-supplier contact isolation (404 not data leakage), contacts-for-nonexistent-supplier is 404. Full suite (148 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
+
+**Commit checkpoint:** `feat(suppliers): contacts`
+
+**Known limitation carried forward, not silently dropped:** performance metrics and PO linkage — see the task note above.
 
 **Commit checkpoint:** `feat(suppliers): contacts, performance metrics, PO linkage`
 

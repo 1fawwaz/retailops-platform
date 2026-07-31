@@ -10,6 +10,7 @@ from models.sales_transaction import SalesTransaction
 from models.stock_level import StockLevel
 from models.stock_movement import StockMovement
 from models.supplier import Supplier
+from models.supplier_contact import SupplierContact
 from models.user import User
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "StockLevel",
     "StockMovement",
     "Supplier",
+    "SupplierContact",
     "User",
 ]
