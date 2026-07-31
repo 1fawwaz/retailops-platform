@@ -1,15 +1,11 @@
 {
-  "$ref": "#/$defs/Token",
+  "$ref": "#/$defs/AccessTokenResponse",
   "$defs": {
-    "Token": {
+    "AccessTokenResponse": {
       "properties": {
         "access_token": {
           "type": "string",
           "title": "Access Token"
-        },
-        "refresh_token": {
-          "type": "string",
-          "title": "Refresh Token"
         },
         "token_type": {
           "type": "string",
@@ -19,14 +15,12 @@
       },
       "type": "object",
       "required": [
-        "access_token",
-        "refresh_token"
+        "access_token"
       ],
-      "title": "Token",
+      "title": "AccessTokenResponse",
       "examples": [
         {
           "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-          "refresh_token": "8iQ2z...opaque-token...x9F",
           "token_type": "bearer"
         }
       ]

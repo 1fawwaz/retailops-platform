@@ -266,7 +266,7 @@ Rules:
 
 
 
-\*\*Status: login and register are live and confirmed against the real contract (`docs/adr/001-session-management.md`); logout, refresh, current-user, and password-reset are being added as extensions of this same flow, not a rebuild.\*\* Session mechanism is settled, not open: StockPilot Core's `/auth/login` returns a bearer access token in the response body (`{access_token, token_type}`), not a `Set-Cookie` — confirmed directly against `contracts/stockpilot-api/schemas/login_auth_login_post.json`, see the ADR for the full reasoning and the real cross-domain-SSO consequence this has.
+\*\*Status: login, register, logout, refresh, `GET /me`, and password-reset are all live (`BUILD.md` Backend Module 1, done).\*\* `GET /me` currently returns profile only, not a resolved permission set -- that extension lands with Backend Module 10 once roles/permissions data exists to resolve, not before. Password-reset delivery is admin-mediated for now (no transactional email provider integrated), per the explicit scope-down this section authorized below. Session mechanism is settled, not open: StockPilot Core's `/auth/login` returns a bearer access token in the response body (`{access_token, token_type}`), not a `Set-Cookie` — confirmed directly against `contracts/stockpilot-api/schemas/login_auth_login_post.json`, see the ADR for the full reasoning and the real cross-domain-SSO consequence this has.
 
 
 

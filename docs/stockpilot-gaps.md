@@ -208,3 +208,55 @@ a proper roles/permissions join) on StockPilot Core's `User` model, a
 role claim in the issued JWT or a real `GET /me/permissions` endpoint,
 and server-side enforcement of every mutating endpoint per role — a
 StockPilot Core change, not a frontend one.
+
+**Status (2026-07-31):** resolved by product decision. `docs/ARCHITECTURE.md`
+§7 now specifies a real `roles`/`user_roles` many-to-many model mirroring
+`lib/rbac/permissions.ts` exactly, with `GET /me` returning the resolved
+role/permission set. Tracked as Backend Module 10 in `docs/BUILD.md`. This
+entry is left in place as the historical record of why that decision was
+needed, not as an open gap.
+
+## 6. Existing `purchase_orders` and `sales_transactions` tables are not the ERP workflow entities Backend Modules 5/7 need (found: Backend Module 1 survey, 2026-07-31)
+
+**What happened:** while surveying `stockpilot-core/models/` before
+starting Backend Module 1 (Authentication), found that a `purchase_orders`
+table and a `sales_transactions` table already exist — but neither is the
+live, mutable workflow entity `docs/BUILD.md`'s Backend Module 5
+(Purchase Orders) and Module 7 (Sales) describe.
+
+- `models/purchase_order.py`'s `PurchaseOrder` is explicitly documented in
+  its own docstring as "Simulated purchase orders injected during the
+  stock ledger replay wherever stock would otherwise go negative. Entirely
+  derived — this dataset has no real purchasing history." Its `status`
+  column has a check constraint restricting it to the single value
+  `'received'` — there is no Draft/Submitted/Approved/Partially
+  Received/Closed lifecycle here at all; every row is a already-completed,
+  synthetic backfill event used only to keep the historical stock ledger
+  non-negative.
+- `models/sales_transaction.py`'s `SalesTransaction` is the real, observed
+  (not derived) line-item sales history from the Online Retail II dataset
+  — one row per invoice line, no order/invoice/payment grouping, no
+  status. This is almost certainly what `/analytics/revenue` and the other
+  analytics endpoints already aggregate over.
+
+**Impact:** Backend Module 5 and Module 7 as scoped in `docs/BUILD.md`
+("new" `purchase_orders`/`purchase_order_lines` and
+`sales_orders`/`invoices`/`payments` tables) would collide on the
+`purchase_orders` table name with an existing, semantically incompatible
+table, and would introduce a second, parallel source of sales data
+alongside the existing observed `sales_transactions` table without a
+stated relationship between the two (do new live sales orders ever join
+the analytics that currently reads only `sales_transactions`? are the
+historical `sales_transactions` ever backfilled as closed sales orders,
+or do the two simply coexist as separate eras of data?).
+
+**Not fixed here** — this is flagged, not resolved, per `CLAUDE.md` §11
+("stop and ask" rather than silently deciding a product/architecture
+question). Will be raised as an explicit decision point when Backend
+Module 5/7 planning begins: likely resolution is renaming the new tables
+(e.g. `purchase_order_requests` or keeping the ERP workflow table as
+`purchase_orders_v2`/similar, TBD) and scoping Module 7's new order/
+invoice/payment tables as strictly forward-looking (new orders placed
+through the app from go-live onward), leaving `sales_transactions` as the
+permanent historical record analytics continues to read — but that is a
+product decision, not something to default silently when reached.

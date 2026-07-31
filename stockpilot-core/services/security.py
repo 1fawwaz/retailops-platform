@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
@@ -29,3 +31,15 @@ def decode_access_token(token: str) -> str:
     if not isinstance(subject, str):
         raise jwt.InvalidTokenError("Token subject is not a string")
     return subject
+
+
+def generate_opaque_token() -> str:
+    """A high-entropy random token for refresh/password-reset use -- unlike
+    passwords, these carry no user-chosen low-entropy risk, so a fast hash
+    (below) is the correct, standard choice for at-rest storage, not bcrypt.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def hash_opaque_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()

@@ -17,7 +17,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Frontend | Stage 0 — Bootstrap | `[x]` |
 | Frontend | Stage 1 — Dashboard | `[x]` (against the CURRENT backend surface — see its own note below on what's still missing) |
 | Frontend | Stage 2 — Inventory | `[x]` (ditto) |
-| Backend | Module 1 — Authentication | `[~]` login/register live; logout/refresh/me/password-reset extension in progress |
+| Backend | Module 1 — Authentication | `[x]` logout, refresh, `GET /me`, password reset (admin-mediated delivery — see note) all live, tested, committed |
 | Backend | Modules 2–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
@@ -27,28 +27,30 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 
 Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/stockpilot-api/`) before building — extend and harden real gaps, never rebuild functionality that already works. Every module follows the existing codebase's own established conventions (SQLAlchemy 2.x, Pydantic v2, Alembic, ruff + mypy --strict, pytest, `_provenance`/`_derivation_ref` labeling on derived fields) — see `docs/ARCHITECTURE.md` §24.
 
-### Backend Module 1 — Authentication (extend, don't rebuild)
+### Backend Module 1 — Authentication (extend, don't rebuild) `[x]`
 
-**Status:** `/auth/login` and `/auth/register` are live and correct (bearer JWT, `docs/adr/001-session-management.md`). This module adds what's genuinely missing.
+**Status:** `/auth/login` and `/auth/register` are live and correct (bearer JWT, `docs/adr/001-session-management.md`). This module's extensions are now live too.
 
 **Tasks**
 
-- [ ] `POST /auth/logout` — revokes the caller's refresh token (see `docs/ARCHITECTURE.md` §6 for the exact contract)
-- [ ] `POST /auth/refresh` — exchanges a valid refresh token for a new access token
-- [ ] `refresh_tokens` table + Alembic migration (user_id, token hash, expires_at, revoked_at)
-- [ ] `GET /me` — returns the authenticated user + resolved role names + resolved permission set (the same shape § Authorization defines; both a future Profile page and the frontend's RBAC layer consume this one endpoint)
-- [ ] `POST /auth/password-reset/request` + `POST /auth/password-reset/confirm` — see `docs/ARCHITECTURE.md` §6's explicit flag on the email-delivery dependency this needs; resolve that dependency (or explicitly scope reset to admin-initiated for now) before marking this task done, not after
-- [ ] `contracts/stockpilot-api/` regenerated to reflect every new endpoint
+- [x] `POST /auth/logout` — revokes the caller's refresh token; idempotent (204 always)
+- [x] `POST /auth/refresh` — exchanges a valid refresh token for a new access token (no rotation in this cut, flagged as a fast-follow per `docs/ARCHITECTURE.md` §6)
+- [x] `refresh_tokens` table + Alembic migration (`c1a2b3d4e5f6`) — user_id, token_hash (sha256, unique), expires_at, revoked_at; `/auth/login` now returns `{access_token, refresh_token, token_type}`
+- [x] `GET /me` — top-level route (not `/auth/me`), returns the authenticated user's profile. **Scoped down from the original task description:** it does NOT yet return a resolved permission set — there is no roles/permissions data to resolve until Backend Module 10 ships. Extending this same endpoint's response shape with roles/permissions is now an explicit Module 10 task, not redone here.
+- [x] `POST /auth/password-reset/request` + `POST /auth/password-reset/confirm` — `password_reset_tokens` table (same migration), single-use, expiring, never returned in the API response. **Email-delivery dependency resolved by explicit scope-down** (the option `docs/ARCHITECTURE.md` §6 itself authorized): no transactional email provider is integrated in this pass. The endpoint is real end-to-end (request generates a real single-use token server-side, confirm consumes it and revokes every other session) but delivery to the end user is admin/support-mediated for now, not automatic email. Revisit if/when a transactional email provider is chosen — a genuine new-infrastructure decision, not defaulted here.
+- [x] `contracts/stockpilot-api/` regenerated (`scripts/export_contracts.py`) to reflect every new endpoint
 
 **Acceptance criteria**
 
-- A logged-in user can call `/me` and get back roles/permissions matching what they were actually assigned.
-- A revoked refresh token cannot be used to obtain a new access token (401, not a silent success).
-- Password reset either genuinely delivers a usable reset link, or the module's own README/PR states plainly that it's admin-initiated-only for now — no half-real email flow shipped silently.
+- ~~A logged-in user can call `/me` and get back roles/permissions matching what they were actually assigned~~ — superseded: `/me` returns profile only until Module 10; re-verify this criterion when Module 10 extends it.
+- A revoked refresh token cannot be used to obtain a new access token (401, not a silent success) — verified by test.
+- Password reset does not ship a half-real email flow: the flow is real, but delivery is explicitly admin-mediated, stated plainly here rather than assumed automatic.
 
-**Tests:** unit (token generation/validation, refresh-token revocation logic), integration (full login → refresh → logout cycle; password-reset request/confirm cycle), contract (OpenAPI export matches deployed routes).
+**Tests:** `tests/test_auth.py` — 16 tests covering login issuing a refresh token, `/me` (authed and unauthenticated), refresh (valid/unknown token), logout (revokes, idempotent on unknown token), password-reset request (202 for both real and unknown accounts, never distinguishing), password-reset confirm (changes password, revokes all other refresh tokens, rejects invalid/expired/already-used tokens). Full suite (135 tests) + contract tests pass; ruff, ruff format, and mypy --strict clean.
 
 **Commit checkpoint:** `feat(auth): logout, refresh tokens, /me, password reset`
+
+**Known limitation carried forward, not silently dropped:** password-reset tokens are generated and stored but have no automated delivery channel yet — see the task note above and `docs/ARCHITECTURE.md` §6.
 
 * * *
 

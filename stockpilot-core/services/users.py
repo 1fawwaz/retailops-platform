@@ -26,3 +26,9 @@ def authenticate_user(db: Session, *, email: str, password: str) -> User | None:
     if user is None or not verify_password(password, user.hashed_password):
         return None
     return user
+
+
+def set_password(db: Session, user: User, new_password: str) -> None:
+    user.hashed_password = hash_password(new_password)
+    db.add(user)
+    db.commit()
