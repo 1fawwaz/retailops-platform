@@ -1,0 +1,3782 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StockPilot Core",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register",
+        "operationId": "register_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_login_auth_login_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "List Products Route",
+        "operationId": "list_products_route_products_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProductRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Products Route Products Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Create Product Route",
+        "operationId": "create_product_route_products_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/products/{sku}": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Get Product Route",
+        "operationId": "get_product_route_products__sku__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sku"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Update Product Route",
+        "operationId": "update_product_route_products__sku__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sku"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Delete Product Route",
+        "operationId": "delete_product_route_products__sku__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sku"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suppliers": {
+      "get": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "List Suppliers Route",
+        "operationId": "list_suppliers_route_suppliers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Suppliers Route Suppliers Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "Create Supplier Route",
+        "operationId": "create_supplier_route_suppliers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/suppliers/{supplier_id}": {
+      "get": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "Get Supplier Route",
+        "operationId": "get_supplier_route_suppliers__supplier_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Supplier Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "Update Supplier Route",
+        "operationId": "update_supplier_route_suppliers__supplier_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Supplier Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "Delete Supplier Route",
+        "operationId": "delete_supplier_route_suppliers__supplier_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Supplier Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/stock": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Get Stock",
+        "operationId": "get_stock_inventory_stock_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "low_stock",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Low Stock"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockItem"
+                  },
+                  "title": "Response Get Stock Inventory Stock Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/low-stock": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Get Low Stock",
+        "operationId": "get_low_stock_inventory_low_stock_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockItem"
+                  },
+                  "title": "Response Get Low Stock Inventory Low Stock Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/dead-stock": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Get Dead Stock",
+        "operationId": "get_dead_stock_inventory_dead_stock_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 90,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeadStockItem"
+                  },
+                  "title": "Response Get Dead Stock Inventory Dead Stock Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/slow-movers": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Get Slow Movers",
+        "operationId": "get_slow_movers_inventory_slow_movers_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 90,
+              "title": "Window Days"
+            }
+          },
+          {
+            "name": "velocity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 0.2,
+              "title": "Velocity Threshold"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SlowMoverItem"
+                  },
+                  "title": "Response Get Slow Movers Inventory Slow Movers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/valuation": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Get Inventory Valuation",
+        "operationId": "get_inventory_valuation_inventory_valuation_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryValuation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/revenue": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Revenue Route",
+        "operationId": "get_revenue_route_analytics_revenue_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "category"
+              ],
+              "type": "string",
+              "default": "day",
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RevenuePeriod"
+                  },
+                  "title": "Response Get Revenue Route Analytics Revenue Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/profit": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Profit Route",
+        "operationId": "get_profit_route_analytics_profit_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "category"
+              ],
+              "type": "string",
+              "default": "day",
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfitPeriod"
+                  },
+                  "title": "Response Get Profit Route Analytics Profit Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/turnover": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Turnover Route",
+        "operationId": "get_turnover_route_analytics_turnover_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TurnoverRow"
+                  },
+                  "title": "Response Get Turnover Route Analytics Turnover Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/abc": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Abc Route",
+        "operationId": "get_abc_route_analytics_abc_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "a_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "exclusiveMaximum": 1,
+              "exclusiveMinimum": 0,
+              "default": 0.8,
+              "title": "A Threshold"
+            }
+          },
+          {
+            "name": "b_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "exclusiveMaximum": 1,
+              "exclusiveMinimum": 0,
+              "default": 0.95,
+              "title": "B Threshold"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AbcRow"
+                  },
+                  "title": "Response Get Abc Route Analytics Abc Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/top-products": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Top Products Route",
+        "operationId": "get_top_products_route_analytics_top_products_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "revenue",
+                "margin",
+                "units"
+              ],
+              "type": "string",
+              "default": "revenue",
+              "title": "Metric"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductPerformanceRow"
+                  },
+                  "title": "Response Get Top Products Route Analytics Top Products Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/bottom-products": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Bottom Products Route",
+        "operationId": "get_bottom_products_route_analytics_bottom_products_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "revenue",
+                "margin",
+                "units"
+              ],
+              "type": "string",
+              "default": "revenue",
+              "title": "Metric"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductPerformanceRow"
+                  },
+                  "title": "Response Get Bottom Products Route Analytics Bottom Products Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/period-comparison": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Period Comparison Route",
+        "operationId": "get_period_comparison_route_analytics_period_comparison_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "period1_start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Period1 Start"
+            }
+          },
+          {
+            "name": "period1_end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Period1 End"
+            }
+          },
+          {
+            "name": "period2_start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Period2 Start"
+            }
+          },
+          {
+            "name": "period2_end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Period2 End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodComparison"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/forecast/demand": {
+      "post": {
+        "tags": [
+          "forecast"
+        ],
+        "summary": "Post Forecast Demand",
+        "operationId": "post_forecast_demand_forecast_demand_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForecastRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkuForecast"
+                  },
+                  "type": "array",
+                  "title": "Response Post Forecast Demand Forecast Demand Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/forecast/accuracy": {
+      "get": {
+        "tags": [
+          "forecast"
+        ],
+        "summary": "Get Forecast Accuracy",
+        "operationId": "get_forecast_accuracy_forecast_accuracy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastAccuracy"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AbcRow": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "revenue": {
+            "type": "number",
+            "title": "Revenue"
+          },
+          "cumulative_pct": {
+            "type": "number",
+            "title": "Cumulative Pct"
+          },
+          "abc_class": {
+            "type": "string",
+            "title": "Abc Class"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "revenue",
+          "cumulative_pct",
+          "abc_class"
+        ],
+        "title": "AbcRow",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "cumulative_pct": "derived",
+              "revenue": "derived"
+            },
+            "abc_class": "A",
+            "cumulative_pct": 0.62,
+            "revenue": 45210.3,
+            "sku": "85048"
+          }
+        ]
+      },
+      "Body_login_auth_login_post": {
+        "properties": {
+          "grant_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^password$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "title": "Password"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": ""
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "format": "password",
+            "title": "Client Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Body_login_auth_login_post"
+      },
+      "DeadStockItem": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "quantity_on_hand": {
+            "type": "integer",
+            "title": "Quantity On Hand"
+          },
+          "last_movement_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Movement Date"
+          },
+          "days_since_movement": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Since Movement"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "description",
+          "quantity_on_hand",
+          "last_movement_date",
+          "days_since_movement"
+        ],
+        "title": "DeadStockItem",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "quantity_on_hand": "data-derivation.md#stock-ledger"
+            },
+            "_provenance": {
+              "days_since_movement": "derived",
+              "quantity_on_hand": "derived"
+            },
+            "days_since_movement": 288,
+            "description": "ROUND CAKE TIN VINTAGE GREEN",
+            "last_movement_date": "2025-04-02T00:00:00Z",
+            "quantity_on_hand": 18,
+            "sku": "22841"
+          }
+        ]
+      },
+      "ForecastAccuracy": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "selected_model": {
+            "type": "string",
+            "title": "Selected Model"
+          },
+          "training_window_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Training Window Start"
+          },
+          "training_window_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Training Window End"
+          },
+          "test_window_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Test Window Start"
+          },
+          "test_window_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Test Window End"
+          },
+          "n_skus_evaluated": {
+            "type": "integer",
+            "title": "N Skus Evaluated"
+          },
+          "seasonal_naive_mae": {
+            "type": "number",
+            "title": "Seasonal Naive Mae"
+          },
+          "seasonal_naive_mape": {
+            "type": "number",
+            "title": "Seasonal Naive Mape"
+          },
+          "moving_average_mae": {
+            "type": "number",
+            "title": "Moving Average Mae"
+          },
+          "moving_average_mape": {
+            "type": "number",
+            "title": "Moving Average Mape"
+          },
+          "gbm_mae": {
+            "type": "number",
+            "title": "Gbm Mae"
+          },
+          "gbm_mape": {
+            "type": "number",
+            "title": "Gbm Mape"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "selected_model",
+          "training_window_start",
+          "training_window_end",
+          "test_window_start",
+          "test_window_end",
+          "n_skus_evaluated",
+          "seasonal_naive_mae",
+          "seasonal_naive_mape",
+          "moving_average_mae",
+          "moving_average_mape",
+          "gbm_mae",
+          "gbm_mape"
+        ],
+        "title": "ForecastAccuracy",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "gbm_mae": "derived",
+              "gbm_mape": "derived",
+              "moving_average_mae": "derived",
+              "moving_average_mape": "derived",
+              "n_skus_evaluated": "derived",
+              "seasonal_naive_mae": "derived",
+              "seasonal_naive_mape": "derived"
+            },
+            "gbm_mae": 6.0781,
+            "gbm_mape": 250.02,
+            "moving_average_mae": 5.1852,
+            "moving_average_mape": 158.88,
+            "n_skus_evaluated": 4801,
+            "seasonal_naive_mae": 6.0136,
+            "seasonal_naive_mape": 246.97,
+            "selected_model": "moving_average",
+            "test_window_end": "2011-12-09",
+            "test_window_start": "2011-11-12",
+            "training_window_end": "2011-11-11",
+            "training_window_start": "2009-12-01"
+          }
+        ]
+      },
+      "ForecastRequest": {
+        "properties": {
+          "skus": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Skus"
+          },
+          "horizon_days": {
+            "type": "integer",
+            "maximum": 90.0,
+            "minimum": 1.0,
+            "title": "Horizon Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skus",
+          "horizon_days"
+        ],
+        "title": "ForecastRequest",
+        "examples": [
+          {
+            "horizon_days": 14,
+            "skus": [
+              "85048",
+              "22841"
+            ]
+          }
+        ]
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InventoryValuation": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "by_category": {
+            "items": {
+              "$ref": "#/components/schemas/ValuationRow"
+            },
+            "type": "array",
+            "title": "By Category"
+          },
+          "total_quantity_on_hand": {
+            "type": "integer",
+            "title": "Total Quantity On Hand"
+          },
+          "total_inventory_value": {
+            "type": "number",
+            "title": "Total Inventory Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "by_category",
+          "total_quantity_on_hand",
+          "total_inventory_value"
+        ],
+        "title": "InventoryValuation",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "total_inventory_value": "derived",
+              "total_quantity_on_hand": "derived"
+            },
+            "by_category": [
+              {
+                "_derivation_ref": {
+                  "inventory_value": "data-derivation.md#cost-price",
+                  "quantity_on_hand": "data-derivation.md#stock-ledger"
+                },
+                "_provenance": {
+                  "inventory_value": "derived",
+                  "quantity_on_hand": "derived"
+                },
+                "category": "Decorations",
+                "inventory_value": 26832.5,
+                "quantity_on_hand": 12480
+              }
+            ],
+            "total_inventory_value": 297512.1,
+            "total_quantity_on_hand": 128400
+          }
+        ]
+      },
+      "MovementHistoryEntry": {
+        "properties": {
+          "movement_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Movement Date"
+          },
+          "quantity_delta": {
+            "type": "integer",
+            "title": "Quantity Delta"
+          },
+          "movement_type": {
+            "type": "string",
+            "title": "Movement Type"
+          },
+          "provenance": {
+            "type": "string",
+            "title": "Provenance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "movement_date",
+          "quantity_delta",
+          "movement_type",
+          "provenance"
+        ],
+        "title": "MovementHistoryEntry",
+        "description": "One stock_movements row. Carries its own provenance label rather\nthan the ProvenanceMixin dict, since sale-driven rows are observed\nwhile opening-balance / injected-PO rows are derived -- a single\nstatic label per field couldn't express that per-row split.",
+        "examples": [
+          {
+            "movement_date": "2026-01-14T00:00:00Z",
+            "movement_type": "sale",
+            "provenance": "observed",
+            "quantity_delta": -12
+          }
+        ]
+      },
+      "PeriodComparison": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "period1_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period1 Start"
+          },
+          "period1_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period1 End"
+          },
+          "period1_revenue": {
+            "type": "number",
+            "title": "Period1 Revenue"
+          },
+          "period1_units": {
+            "type": "integer",
+            "title": "Period1 Units"
+          },
+          "period1_cost": {
+            "type": "number",
+            "title": "Period1 Cost"
+          },
+          "period1_gross_profit": {
+            "type": "number",
+            "title": "Period1 Gross Profit"
+          },
+          "period1_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period1 Margin"
+          },
+          "period2_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period2 Start"
+          },
+          "period2_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period2 End"
+          },
+          "period2_revenue": {
+            "type": "number",
+            "title": "Period2 Revenue"
+          },
+          "period2_units": {
+            "type": "integer",
+            "title": "Period2 Units"
+          },
+          "period2_cost": {
+            "type": "number",
+            "title": "Period2 Cost"
+          },
+          "period2_gross_profit": {
+            "type": "number",
+            "title": "Period2 Gross Profit"
+          },
+          "period2_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period2 Margin"
+          },
+          "revenue_delta": {
+            "type": "number",
+            "title": "Revenue Delta"
+          },
+          "revenue_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue Delta Pct"
+          },
+          "units_delta": {
+            "type": "integer",
+            "title": "Units Delta"
+          },
+          "units_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units Delta Pct"
+          },
+          "gross_profit_delta": {
+            "type": "number",
+            "title": "Gross Profit Delta"
+          },
+          "gross_profit_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Profit Delta Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "period1_start",
+          "period1_end",
+          "period1_revenue",
+          "period1_units",
+          "period1_cost",
+          "period1_gross_profit",
+          "period1_margin",
+          "period2_start",
+          "period2_end",
+          "period2_revenue",
+          "period2_units",
+          "period2_cost",
+          "period2_gross_profit",
+          "period2_margin",
+          "revenue_delta",
+          "revenue_delta_pct",
+          "units_delta",
+          "units_delta_pct",
+          "gross_profit_delta",
+          "gross_profit_delta_pct"
+        ],
+        "title": "PeriodComparison",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "gross_profit_delta": "derived",
+              "gross_profit_delta_pct": "derived",
+              "period1_cost": "derived",
+              "period1_gross_profit": "derived",
+              "period1_margin": "derived",
+              "period1_revenue": "derived",
+              "period1_units": "derived",
+              "period2_cost": "derived",
+              "period2_gross_profit": "derived",
+              "period2_margin": "derived",
+              "period2_revenue": "derived",
+              "period2_units": "derived",
+              "revenue_delta": "derived",
+              "revenue_delta_pct": "derived",
+              "units_delta": "derived",
+              "units_delta_pct": "derived"
+            },
+            "gross_profit_delta": 18321.77,
+            "gross_profit_delta_pct": 0.068,
+            "period1_cost": 480134.3,
+            "period1_end": "2011-10-31",
+            "period1_gross_profit": 270075.8,
+            "period1_margin": 0.36,
+            "period1_revenue": 750210.1,
+            "period1_start": "2011-10-01",
+            "period1_units": 410233,
+            "period2_cost": 512705.4,
+            "period2_end": "2011-11-30",
+            "period2_gross_profit": 288397.57,
+            "period2_margin": 0.36,
+            "period2_revenue": 801102.97,
+            "period2_start": "2011-11-01",
+            "period2_units": 445513,
+            "revenue_delta": 50892.87,
+            "revenue_delta_pct": 0.068,
+            "units_delta": 35280,
+            "units_delta_pct": 0.086
+          }
+        ]
+      },
+      "ProductCreate": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost"
+          },
+          "reorder_point": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reorder Point"
+          },
+          "safety_stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Stock"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku"
+        ],
+        "title": "ProductCreate",
+        "examples": [
+          {
+            "category_id": 3,
+            "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+            "reorder_point": 120,
+            "safety_stock": 40,
+            "sku": "85048",
+            "supplier_id": 7,
+            "unit_cost": 2.15
+          }
+        ]
+      },
+      "ProductDetail": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost"
+          },
+          "reorder_point": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reorder Point"
+          },
+          "safety_stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Stock"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "quantity_on_hand": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity On Hand"
+          },
+          "movement_history": {
+            "items": {
+              "$ref": "#/components/schemas/MovementHistoryEntry"
+            },
+            "type": "array",
+            "title": "Movement History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "description",
+          "category_id",
+          "supplier_id",
+          "unit_cost",
+          "reorder_point",
+          "safety_stock",
+          "created_at",
+          "quantity_on_hand",
+          "movement_history"
+        ],
+        "title": "ProductDetail",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "quantity_on_hand": "data-derivation.md#stock-ledger",
+              "reorder_point": "data-derivation.md#reorder-point",
+              "safety_stock": "data-derivation.md#reorder-point",
+              "unit_cost": "data-derivation.md#cost-price"
+            },
+            "_provenance": {
+              "description": "observed",
+              "quantity_on_hand": "derived",
+              "reorder_point": "derived",
+              "safety_stock": "derived",
+              "sku": "observed",
+              "unit_cost": "derived"
+            },
+            "category_id": 3,
+            "created_at": "2026-01-01T00:00:00Z",
+            "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+            "movement_history": [
+              {
+                "movement_date": "2026-01-14T00:00:00Z",
+                "movement_type": "sale",
+                "provenance": "observed",
+                "quantity_delta": -12
+              }
+            ],
+            "quantity_on_hand": 96,
+            "reorder_point": 120,
+            "safety_stock": 40,
+            "sku": "85048",
+            "supplier_id": 7,
+            "unit_cost": 2.15
+          }
+        ]
+      },
+      "ProductPerformanceRow": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "revenue": {
+            "type": "number",
+            "title": "Revenue"
+          },
+          "units": {
+            "type": "integer",
+            "title": "Units"
+          },
+          "margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "description",
+          "revenue",
+          "units",
+          "margin"
+        ],
+        "title": "ProductPerformanceRow",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "margin": "derived",
+              "revenue": "derived",
+              "units": "derived"
+            },
+            "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+            "margin": 0.38,
+            "revenue": 45210.3,
+            "sku": "85048",
+            "units": 21023
+          }
+        ]
+      },
+      "ProductRead": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost"
+          },
+          "reorder_point": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reorder Point"
+          },
+          "safety_stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Stock"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "description",
+          "category_id",
+          "supplier_id",
+          "unit_cost",
+          "reorder_point",
+          "safety_stock",
+          "created_at"
+        ],
+        "title": "ProductRead",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "reorder_point": "data-derivation.md#reorder-point",
+              "safety_stock": "data-derivation.md#reorder-point",
+              "unit_cost": "data-derivation.md#cost-price"
+            },
+            "_provenance": {
+              "description": "observed",
+              "reorder_point": "derived",
+              "safety_stock": "derived",
+              "sku": "observed",
+              "unit_cost": "derived"
+            },
+            "category_id": 3,
+            "created_at": "2026-01-01T00:00:00Z",
+            "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+            "reorder_point": 120,
+            "safety_stock": 40,
+            "sku": "85048",
+            "supplier_id": 7,
+            "unit_cost": 2.15
+          }
+        ]
+      },
+      "ProductUpdate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost"
+          },
+          "reorder_point": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reorder Point"
+          },
+          "safety_stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Stock"
+          }
+        },
+        "type": "object",
+        "title": "ProductUpdate",
+        "examples": [
+          {
+            "reorder_point": 130,
+            "unit_cost": 2.25
+          }
+        ]
+      },
+      "ProfitPeriod": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "revenue": {
+            "type": "number",
+            "title": "Revenue"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "gross_profit": {
+            "type": "number",
+            "title": "Gross Profit"
+          },
+          "margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "period",
+          "revenue",
+          "cost",
+          "gross_profit",
+          "margin"
+        ],
+        "title": "ProfitPeriod",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "cost": "derived",
+              "gross_profit": "derived",
+              "margin": "derived",
+              "revenue": "derived"
+            },
+            "cost": 512705.4,
+            "gross_profit": 288397.57,
+            "margin": 0.36,
+            "period": "2011-11",
+            "revenue": 801102.97
+          }
+        ]
+      },
+      "RevenuePeriod": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "revenue": {
+            "type": "number",
+            "title": "Revenue"
+          },
+          "units": {
+            "type": "integer",
+            "title": "Units"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "period",
+          "revenue",
+          "units"
+        ],
+        "title": "RevenuePeriod",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "revenue": "derived",
+              "units": "derived"
+            },
+            "period": "2011-11",
+            "revenue": 801102.97,
+            "units": 445513
+          }
+        ]
+      },
+      "SkuForecast": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "predicted_daily_demand": {
+            "type": "number",
+            "title": "Predicted Daily Demand"
+          },
+          "confidence_interval_lower": {
+            "type": "number",
+            "title": "Confidence Interval Lower"
+          },
+          "confidence_interval_upper": {
+            "type": "number",
+            "title": "Confidence Interval Upper"
+          },
+          "model_used": {
+            "type": "string",
+            "title": "Model Used"
+          },
+          "training_window_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Training Window Start"
+          },
+          "training_window_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Training Window End"
+          },
+          "data_quality": {
+            "type": "string",
+            "title": "Data Quality"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "predicted_daily_demand",
+          "confidence_interval_lower",
+          "confidence_interval_upper",
+          "model_used",
+          "training_window_start",
+          "training_window_end",
+          "data_quality"
+        ],
+        "title": "SkuForecast",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "confidence_interval_lower": "predicted",
+              "confidence_interval_upper": "predicted",
+              "predicted_daily_demand": "predicted"
+            },
+            "confidence_interval_lower": 0.0,
+            "confidence_interval_upper": 97.19,
+            "data_quality": "ok",
+            "model_used": "moving_average",
+            "predicted_daily_demand": 14.61,
+            "sku": "85048",
+            "training_window_end": "2011-12-09",
+            "training_window_start": "2009-12-01"
+          }
+        ]
+      },
+      "SlowMoverItem": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "quantity_on_hand": {
+            "type": "integer",
+            "title": "Quantity On Hand"
+          },
+          "units_sold": {
+            "type": "integer",
+            "title": "Units Sold"
+          },
+          "avg_daily_demand": {
+            "type": "number",
+            "title": "Avg Daily Demand"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "description",
+          "quantity_on_hand",
+          "units_sold",
+          "avg_daily_demand"
+        ],
+        "title": "SlowMoverItem",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "quantity_on_hand": "data-derivation.md#stock-ledger"
+            },
+            "_provenance": {
+              "avg_daily_demand": "derived",
+              "quantity_on_hand": "derived",
+              "units_sold": "derived"
+            },
+            "avg_daily_demand": 0.044,
+            "description": "GLASS STAR FROSTED T-LIGHT HOLDER",
+            "quantity_on_hand": 340,
+            "sku": "21730",
+            "units_sold": 4
+          }
+        ]
+      },
+      "StockItem": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "quantity_on_hand": {
+            "type": "integer",
+            "title": "Quantity On Hand"
+          },
+          "reorder_point": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reorder Point"
+          },
+          "safety_stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Stock"
+          },
+          "as_of_date": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of Date"
+          },
+          "is_low_stock": {
+            "type": "boolean",
+            "title": "Is Low Stock"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "sku",
+          "description",
+          "category",
+          "quantity_on_hand",
+          "reorder_point",
+          "safety_stock",
+          "as_of_date",
+          "is_low_stock"
+        ],
+        "title": "StockItem",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "quantity_on_hand": "data-derivation.md#stock-ledger",
+              "reorder_point": "data-derivation.md#reorder-point",
+              "safety_stock": "data-derivation.md#reorder-point"
+            },
+            "_provenance": {
+              "quantity_on_hand": "derived",
+              "reorder_point": "derived",
+              "safety_stock": "derived"
+            },
+            "as_of_date": "2026-01-15",
+            "category": "Decorations",
+            "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
+            "is_low_stock": true,
+            "quantity_on_hand": 96,
+            "reorder_point": 120,
+            "safety_stock": 40,
+            "sku": "85048"
+          }
+        ]
+      },
+      "SupplierCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "lead_time_days": {
+            "type": "integer",
+            "title": "Lead Time Days"
+          },
+          "reliability_score": {
+            "type": "number",
+            "title": "Reliability Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "lead_time_days",
+          "reliability_score"
+        ],
+        "title": "SupplierCreate",
+        "examples": [
+          {
+            "lead_time_days": 7,
+            "name": "Acme Wholesale Co",
+            "reliability_score": 0.92
+          }
+        ]
+      },
+      "SupplierDetail": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "lead_time_days": {
+            "type": "integer",
+            "title": "Lead Time Days"
+          },
+          "reliability_score": {
+            "type": "number",
+            "title": "Reliability Score"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "skus": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "id",
+          "name",
+          "lead_time_days",
+          "reliability_score",
+          "created_at",
+          "skus"
+        ],
+        "title": "SupplierDetail",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "lead_time_days": "data-derivation.md#supplier-assignment",
+              "reliability_score": "data-derivation.md#supplier-assignment"
+            },
+            "_provenance": {
+              "lead_time_days": "derived",
+              "name": "observed",
+              "reliability_score": "derived"
+            },
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 7,
+            "lead_time_days": 7,
+            "name": "Acme Wholesale Co",
+            "reliability_score": 0.92,
+            "skus": [
+              "85048",
+              "85049"
+            ]
+          }
+        ]
+      },
+      "SupplierRead": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "lead_time_days": {
+            "type": "integer",
+            "title": "Lead Time Days"
+          },
+          "reliability_score": {
+            "type": "number",
+            "title": "Reliability Score"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "id",
+          "name",
+          "lead_time_days",
+          "reliability_score",
+          "created_at"
+        ],
+        "title": "SupplierRead",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "lead_time_days": "data-derivation.md#supplier-assignment",
+              "reliability_score": "data-derivation.md#supplier-assignment"
+            },
+            "_provenance": {
+              "lead_time_days": "derived",
+              "name": "observed",
+              "reliability_score": "derived"
+            },
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 7,
+            "lead_time_days": 7,
+            "name": "Acme Wholesale Co",
+            "reliability_score": 0.92
+          }
+        ]
+      },
+      "SupplierUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "lead_time_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time Days"
+          },
+          "reliability_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reliability Score"
+          }
+        },
+        "type": "object",
+        "title": "SupplierUpdate",
+        "examples": [
+          {
+            "lead_time_days": 10
+          }
+        ]
+      },
+      "Token": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "Token",
+        "examples": [
+          {
+            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "token_type": "bearer"
+          }
+        ]
+      },
+      "TurnoverRow": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "units_sold": {
+            "type": "integer",
+            "title": "Units Sold"
+          },
+          "avg_quantity_on_hand": {
+            "type": "number",
+            "title": "Avg Quantity On Hand"
+          },
+          "turnover_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnover Ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "category",
+          "units_sold",
+          "avg_quantity_on_hand",
+          "turnover_ratio"
+        ],
+        "title": "TurnoverRow",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "avg_quantity_on_hand": "derived",
+              "turnover_ratio": "derived",
+              "units_sold": "derived"
+            },
+            "avg_quantity_on_hand": 9860.5,
+            "category": "Decorations",
+            "turnover_ratio": 0.43,
+            "units_sold": 4210
+          }
+        ]
+      },
+      "UserCreate": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "UserCreate",
+        "examples": [
+          {
+            "email": "analyst@retailops.local",
+            "password": "hunter2-example"
+          }
+        ]
+      },
+      "UserRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_read_only": {
+            "type": "boolean",
+            "title": "Is Read Only"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "is_active",
+          "is_read_only",
+          "created_at"
+        ],
+        "title": "UserRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "email": "demo@retailops.local",
+            "id": 1,
+            "is_active": true,
+            "is_read_only": true
+          }
+        ]
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ValuationRow": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "quantity_on_hand": {
+            "type": "integer",
+            "title": "Quantity On Hand"
+          },
+          "inventory_value": {
+            "type": "number",
+            "title": "Inventory Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "category",
+          "quantity_on_hand",
+          "inventory_value"
+        ],
+        "title": "ValuationRow",
+        "examples": [
+          {
+            "_derivation_ref": {
+              "inventory_value": "data-derivation.md#cost-price",
+              "quantity_on_hand": "data-derivation.md#stock-ledger"
+            },
+            "_provenance": {
+              "inventory_value": "derived",
+              "quantity_on_hand": "derived"
+            },
+            "category": "Decorations",
+            "inventory_value": 26832.5,
+            "quantity_on_hand": 12480
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "auth/login"
+          }
+        }
+      }
+    }
+  }
+}

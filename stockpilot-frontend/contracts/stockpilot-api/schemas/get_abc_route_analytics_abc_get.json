@@ -1,0 +1,65 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/AbcRow"
+  },
+  "title": "Response Get Abc Route Analytics Abc Get",
+  "$defs": {
+    "AbcRow": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "revenue": {
+          "type": "number",
+          "title": "Revenue"
+        },
+        "cumulative_pct": {
+          "type": "number",
+          "title": "Cumulative Pct"
+        },
+        "abc_class": {
+          "type": "string",
+          "title": "Abc Class"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "sku",
+        "revenue",
+        "cumulative_pct",
+        "abc_class"
+      ],
+      "title": "AbcRow",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "cumulative_pct": "derived",
+            "revenue": "derived"
+          },
+          "abc_class": "A",
+          "cumulative_pct": 0.62,
+          "revenue": 45210.3,
+          "sku": "85048"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/* docs/DESIGN-SPEC.md §3 -- dark is the canonical/default theme; light
+   is a full parallel definition, not an inverted afterthought. Ported
+   verbatim from the RetailOps AI repo (BUILD.md Stage 0) -- these values
+   must stay byte-identical across both frontends; see docs/ARCHITECTURE.md
+   §14 for the "duplicated, not symlinked, kept in sync manually" contract. */
+:root {
+  --color-canvas: #0b0b0c;
+  --color-surface: #141416;
+  --color-raised: #1c1c1f;
+  --color-hairline: rgba(255, 255, 255, 0.08);
+  --color-hairline-hi: rgba(255, 255, 255, 0.14);
+
+  --color-text-hi: #e8e8e6;
+  --color-text-mid: #9a9a96;
+  --color-text-low: #6a6a67;
+
+  --color-accent: #be8a3d;
+  --color-accent-dim: rgba(190, 138, 61, 0.14);
+
+  --color-danger: #b4463c;
+}
+
+:root[data-theme="light"] {
+  --color-canvas: #fafaf8;
+  --color-surface: #ffffff;
+  --color-raised: #f4f4f1;
+  --color-hairline: rgba(0, 0, 0, 0.1);
+  --color-hairline-hi: rgba(0, 0, 0, 0.16);
+
+  --color-text-hi: #17171a;
+  --color-text-mid: #5f5f5c;
+  --color-text-low: #8a8a86;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-canvas: #fafaf8;
+    --color-surface: #ffffff;
+    --color-raised: #f4f4f1;
+    --color-hairline: rgba(0, 0, 0, 0.1);
+    --color-hairline-hi: rgba(0, 0, 0, 0.16);
+
+    --color-text-hi: #17171a;
+    --color-text-mid: #5f5f5c;
+    --color-text-low: #8a8a86;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--color-canvas);
+  --color-surface: var(--color-surface);
+  --color-raised: var(--color-raised);
+  --color-hairline: var(--color-hairline);
+  --color-hairline-hi: var(--color-hairline-hi);
+  --color-text-hi: var(--color-text-hi);
+  --color-text-mid: var(--color-text-mid);
+  --color-text-low: var(--color-text-low);
+  --color-accent: var(--color-accent);
+  --color-accent-dim: var(--color-accent-dim);
+  --color-danger: var(--color-danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-token: 6px;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-text-hi);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* DESIGN-SPEC §2/§4: anything measured is monospaced, with tabular
+   figures, everywhere -- not opt-in per component. */
+.font-mono,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

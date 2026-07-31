@@ -1,0 +1,43 @@
+name: CI
+
+# docs/ARCHITECTURE.md § CI/CD Pipeline: lint, type-check, unit tests,
+# integration tests, on every PR; all green required before merge.
+# axe-core accessibility CI and Playwright E2E are added in BUILD.md
+# Stage 11 (Testing), once there are real pages/flows for them to
+# exercise -- Stage 0's empty-state shells have nothing E2E-worthy yet.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: stockpilot-frontend
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: stockpilot-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit + integration tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build

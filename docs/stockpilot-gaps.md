@@ -122,3 +122,89 @@ parameter on the inventory endpoints (selecting the nearest
 `stock_levels` row on or before that date instead of always the latest),
 and a live, queryable "retrain/score as of a past date" forecasting
 capability.
+
+## 4. No Purchase Orders, Sales/Orders/Customers, Notifications, Audit Logs, or Settings/Users/Roles endpoints at all (found: `stockpilot-frontend` BUILD.md Stage 0)
+
+**Needed by:** `docs/PRODUCT-SPEC.md` FR-6 (Purchase Orders), FR-7 (Sales),
+FR-11 (Notifications), FR-12 (Audit Logs), and FR-13
+(Settings/Users/Roles) — five of the fifteen functional requirements the
+StockPilot Frontend (ERP) spec defines.
+
+**What happened:** `contracts/stockpilot-api/schemas/` (generated from
+StockPilot Core's live OpenAPI export) contains 25 schema files covering
+only Products (list/get/create/update — no delete), Suppliers
+(list/get/create/update), Inventory (stock/low-stock/dead-stock/
+slow-movers/valuation), Analytics (revenue/profit/turnover/abc/top-
+bottom-products/period-comparison), Forecasting (forecast-demand/
+forecast-accuracy), and Auth (login/register). There is no purchase
+order, sales order, customer, notification, audit-log, user-management,
+or role-management model or route anywhere in StockPilot Core as it
+currently exists. This isn't a contract-doc gap (a real endpoint the
+contract forgot to document) — the backend genuinely has none of these
+five resources built. StockPilot Core was built as a read-heavy
+inventory/analytics/forecasting API (`stockpilot-core/README.md`), not a
+transactional ERP backend with order/workflow state.
+
+**Impact on `stockpilot-frontend` BUILD.md:** Stage 0 (this task) is
+unaffected — it only needs empty-state pages for every nav item, no real
+endpoint wiring. Stage 2 (Inventory) and the read-only parts of Stage 3
+(Products) and Stage 4 (Suppliers) are buildable against real data today.
+Stage 5 (Purchase Orders), Stage 6 (Sales), and Stage 9 (Settings) cannot
+be built against real StockPilot Core data at all in their current form —
+building them would mean either inventing a backend that doesn't exist
+(explicitly against `CLAUDE.md` §18's "don't invent an API shape... stop
+and ask") or building StockPilot Core's missing side first, which is a
+separate, substantial backend task outside a frontend repo's scope.
+
+**Not fixed here.** Flagging per convention, not silently deferred: any
+session reaching Stage 5/6/9 should stop and confirm with the user
+whether to (a) scope those stages down to what's genuinely buildable
+(e.g. a Purchase Orders UI against a StockPilot Core PO API that doesn't
+exist yet is not buildable at all), (b) build the missing StockPilot Core
+endpoints first as its own tracked work, or (c) mark those stages
+roadmap-only in the `stockpilot-frontend` README, matching the "ship-thin
+vs. ship-long" honesty framing `BUILD.md` already calls for.
+
+## 5. No role/permission field on the User model — RBAC has no backend to enforce it (found: `stockpilot-frontend` BUILD.md Stage 0)
+
+**Needed by:** `docs/PRODUCT-SPEC.md` §6's six-role model (Admin,
+Inventory Manager, Procurement, Sales, Analyst, Viewer) and every RBAC
+rule in `CLAUDE.md` §12 / `docs/ARCHITECTURE.md` § Authorization that
+assumes a permission source exists to check against.
+
+**What happened:** `stockpilot-core/models/user.py`'s `User` model has
+exactly five columns: `id`, `email`, `hashed_password`, `is_active`, and
+`is_read_only` (a single boolean). There is no `role` column, no
+permissions table, no join table of any kind. The JWT StockPilot Core
+issues (`services/security.py::create_access_token`) carries only the
+user's identity claim — nothing role-shaped to decode. `GET
+/me/permissions` (the alternative source `docs/ARCHITECTURE.md` §
+Authorization names) does not exist in `contracts/stockpilot-api/`
+either. `docs/PRODUCT-SPEC.md` §6 itself already flags this as
+provisional and says to confirm before Stage 9 — confirmed now, at
+Stage 0, since `lib/rbac/`'s shape depends on it existing at all.
+
+**Workaround applied (`stockpilot-frontend` side, Stage 0):** `lib/rbac/`
+implements the `useCan('resource:action')` hook and the six-role
+permission MAP from `docs/PRODUCT-SPEC.md` §6 as real, typed,
+structurally-correct code — but every authenticated user is currently
+assigned a single hardcoded role (`'admin'`, the most-permissive role) at
+the point `lib/auth/` establishes a session, since there is no server
+field to read a real role from. This is stated plainly in `lib/rbac/`'s
+own code comment, not hidden — the hook's *shape* is real and Stage 9
+can wire it to a real per-user role the moment one exists server-side;
+its *data source* is a placeholder.
+
+**Impact if unaddressed:** every UI-level permission gate in the app is
+currently a no-op (everyone sees everyone's view) until this is fixed.
+This is explicitly safe only because `CLAUDE.md` §12 already requires
+"the frontend must never be the sole enforcement point" — there is no
+real authorization boundary here to weaken, because StockPilot Core
+itself does not enforce one yet either. Do not treat the UI-level gating
+built against this stub as a real security boundary in the meantime.
+
+**Real fix (out of scope for this frontend repo):** a `role` column (or
+a proper roles/permissions join) on StockPilot Core's `User` model, a
+role claim in the issued JWT or a real `GET /me/permissions` endpoint,
+and server-side enforcement of every mutating endpoint per role — a
+StockPilot Core change, not a frontend one.
