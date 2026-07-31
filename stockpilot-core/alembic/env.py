@@ -26,6 +26,11 @@ if config.config_file_name is not None:
 database_url = os.environ.get("DATABASE_URL")
 if not database_url:
     raise RuntimeError("DATABASE_URL is not set. Copy .env.example to .env and fill it in.")
+# See database.py::_normalized_database_url's own docstring -- managed
+# Postgres providers hand out a bare "postgresql://" scheme, which
+# defaults to a psycopg2 DBAPI this project doesn't install.
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = Base.metadata
