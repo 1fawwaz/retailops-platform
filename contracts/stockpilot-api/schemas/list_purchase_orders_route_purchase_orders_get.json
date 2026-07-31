@@ -1,0 +1,138 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/PurchaseOrderRead"
+  },
+  "title": "Response List Purchase Orders Route Purchase Orders Get",
+  "$defs": {
+    "PurchaseOrderLineRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "quantity_ordered": {
+          "type": "integer",
+          "title": "Quantity Ordered"
+        },
+        "quantity_received": {
+          "type": "integer",
+          "title": "Quantity Received"
+        },
+        "unit_cost": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit Cost"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "sku",
+        "quantity_ordered",
+        "quantity_received",
+        "unit_cost"
+      ],
+      "title": "PurchaseOrderLineRead",
+      "examples": [
+        {
+          "id": 1,
+          "quantity_ordered": 200,
+          "quantity_received": 0,
+          "sku": "85048",
+          "unit_cost": 2.15
+        }
+      ]
+    },
+    "PurchaseOrderRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "supplier_id": {
+          "type": "integer",
+          "title": "Supplier Id"
+        },
+        "warehouse_id": {
+          "type": "integer",
+          "title": "Warehouse Id"
+        },
+        "status": {
+          "type": "string",
+          "title": "Status"
+        },
+        "created_by_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created By User Id"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Updated At"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/PurchaseOrderLineRead"
+          },
+          "type": "array",
+          "title": "Lines"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "supplier_id",
+        "warehouse_id",
+        "status",
+        "created_by_user_id",
+        "created_at",
+        "updated_at",
+        "lines"
+      ],
+      "title": "PurchaseOrderRead",
+      "examples": [
+        {
+          "created_at": "2026-02-01T09:00:00Z",
+          "created_by_user_id": 4,
+          "id": 1,
+          "lines": [
+            {
+              "id": 1,
+              "quantity_ordered": 200,
+              "quantity_received": 0,
+              "sku": "85048",
+              "unit_cost": 2.15
+            }
+          ],
+          "status": "draft",
+          "supplier_id": 7,
+          "updated_at": "2026-02-01T09:00:00Z",
+          "warehouse_id": 1
+        }
+      ]
+    }
+  }
+}

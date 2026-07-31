@@ -8,6 +8,7 @@ from api.routers import (
     forecast,
     inventory,
     products,
+    purchase_orders,
     suppliers,
     warehouses,
 )
@@ -22,6 +23,7 @@ app.include_router(brands.router)
 app.include_router(suppliers.router)
 app.include_router(warehouses.router)
 app.include_router(inventory.router)
+app.include_router(purchase_orders.router)
 app.include_router(analytics.router)
 app.include_router(forecast.router)
 

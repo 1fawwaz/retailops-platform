@@ -28,6 +28,7 @@ from services.products import (
     list_products,
     update_product,
 )
+from services.purchase_orders import product_has_open_purchase_order_lines
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -140,6 +141,12 @@ def delete_product_route(
     _: User = Depends(require_write_access),
 ) -> None:
     product = _get_product_or_404(db, sku)
+    if product_has_open_purchase_order_lines(db, sku):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a product with open purchase order lines "
+            "(docs/PRODUCT-SPEC.md §12)",
+        )
     delete_product(db, product)
 
 

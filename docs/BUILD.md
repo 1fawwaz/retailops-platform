@@ -21,7 +21,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 2 — Products | `[~]` categories, brands, sale price, history all live; images blocked on a storage-provider decision (see note) |
 | Backend | Module 3 — Suppliers | `[~]` contacts live; performance metrics deferred to Module 5 (see note) |
 | Backend | Module 4 — Inventory | `[x]` warehouses, location-scoped stock, transfers, adjustments, ledger all live, tested, committed |
-| Backend | Modules 5–10 | `[ ]` |
+| Backend | Module 5 — Purchase Orders | `[x]` new `purchase_order_requests` tables (existing synthetic `purchase_orders` untouched), full lifecycle + receiving, tested, committed |
+| Backend | Modules 6–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -122,20 +123,25 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 5 — Purchase Orders (new)
+### Backend Module 5 — Purchase Orders (new) `[x]`
+
+**Naming decision (user-confirmed):** the pre-existing `purchase_orders` table is synthetic stock-ledger-replay data with no real lifecycle (`docs/stockpilot-gaps.md` #6) and is left completely untouched. The real, live workflow lives in new tables named `purchase_order_requests` / `purchase_order_request_lines` instead of colliding with it.
 
 **Tasks**
 
-- [ ] `purchase_orders` + `purchase_order_lines` tables, status enum matching `docs/PRODUCT-SPEC.md` §10/§12's lifecycle exactly (Draft → Submitted → Approved → Partially Received → Received → Closed)
-- [ ] CRUD + status-transition endpoints, each transition validated server-side (no skipping states, no editing a Submitted+ PO's lines)
-- [ ] Receive endpoint (full/partial), updates `stock_levels`/`stock_movements` through the same real inventory-mutation path Module 4 established — never a second, divergent stock-update code path
-- [ ] Over-receipt handling — flagged distinctly per `docs/PRODUCT-SPEC.md` §12, not silently accepted
+- [x] `purchase_order_requests` + `purchase_order_request_lines` tables, status enum matching `docs/PRODUCT-SPEC.md` §10/§12's lifecycle exactly: `draft → submitted → approved → partially_received → received → closed`, plus `cancelled` (only reachable from `draft`/`submitted`, per §12's explicit cancellation-boundary rule).
+- [x] CRUD + status-transition endpoints (`POST /purchase-orders`, `GET /purchase-orders`, `GET/PUT /purchase-orders/{id}`, `POST /purchase-orders/{id}/{submit,approve,cancel,close,receive}`), each transition validated server-side — editing (`PUT`) is rejected once a PO leaves `draft`, matching §12's "cannot be edited once Submitted" rule exactly.
+- [x] Receive endpoint (full/partial): updates `stock_levels`/`stock_movements` through the exact same `apply_stock_delta` path Module 4 established for transfers/adjustments — no second, divergent stock-update code path. Writes a real `stock_movements` row per receive (`movement_type='purchase_order'`). PO status is recomputed from line totals after every receive (`partially_received` vs `received`), not tracked as a separate mutable flag that could drift from the lines.
+- [x] Over-receipt handling: a receive that would push a line's total received above its ordered quantity is rejected (400) unless `over_receipt_confirmed: true` is explicitly passed — flagged distinctly per `docs/PRODUCT-SPEC.md` §12, never silently accepted.
+- [x] Enforced two `docs/PRODUCT-SPEC.md` §12 business rules that only became real once live POs existed: a Supplier cannot be deleted while it has an open PO referencing it (409), and a Product cannot be deleted while it has an open PO line (409). `docs/PRODUCT-SPEC.md` §12's full product-deletion rule also covers non-zero on-hand inventory and sales-order history — **only the PO-lines clause is enforced now**; the inventory clause and the sales-history clause (which depends on Module 7, not yet built) are deliberately deferred, not silently dropped.
 
-**Acceptance criteria:** every transition in `docs/PRODUCT-SPEC.md` §10 is enforced server-side; a partial receive leaves the PO in the correct state and inventory reflects it immediately.
+**Acceptance criteria:** every transition in `docs/PRODUCT-SPEC.md` §10 is enforced server-side, verified by test for every transition including the illegal ones (approve-a-draft, cancel-an-approved); a partial receive leaves the PO in `partially_received` and inventory reflects it immediately, verified against the real `/inventory/stock` and `/inventory/{sku}/ledger` endpoints, not just the PO's own response.
 
-**Tests:** unit (status-transition validity), integration (full create→submit→approve→partially-receive→receive cycle, verifying inventory + ledger), contract.
+**Tests:** `tests/test_purchase_orders.py` (new, 17 tests) — full create→submit→approve→partially-receive→receive→close lifecycle, every illegal transition rejected, over-receipt rejected without confirmation and accepted with it, edit-after-submit rejected, read-only user denied on every mutating action, supplier/product deletion blocked by open POs and unblocked once cancelled. Full suite (176 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
 **Commit checkpoint:** `feat(purchase-orders): CRUD, status workflow, receiving`
+
+**Known limitations carried forward, not silently dropped:** the non-zero-inventory and sales-order-history clauses of the Product deletion rule (§12) — see the task note above.
 
 * * *
 

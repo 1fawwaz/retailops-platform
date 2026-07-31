@@ -5,6 +5,8 @@ from models.password_reset_token import PasswordResetToken
 from models.product import Product
 from models.product_history import ProductHistory
 from models.purchase_order import PurchaseOrder
+from models.purchase_order_request import PurchaseOrderRequest
+from models.purchase_order_request_line import PurchaseOrderRequestLine
 from models.refresh_token import RefreshToken
 from models.sales_transaction import SalesTransaction
 from models.stock_level import StockLevel
@@ -22,6 +24,8 @@ __all__ = [
     "Product",
     "ProductHistory",
     "PurchaseOrder",
+    "PurchaseOrderRequest",
+    "PurchaseOrderRequestLine",
     "RefreshToken",
     "SalesTransaction",
     "StockLevel",

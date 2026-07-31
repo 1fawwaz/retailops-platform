@@ -260,3 +260,10 @@ invoice/payment tables as strictly forward-looking (new orders placed
 through the app from go-live onward), leaving `sales_transactions` as the
 permanent historical record analytics continues to read — but that is a
 product decision, not something to default silently when reached.
+
+**Status (2026-08-01), Purchase Orders half:** resolved by explicit user
+decision when Backend Module 5 was reached. The live PO workflow lives in
+new tables `purchase_order_requests` / `purchase_order_request_lines`;
+the existing synthetic `purchase_orders` table is completely untouched.
+See `docs/BUILD.md` Backend Module 5. The Sales half (Module 7) remains
+open and will be decided when that module is reached.

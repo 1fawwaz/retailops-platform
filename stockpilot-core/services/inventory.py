@@ -344,7 +344,7 @@ def _get_latest_quantity(db: Session, sku: str, warehouse_id: int) -> int:
     return db.execute(stmt).scalar_one_or_none() or 0
 
 
-def _apply_stock_delta(db: Session, sku: str, warehouse_id: int, delta: int, as_of: date) -> int:
+def apply_stock_delta(db: Session, sku: str, warehouse_id: int, delta: int, as_of: date) -> int:
     """Upsert the (sku, warehouse_id, as_of) stock_levels row, carrying
     forward the most recent known quantity at that warehouse. Multiple
     same-day calls compose correctly: each reads the running total left
@@ -389,8 +389,8 @@ def transfer_stock(
         )
     today = datetime.now(UTC).date()
     now = datetime.now(UTC).replace(tzinfo=None)
-    _apply_stock_delta(db, sku, from_warehouse_id, -quantity, today)
-    _apply_stock_delta(db, sku, to_warehouse_id, quantity, today)
+    apply_stock_delta(db, sku, from_warehouse_id, -quantity, today)
+    apply_stock_delta(db, sku, to_warehouse_id, quantity, today)
     db.add(
         StockMovement(
             sku=sku,
@@ -427,7 +427,7 @@ def adjust_stock(
         )
     today = datetime.now(UTC).date()
     now = datetime.now(UTC).replace(tzinfo=None)
-    new_quantity = _apply_stock_delta(db, sku, warehouse_id, quantity_delta, today)
+    new_quantity = apply_stock_delta(db, sku, warehouse_id, quantity_delta, today)
     db.add(
         StockMovement(
             sku=sku,

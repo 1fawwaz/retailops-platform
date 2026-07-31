@@ -19,6 +19,7 @@ from schemas.supplier_contact import (
     SupplierContactRead,
     SupplierContactUpdate,
 )
+from services.purchase_orders import supplier_has_open_purchase_orders
 from services.supplier_contacts import (
     create_contact,
     delete_contact,
@@ -116,6 +117,12 @@ def delete_supplier_route(
     _: User = Depends(require_write_access),
 ) -> None:
     supplier = _get_supplier_or_404(db, supplier_id)
+    if supplier_has_open_purchase_orders(db, supplier_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a supplier with open purchase orders referencing it "
+            "(docs/PRODUCT-SPEC.md §12)",
+        )
     delete_supplier(db, supplier)
 
 
