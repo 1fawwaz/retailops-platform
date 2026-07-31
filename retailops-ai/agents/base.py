@@ -51,6 +51,23 @@ from tools.derived_tools import build_derived_tools
 from tools.stockpilot_tools import build_stockpilot_tools
 
 MAX_TOOL_ROUNDS = 4
+# Real, live-discovered need (Stage 7 demo capture): a broad question
+# ("which products are low on stock") can make a retrieval agent call a
+# list-shaped tool at its own allowed limit=1000, and feeding all 1000
+# rows back into that agent's own conversation history can exceed a
+# real LLM's context window (Groq: 400 "context_length_exceeded"),
+# crashing the whole request instead of degrading. Capped here, not at
+# the tool-schema level (tools/schemas.py's own limit=1000 ceiling is a
+# legitimate pagination bound, not itself the bug) and not by shrinking
+# what's PERSISTED (tool_calls.raw_response, written by
+# tools/stockpilot_tools.py's own wrapper before this function ever
+# runs, stays the full untruncated result -- citation validation reads
+# that DB row, never what an agent's own prompt actually saw, so
+# invariant 1/2 are unaffected by this cap). 200 is generous for what a
+# retrieval agent's own prose needs to reason over while keeping even a
+# maximally-sized real response comfortably inside typical context
+# windows.
+MAX_TOOL_RESULT_ITEMS = 200
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -85,6 +102,30 @@ ANALYTICS_TOOL_NAMES = (
     "get_bottom_products",
     "get_period_comparison",
 )
+
+
+def _bounded_for_llm(jsonable: object) -> object:
+    """Caps a list-shaped tool result to MAX_TOOL_RESULT_ITEMS before
+    it's wrapped in an envelope and fed into an agent's own
+    conversation history -- see MAX_TOOL_RESULT_ITEMS's own comment for
+    why. `jsonable` is expected to already be the output of
+    to_jsonable() (plain dicts/lists/primitives only), so slicing a
+    list here and wrapping it in a plain dict is always JSON-safe; a
+    non-list result (a single-entity lookup, a scalar) passes through
+    unchanged, since those are never what's caused this in practice.
+    """
+    if isinstance(jsonable, list) and len(jsonable) > MAX_TOOL_RESULT_ITEMS:
+        return {
+            "results": jsonable[:MAX_TOOL_RESULT_ITEMS],
+            "_truncated": True,
+            "_total_count": len(jsonable),
+            "_note": (
+                f"Showing the first {MAX_TOOL_RESULT_ITEMS} of {len(jsonable)} results. "
+                "Ask a narrower question (a category, a lower limit, or a specific SKU) "
+                "to see results beyond this."
+            ),
+        }
+    return jsonable
 
 
 @dataclass(frozen=True)
@@ -337,7 +378,7 @@ class Agent:
         else:
             try:
                 result = tool.invoke(tool_call["args"])
-                content = envelope(name, to_jsonable(result))
+                content = envelope(name, _bounded_for_llm(to_jsonable(result)))
             except Exception as exc:  # noqa: BLE001 -- surfaced to the model as a tool error
                 content = f"Error calling {name}: {exc}"
         return ToolMessage(content=content, tool_call_id=call_id, name=name)

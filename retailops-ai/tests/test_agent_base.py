@@ -8,7 +8,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from agents.base import Agent, build_agents
+from agents.base import MAX_TOOL_RESULT_ITEMS, Agent, _bounded_for_llm, build_agents
 from clients.stockpilot import StockPilotClient
 from llm.providers.gemini import StreamChunk, StructuredResult
 from orchestration.models.agent_step import AgentStep
@@ -104,6 +104,98 @@ def test_agent_invoke_executes_a_requested_tool_call_and_envelopes_the_result(
 
     step = db_session.query(AgentStep).one()
     assert step.status == "completed"
+
+
+def test_bounded_for_llm_truncates_a_list_over_the_cap() -> None:
+    oversized = [{"sku": str(i)} for i in range(MAX_TOOL_RESULT_ITEMS + 50)]
+
+    bounded = _bounded_for_llm(oversized)
+
+    assert isinstance(bounded, dict)
+    assert bounded["results"] == oversized[:MAX_TOOL_RESULT_ITEMS]
+    assert bounded["_truncated"] is True
+    assert bounded["_total_count"] == MAX_TOOL_RESULT_ITEMS + 50
+    assert "Showing the first" in str(bounded["_note"])
+
+
+def test_bounded_for_llm_leaves_a_list_at_or_under_the_cap_unchanged() -> None:
+    exactly_at_cap = [{"sku": str(i)} for i in range(MAX_TOOL_RESULT_ITEMS)]
+    assert _bounded_for_llm(exactly_at_cap) is exactly_at_cap
+
+    small = [{"sku": "1"}, {"sku": "2"}]
+    assert _bounded_for_llm(small) is small
+
+
+def test_bounded_for_llm_leaves_a_non_list_result_unchanged() -> None:
+    single = {"sku": "85048", "quantity_on_hand": 12}
+    assert _bounded_for_llm(single) is single
+    assert _bounded_for_llm("sunny in Paris") == "sunny in Paris"
+    assert _bounded_for_llm(None) is None
+
+
+def test_agent_invoke_truncates_an_oversized_list_tool_result_before_it_reaches_the_llm(
+    db_session: Session,
+) -> None:
+    """Real, live-discovered bug (Stage 7 demo capture): a broad
+    inventory question can make a retrieval agent call a list-shaped
+    tool at its own allowed limit=1000, and feeding all 1000 rows back
+    into that agent's own conversation history can exceed a real LLM's
+    context window (Groq: 400 context_length_exceeded), crashing the
+    request. This proves the fix at the level a real crash actually
+    happened at: the ToolMessage content an agent's own next generate()
+    call would see.
+    """
+
+    def _many_low_stock_rows(limit: int = 1000, offset: int = 0) -> list[dict[str, object]]:
+        return [{"sku": str(i), "quantity_on_hand": 1} for i in range(limit)]
+
+    class GetLowStockArgs(BaseModel):
+        limit: int = Field(default=1000)
+        offset: int = Field(default=0)
+
+    tool = StructuredTool.from_function(
+        func=_many_low_stock_rows,
+        name="get_low_stock",
+        description="List SKUs at or below their reorder point.",
+        args_schema=GetLowStockArgs,
+    )
+    agent = Agent(
+        name="inventory", role="retriever", prompt=load_prompt("inventory"), tools=(tool,)
+    )
+    execution_id = _new_execution(db_session)
+
+    tool_call_message = AIMessage(
+        content="",
+        tool_calls=[{"name": "get_low_stock", "args": {"limit": 1000}, "id": "call_1"}],
+    )
+    final_message = _no_tool_ai_message("Here are the low-stock items.")
+    captured_tool_message_content: list[str] = []
+    calls = {"count": 0}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return tool_call_message
+        for m in messages:
+            if m.__class__.__name__ == "ToolMessage":
+                captured_tool_message_content.append(m.content)
+        return final_message
+
+    with patch("agents.base.generate", side_effect=fake_generate):
+        agent.invoke(
+            "Which products are low on stock?",
+            session_factory=lambda: db_session,
+            execution_id=execution_id,
+        )
+
+    assert len(captured_tool_message_content) == 1
+    content = captured_tool_message_content[0]
+    # The truncation note and the total count are visible to the model...
+    assert "Showing the first 200 of 1000 results" in content
+    # ...but the 1000 raw rows are not -- proving genuine truncation, not
+    # just an appended note alongside the full payload.
+    assert content.count('"sku"') == MAX_TOOL_RESULT_ITEMS
+    assert '"999"' not in content  # the 1000th row (index 999) is cut
 
 
 def test_agent_invoke_records_an_unknown_tool_call_as_an_error_message(
