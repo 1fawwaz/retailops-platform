@@ -18,7 +18,7 @@ from database import get_engine, get_session_factory  # noqa: E402
 from scripts.etl.categories import assign_categories, load_cluster_labels  # noqa: E402
 from scripts.etl.clean import DEFAULT_CHUNK_SIZE, clean, iter_raw_chunks  # noqa: E402
 from scripts.etl.cost_price import compute_unit_costs, sample_margin_factors  # noqa: E402
-from scripts.etl.dataset_scope import SkuVolumeCounter  # noqa: E402
+from scripts.etl.dataset_scope import SkuVolumeCounter, filter_to_selected_skus  # noqa: E402
 from scripts.etl.load import (  # noqa: E402
     insert_categories,
     insert_products,
@@ -101,7 +101,7 @@ def step_a_and_b_clean_and_product_master() -> None:
     for i, raw_chunk in enumerate(iter_raw_chunks(chunk_size=DEFAULT_CHUNK_SIZE), start=1):
         cleaned_chunk, _ = clean(raw_chunk)
         if selected_skus is not None:
-            cleaned_chunk = cleaned_chunk[cleaned_chunk["StockCode"].isin(selected_skus)]
+            cleaned_chunk = filter_to_selected_skus(cleaned_chunk, selected_skus)
         transactions_inserted += insert_sales_transactions(engine, cleaned_chunk)
         print(f"  chunk {i}: sales_transactions_inserted so far = {transactions_inserted}")
         if i % checkpoint_every_n_chunks == 0:

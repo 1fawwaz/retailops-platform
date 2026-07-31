@@ -46,3 +46,18 @@ class SkuVolumeCounter:
             selected.add(sku)
             cumulative += count
         return selected
+
+
+def filter_to_selected_skus(chunk: pd.DataFrame, selected_skus: set[str]) -> pd.DataFrame:
+    """Keeps only the rows whose StockCode is in selected_skus.
+
+    openpyxl's read-only mode returns each cell's native type rather than
+    coercing a whole column to one dtype the way pd.read_excel does -- purely
+    numeric StockCodes (e.g. "21730") commonly come back as Python int, not
+    str. selected_skus (built from SkuVolumeCounter, which always keys on
+    str(sku)) is a set of strings, so comparing the raw column against it
+    without casting first silently drops every numeric-typed StockCode: found
+    live, where only 26,068 of an expected ~300,224 scoped transactions were
+    kept because most of this dataset's StockCodes are all-digit.
+    """
+    return chunk[chunk["StockCode"].astype(str).isin(selected_skus)]

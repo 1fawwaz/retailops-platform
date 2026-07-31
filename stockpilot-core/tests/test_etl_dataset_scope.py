@@ -1,6 +1,6 @@
 import pandas as pd
 
-from scripts.etl.dataset_scope import SkuVolumeCounter
+from scripts.etl.dataset_scope import SkuVolumeCounter, filter_to_selected_skus
 
 
 def _chunk(skus: list[str]) -> pd.DataFrame:
@@ -52,3 +52,24 @@ def test_ties_broken_deterministically_by_sku_name() -> None:
 
     # target 1 is satisfied by whichever tied SKU sorts first: "A1" < "B2"
     assert counter.top_skus_by_target_volume(1) == {"A1"}
+
+
+def test_filter_to_selected_skus_matches_numeric_stockcodes() -> None:
+    """openpyxl returns purely-numeric StockCodes as Python int, not str --
+    found live, where this caused 91% of an expected ~300K scoped
+    transactions to be silently dropped because int(21730) != "21730" under
+    a raw (uncast) .isin() check.
+    """
+    chunk = pd.DataFrame({"StockCode": [21730, "85123A", 22423, "POST"]})
+
+    result = filter_to_selected_skus(chunk, {"21730", "85123A"})
+
+    assert sorted(result["StockCode"].astype(str)) == ["21730", "85123A"]
+
+
+def test_filter_to_selected_skus_drops_unselected_rows() -> None:
+    chunk = pd.DataFrame({"StockCode": ["A1", "B2", "A1", "C3"]})
+
+    result = filter_to_selected_skus(chunk, {"A1"})
+
+    assert list(result["StockCode"]) == ["A1", "A1"]
