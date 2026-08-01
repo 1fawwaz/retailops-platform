@@ -8,6 +8,7 @@ from models.product import Product
 from models.sales_transaction import SalesTransaction
 from models.stock_level import StockLevel
 from models.stock_movement import StockMovement
+from services.rbac import assign_role, get_role_by_name
 from services.security import create_access_token
 from services.users import create_user
 from services.warehouses import get_or_create_main_warehouse
@@ -23,7 +24,15 @@ def _auth_headers(db_session: Session) -> dict[str, str]:
 
 
 def _writer_headers(db_session: Session) -> dict[str, str]:
-    create_user(db_session, email="writer@example.com", password="hunter22!!", is_read_only=False)
+    user = create_user(
+        db_session, email="writer@example.com", password="hunter22!!", is_read_only=False
+    )
+    # Bypasses /auth/register's first-user-becomes-admin bootstrap
+    # (docs/BUILD.md Backend Module 10), so assign it directly here to
+    # get an equivalent "can do everything" test user.
+    admin_role = get_role_by_name(db_session, "admin")
+    assert admin_role is not None
+    assign_role(db_session, user.id, admin_role.id)
     token = create_access_token(subject="writer@example.com")
     return {"Authorization": f"Bearer {token}"}
 

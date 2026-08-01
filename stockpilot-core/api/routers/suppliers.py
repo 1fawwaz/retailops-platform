@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, require_write_access
+from api.deps import get_current_user, require_permission
 from database import get_db
 from models.supplier import Supplier
 from models.supplier_contact import SupplierContact
@@ -94,7 +94,7 @@ def get_supplier_route(
 def create_supplier_route(
     data: SupplierCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("suppliers:create")),
 ) -> SupplierRead:
     return _to_read_model(create_supplier(db, data))
 
@@ -104,7 +104,7 @@ def update_supplier_route(
     supplier_id: int,
     data: SupplierUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("suppliers:update")),
 ) -> SupplierRead:
     supplier = _get_supplier_or_404(db, supplier_id)
     return _to_read_model(update_supplier(db, supplier, data))
@@ -114,7 +114,7 @@ def update_supplier_route(
 def delete_supplier_route(
     supplier_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("suppliers:delete")),
 ) -> None:
     supplier = _get_supplier_or_404(db, supplier_id)
     if supplier_has_open_purchase_orders(db, supplier_id):
@@ -145,7 +145,7 @@ def create_contact_route(
     supplier_id: int,
     data: SupplierContactCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("suppliers:update")),
 ) -> SupplierContactRead:
     _get_supplier_or_404(db, supplier_id)
     return SupplierContactRead.model_validate(create_contact(db, supplier_id, data))
@@ -164,7 +164,7 @@ def update_contact_route(
     contact_id: int,
     data: SupplierContactUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("suppliers:update")),
 ) -> SupplierContactRead:
     _get_supplier_or_404(db, supplier_id)
     contact = _get_contact_or_404(db, supplier_id, contact_id)
@@ -176,7 +176,7 @@ def delete_contact_route(
     supplier_id: int,
     contact_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("suppliers:update")),
 ) -> None:
     _get_supplier_or_404(db, supplier_id)
     contact = _get_contact_or_404(db, supplier_id, contact_id)

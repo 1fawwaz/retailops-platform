@@ -192,3 +192,34 @@ def test_read_only_user_can_read_but_not_write(client: TestClient, db_session: S
 
     write_response = client.post("/products", json={"sku": "SKU-2"}, headers=demo_headers)
     assert write_response.status_code == 403
+
+
+def test_user_without_products_permission_cannot_create_a_product(client: TestClient) -> None:
+    """Distinct from the is_read_only check above: this user is NOT
+    read-only, but has zero roles assigned (the second user registered
+    on a fresh deployment, docs/BUILD.md Backend Module 10) -- the real
+    RBAC permission check must deny them independently.
+    """
+    _auth_headers(client, email="first@example.com")  # becomes admin
+    second_headers = _auth_headers(client, email="second@example.com")
+
+    response = client.post("/products", json={"sku": "SKU-1"}, headers=second_headers)
+
+    assert response.status_code == 403
+    assert "products:create" in response.json()["detail"]
+
+
+def test_user_with_a_role_granting_the_permission_can_create_a_product(
+    client: TestClient,
+) -> None:
+    admin_headers = _auth_headers(client, email="admin@example.com")
+    manager_headers = _auth_headers(client, email="manager@example.com")
+    users = client.get("/users", headers=admin_headers).json()
+    manager_id = next(u["id"] for u in users if u["email"] == "manager@example.com")
+    roles = client.get("/roles", headers=admin_headers).json()
+    inventory_manager_role_id = next(r["id"] for r in roles if r["name"] == "inventory_manager")
+    client.post(f"/users/{manager_id}/roles/{inventory_manager_role_id}", headers=admin_headers)
+
+    response = client.post("/products", json={"sku": "SKU-1"}, headers=manager_headers)
+
+    assert response.status_code == 201, response.text

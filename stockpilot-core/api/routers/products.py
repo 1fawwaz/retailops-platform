@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, require_write_access
+from api.deps import get_current_user, require_permission
 from database import get_db
 from models.product import Product
 from models.stock_movement import StockMovement
@@ -113,7 +113,7 @@ def get_product_route(
 def create_product_route(
     data: ProductCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("products:create")),
 ) -> ProductRead:
     if get_product(db, data.sku) is not None:
         raise HTTPException(
@@ -128,7 +128,7 @@ def update_product_route(
     sku: str,
     data: ProductUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_write_access),
+    user: User = Depends(require_permission("products:update")),
 ) -> ProductRead:
     product = _get_product_or_404(db, sku)
     return _to_read_model(update_product(db, product, data, changed_by_user_id=user.id))
@@ -138,7 +138,7 @@ def update_product_route(
 def delete_product_route(
     sku: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("products:delete")),
 ) -> None:
     product = _get_product_or_404(db, sku)
     if product_has_open_purchase_order_lines(db, sku):

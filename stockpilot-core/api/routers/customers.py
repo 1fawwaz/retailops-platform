@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, require_write_access
+from api.deps import get_current_user, require_permission
 from api.routers.sales_orders import to_sales_order_read_model
 from database import get_db
 from models.customer import Customer
@@ -54,7 +54,7 @@ def get_customer_route(
 def create_customer_route(
     data: CustomerCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("customers:create")),
 ) -> CustomerRead:
     return CustomerRead.model_validate(create_customer(db, data))
 
@@ -64,7 +64,7 @@ def update_customer_route(
     customer_id: int,
     data: CustomerUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("customers:update")),
 ) -> CustomerRead:
     customer = _get_customer_or_404(db, customer_id)
     return CustomerRead.model_validate(update_customer(db, customer, data))
@@ -74,7 +74,7 @@ def update_customer_route(
 def delete_customer_route(
     customer_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("customers:delete")),
 ) -> None:
     customer = _get_customer_or_404(db, customer_id)
     delete_customer(db, customer)

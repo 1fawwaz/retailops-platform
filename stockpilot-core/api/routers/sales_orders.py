@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, require_write_access
+from api.deps import get_current_user, require_permission
 from database import get_db
 from models.invoice import Invoice
 from models.sales_order import SalesOrder
@@ -94,7 +94,7 @@ def get_sales_order_route(
 def create_sales_order_route(
     data: SalesOrderCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_write_access),
+    user: User = Depends(require_permission("sales:create")),
 ) -> SalesOrderRead:
     if get_customer(db, data.customer_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
@@ -110,7 +110,7 @@ def update_sales_order_route(
     order_id: int,
     data: SalesOrderUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("sales:update")),
 ) -> SalesOrderRead:
     order = _get_order_or_404(db, order_id)
     if data.customer_id is not None and get_customer(db, data.customer_id) is None:
@@ -130,7 +130,7 @@ def update_sales_order_route(
 def confirm_sales_order_route(
     order_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("sales:update")),
 ) -> SalesOrderRead:
     order = _get_order_or_404(db, order_id)
     try:
@@ -144,7 +144,7 @@ def confirm_sales_order_route(
 def fulfill_sales_order_route(
     order_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("sales:update")),
 ) -> SalesOrderRead:
     order = _get_order_or_404(db, order_id)
     try:
@@ -160,7 +160,7 @@ def fulfill_sales_order_route(
 def cancel_sales_order_route(
     order_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("sales:update")),
 ) -> SalesOrderRead:
     order = _get_order_or_404(db, order_id)
     try:
@@ -229,7 +229,7 @@ def record_payment_route(
     invoice_id: int,
     data: PaymentCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("sales:update")),
 ) -> PaymentRead:
     invoice = _get_invoice_or_404(db, invoice_id)
     return PaymentRead.model_validate(record_payment(db, invoice, data))

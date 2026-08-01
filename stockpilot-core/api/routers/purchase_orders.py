@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, require_write_access
+from api.deps import get_current_user, require_permission
 from database import get_db
 from models.purchase_order_request import PurchaseOrderRequest
 from models.user import User
@@ -93,7 +93,7 @@ def get_purchase_order_route(
 def create_purchase_order_route(
     data: PurchaseOrderCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_write_access),
+    user: User = Depends(require_permission("purchase_order:create")),
 ) -> PurchaseOrderRead:
     if get_supplier(db, data.supplier_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
@@ -109,7 +109,7 @@ def update_purchase_order_route(
     po_id: int,
     data: PurchaseOrderUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("purchase_order:update")),
 ) -> PurchaseOrderRead:
     po = _get_po_or_404(db, po_id)
     if data.supplier_id is not None and get_supplier(db, data.supplier_id) is None:
@@ -129,7 +129,7 @@ def update_purchase_order_route(
 def submit_purchase_order_route(
     po_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("purchase_order:update")),
 ) -> PurchaseOrderRead:
     po = _get_po_or_404(db, po_id)
     try:
@@ -143,7 +143,7 @@ def submit_purchase_order_route(
 def approve_purchase_order_route(
     po_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("purchase_order:update")),
 ) -> PurchaseOrderRead:
     po = _get_po_or_404(db, po_id)
     try:
@@ -157,7 +157,7 @@ def approve_purchase_order_route(
 def cancel_purchase_order_route(
     po_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("purchase_order:update")),
 ) -> PurchaseOrderRead:
     po = _get_po_or_404(db, po_id)
     try:
@@ -171,7 +171,7 @@ def cancel_purchase_order_route(
 def close_purchase_order_route(
     po_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("purchase_order:update")),
 ) -> PurchaseOrderRead:
     po = _get_po_or_404(db, po_id)
     try:
@@ -186,7 +186,7 @@ def receive_purchase_order_route(
     po_id: int,
     data: ReceiveRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("purchase_order:receive")),
 ) -> PurchaseOrderRead:
     po = _get_po_or_404(db, po_id)
     try:

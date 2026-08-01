@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, require_write_access
+from api.deps import get_current_user, require_permission
 from database import get_db
 from models.user import User
 from schemas.brand import BrandCreate, BrandRead
@@ -22,7 +22,7 @@ def list_brands_route(
 def create_brand_route(
     data: BrandCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("products:create")),
 ) -> BrandRead:
     if get_brand_by_name(db, data.name) is not None:
         raise HTTPException(

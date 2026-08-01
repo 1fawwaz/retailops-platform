@@ -34,15 +34,6 @@ def get_current_user(
     return user
 
 
-def require_write_access(user: User = Depends(get_current_user)) -> User:
-    if user.is_read_only:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This account is read-only",
-        )
-    return user
-
-
 def require_permission(permission: str) -> Callable[[User, Session], User]:
     """Real server-side enforcement of the roles/permissions model
     (docs/ARCHITECTURE.md §7) -- every mutating endpoint uses this,

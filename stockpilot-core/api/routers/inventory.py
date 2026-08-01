@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from api.deps import get_current_user, require_write_access
+from api.deps import get_current_user, require_permission
 from database import get_db
 from models.user import User
 from schemas.inventory import (
@@ -211,7 +211,7 @@ def get_inventory_ledger(
 def create_transfer(
     data: TransferRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("inventory:update")),
 ) -> None:
     _get_product_or_404(db, data.sku)
     _get_warehouse_or_404(db, data.from_warehouse_id)
@@ -235,7 +235,7 @@ def create_transfer(
 def create_adjustment(
     data: AdjustmentRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_write_access),
+    _: User = Depends(require_permission("inventory:update")),
 ) -> None:
     _get_product_or_404(db, data.sku)
     _get_warehouse_or_404(db, data.warehouse_id)
