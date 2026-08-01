@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import type { ListParams } from "./list-params";
 import {
   inventoryValuationSchema,
   stockListResponseSchema,
@@ -9,13 +10,9 @@ import {
 // contracts/stockpilot-api: GET /inventory/stock -- category, low_stock,
 // search, limit (max 1000), offset. Query params verified against
 // v1.json before writing this, not assumed.
-export async function getStock(options?: {
-  category?: string;
-  lowStock?: boolean;
-  search?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<StockItem[]> {
+export async function getStock(
+  options?: ListParams & { lowStock?: boolean },
+): Promise<StockItem[]> {
   const raw = await apiFetch<unknown>("/inventory/stock", {
     params: {
       category: options?.category,

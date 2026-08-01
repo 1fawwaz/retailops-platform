@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatCurrency, formatInteger, formatPercentChange } from "./format";
+import {
+  formatCurrency,
+  formatCurrencyPrecise,
+  formatInteger,
+  formatPercentChange,
+} from "./format";
 
 describe("formatCurrency", () => {
   it("formats a positive value in GBP with no decimals", () => {
@@ -8,6 +13,20 @@ describe("formatCurrency", () => {
 
   it("formats zero", () => {
     expect(formatCurrency(0)).toBe("£0");
+  });
+});
+
+describe("formatCurrencyPrecise", () => {
+  it("formats a per-unit price with exactly two decimals", () => {
+    expect(formatCurrencyPrecise(4.99)).toBe("£4.99");
+  });
+
+  it("does not round a sub-£1 price down to £0", () => {
+    expect(formatCurrencyPrecise(0.49)).toBe("£0.49");
+  });
+
+  it("pads a whole-pound value to two decimals", () => {
+    expect(formatCurrencyPrecise(5)).toBe("£5.00");
   });
 });
 

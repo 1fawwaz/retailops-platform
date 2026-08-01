@@ -1,11 +1,14 @@
-import { EmptyState } from "../../../components/ui/EmptyState";
+import { Suspense } from "react";
+import { ProductsContent } from "./ProductsContent";
 
-// docs/PRODUCT-SPEC.md §24 Products / BUILD.md Stage 3.
+// docs/PRODUCT-SPEC.md §24 Products / BUILD.md "Frontend -- Products".
+// Wired to real GET /products (search, category, server-side pagination,
+// commit 1179357). useSearchParams (URL-reflected filter state per
+// docs/PRODUCT-SPEC.md §19) requires this Suspense boundary.
 export default function ProductsPage() {
   return (
-    <EmptyState
-      title="Products"
-      description="Your product catalog will appear here once Stage 3 wires the products table and CRUD flows."
-    />
+    <Suspense fallback={null}>
+      <ProductsContent />
+    </Suspense>
   );
 }

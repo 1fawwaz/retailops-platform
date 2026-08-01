@@ -25,10 +25,14 @@ describe("getProduct", () => {
       description: null,
       category_id: null,
       supplier_id: 7,
+      brand_id: null,
       unit_cost: 2.15,
+      sale_price: null,
       reorder_point: 120,
       safety_stock: 40,
       created_at: "2026-01-01T00:00:00Z",
+      quantity_on_hand: 96,
+      movement_history: [],
     }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 

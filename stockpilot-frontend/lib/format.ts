@@ -11,6 +11,23 @@ export function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+// formatCurrency's 0-decimal rounding is right for aggregate KPI totals
+// (revenue, inventory value) but would silently misrepresent a per-unit
+// price -- £0.49 rounds to "£0", which isn't a rounding nicety, it's a
+// wrong price. Used for anything that's a real per-line/per-unit money
+// value: product sale_price/unit_cost, PO/SO line prices, invoice
+// totals, payment amounts.
+const preciseCurrencyFormatter = new Intl.NumberFormat("en-GB", {
+  style: "currency",
+  currency: "GBP",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function formatCurrencyPrecise(value: number): string {
+  return preciseCurrencyFormatter.format(value);
+}
+
 const integerFormatter = new Intl.NumberFormat("en-GB");
 
 export function formatInteger(value: number): string {
