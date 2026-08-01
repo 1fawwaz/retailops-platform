@@ -12,13 +12,17 @@ from schemas.analytics import (
     PERIOD_COMPARISON_PROVENANCE,
     PRODUCT_PERFORMANCE_PROVENANCE,
     PROFIT_PERIOD_PROVENANCE,
+    PURCHASE_ORDER_KPIS_PROVENANCE,
     REVENUE_PERIOD_PROVENANCE,
+    SUPPLIER_ROLLUP_PROVENANCE,
     TURNOVER_ROW_PROVENANCE,
     AbcRow,
     PeriodComparison,
     ProductPerformanceRow,
     ProfitPeriod,
+    PurchaseOrderKpis,
     RevenuePeriod,
+    SupplierRollup,
     TurnoverRow,
 )
 from services.analytics import (
@@ -32,12 +36,20 @@ from services.analytics import (
     get_bottom_products,
     get_period_comparison,
     get_profit,
+    get_purchase_order_kpis,
     get_revenue,
+    get_supplier_rollup,
     get_top_products,
     get_turnover,
 )
 from services.analytics import (
     ProductPerformanceRow as ProductPerformanceRowData,
+)
+from services.analytics import (
+    PurchaseOrderKpis as PurchaseOrderKpisData,
+)
+from services.analytics import (
+    SupplierRollupRow as SupplierRollupRowData,
 )
 from services.analytics import (
     TurnoverRow as TurnoverRowData,
@@ -97,6 +109,28 @@ def _to_product_performance_row(row: ProductPerformanceRowData) -> ProductPerfor
         units=row.units,
         margin=row.margin,
         provenance=PRODUCT_PERFORMANCE_PROVENANCE,
+    )
+
+
+def _to_supplier_rollup(row: SupplierRollupRowData) -> SupplierRollup:
+    return SupplierRollup(
+        supplier_id=row.supplier_id,
+        name=row.name,
+        lead_time_days=row.lead_time_days,
+        reliability_score=row.reliability_score,
+        sku_count=row.sku_count,
+        total_inventory_value=row.total_inventory_value,
+        open_purchase_order_count=row.open_purchase_order_count,
+        total_purchase_order_count=row.total_purchase_order_count,
+        provenance=SUPPLIER_ROLLUP_PROVENANCE,
+    )
+
+
+def _to_purchase_order_kpis(data: PurchaseOrderKpisData) -> PurchaseOrderKpis:
+    return PurchaseOrderKpis(
+        open_purchase_order_count=data.open_purchase_order_count,
+        avg_days_to_receive=data.avg_days_to_receive,
+        provenance=PURCHASE_ORDER_KPIS_PROVENANCE,
     )
 
 
@@ -210,6 +244,23 @@ def get_bottom_products_route(
         db, metric=metric, limit=limit, start_date=start_date, end_date=end_date
     )
     return [_to_product_performance_row(row) for row in rows]
+
+
+@router.get("/suppliers", response_model=list[SupplierRollup])
+def get_supplier_rollup_route(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[SupplierRollup]:
+    rows = get_supplier_rollup(db)
+    return [_to_supplier_rollup(row) for row in rows]
+
+
+@router.get("/purchase-order-kpis", response_model=PurchaseOrderKpis)
+def get_purchase_order_kpis_route(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> PurchaseOrderKpis:
+    return _to_purchase_order_kpis(get_purchase_order_kpis(db))
 
 
 @router.get("/period-comparison", response_model=PeriodComparison)

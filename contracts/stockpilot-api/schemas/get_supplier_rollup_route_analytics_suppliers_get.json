@@ -1,0 +1,93 @@
+{
+  "items": {
+    "$ref": "#/$defs/SupplierRollup"
+  },
+  "type": "array",
+  "title": "Response Get Supplier Rollup Route Analytics Suppliers Get",
+  "$defs": {
+    "SupplierRollup": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "supplier_id": {
+          "type": "integer",
+          "title": "Supplier Id"
+        },
+        "name": {
+          "type": "string",
+          "title": "Name"
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "title": "Lead Time Days"
+        },
+        "reliability_score": {
+          "type": "number",
+          "title": "Reliability Score"
+        },
+        "sku_count": {
+          "type": "integer",
+          "title": "Sku Count"
+        },
+        "total_inventory_value": {
+          "type": "number",
+          "title": "Total Inventory Value"
+        },
+        "open_purchase_order_count": {
+          "type": "integer",
+          "title": "Open Purchase Order Count"
+        },
+        "total_purchase_order_count": {
+          "type": "integer",
+          "title": "Total Purchase Order Count"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "supplier_id",
+        "name",
+        "lead_time_days",
+        "reliability_score",
+        "sku_count",
+        "total_inventory_value",
+        "open_purchase_order_count",
+        "total_purchase_order_count"
+      ],
+      "title": "SupplierRollup",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "lead_time_days": "derived",
+            "open_purchase_order_count": "derived",
+            "reliability_score": "derived",
+            "sku_count": "derived",
+            "total_inventory_value": "derived",
+            "total_purchase_order_count": "derived"
+          },
+          "lead_time_days": 7,
+          "name": "Acme Wholesale Co",
+          "open_purchase_order_count": 2,
+          "reliability_score": 0.92,
+          "sku_count": 42,
+          "supplier_id": 7,
+          "total_inventory_value": 18420.5,
+          "total_purchase_order_count": 9
+        }
+      ]
+    }
+  }
+}

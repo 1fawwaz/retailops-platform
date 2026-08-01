@@ -9,13 +9,17 @@ provenance-labelled Pydantic schemas. Every number here is `derived`
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import ColumnElement, Float, cast, func, select
+from sqlalchemy import ColumnElement, Float, case, cast, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from models.category import Category
 from models.product import Product
+from models.purchase_order_request import OPEN_STATUSES, PurchaseOrderRequest
 from models.sales_transaction import SalesTransaction
 from models.stock_level import StockLevel
+from models.stock_movement import StockMovement
+from models.supplier import Supplier
+from services.inventory import latest_stock_level_subquery
 
 
 def _period_bucket_expr(
@@ -166,15 +170,31 @@ def get_turnover(db: Session, *, start_date: date, end_date: date) -> list[Turno
         .group_by(Product.category_id)
         .subquery()
     )
+    # Sum across warehouses per (sku, date) first (docs/BUILD.md Backend
+    # Module 4 made stock_levels location-scoped -- one row per
+    # warehouse now, not one per sku-date), THEN average across
+    # sku-days per category. Numerically identical to the pre-Module-4
+    # query with today's single warehouse; stays correct once a second
+    # warehouse genuinely has stock, instead of silently averaging
+    # per-warehouse fragments instead of per-SKU daily totals.
+    per_sku_date_sq = (
+        select(
+            StockLevel.sku.label("sku"),
+            StockLevel.as_of_date.label("as_of_date"),
+            func.sum(StockLevel.quantity_on_hand).label("quantity_on_hand"),
+        )
+        .where(StockLevel.as_of_date >= start_date)
+        .where(StockLevel.as_of_date <= end_date)
+        .group_by(StockLevel.sku, StockLevel.as_of_date)
+        .subquery()
+    )
     avg_stock_sq = (
         select(
             Product.category_id.label("category_id"),
-            func.avg(StockLevel.quantity_on_hand).label("avg_quantity_on_hand"),
+            func.avg(per_sku_date_sq.c.quantity_on_hand).label("avg_quantity_on_hand"),
         )
-        .select_from(StockLevel)
-        .join(Product, Product.sku == StockLevel.sku)
-        .where(StockLevel.as_of_date >= start_date)
-        .where(StockLevel.as_of_date <= end_date)
+        .select_from(per_sku_date_sq)
+        .join(Product, Product.sku == per_sku_date_sq.c.sku)
         .group_by(Product.category_id)
         .subquery()
     )
@@ -419,4 +439,136 @@ def get_period_comparison(
         units_delta_pct=_pct_delta(period1.units, period2.units),
         gross_profit_delta=period2.gross_profit - period1.gross_profit,
         gross_profit_delta_pct=_pct_delta(period1.gross_profit, period2.gross_profit),
+    )
+
+
+@dataclass(frozen=True)
+class SupplierRollupRow:
+    """Cross-supplier rollup, distinct from the per-supplier detail
+    already served by GET /suppliers/{id} (docs/BUILD.md Backend
+    Module 3). sku_count and total_inventory_value are derived by
+    joining the existing Products/Inventory data to each supplier;
+    open/total PO counts are derived from Backend Module 5's real
+    purchase_order_requests -- none of this is a new data source, just
+    a new aggregation over what already exists.
+    """
+
+    supplier_id: int
+    name: str
+    lead_time_days: int
+    reliability_score: float
+    sku_count: int
+    total_inventory_value: float
+    open_purchase_order_count: int
+    total_purchase_order_count: int
+
+
+def get_supplier_rollup(db: Session) -> list[SupplierRollupRow]:
+    latest_stock = latest_stock_level_subquery()
+    inventory_sq = (
+        select(
+            Product.supplier_id.label("supplier_id"),
+            func.count(Product.sku.distinct()).label("sku_count"),
+            func.coalesce(func.sum(latest_stock.c.quantity_on_hand * Product.unit_cost), 0.0).label(
+                "total_inventory_value"
+            ),
+        )
+        .select_from(Product)
+        .outerjoin(latest_stock, latest_stock.c.sku == Product.sku)
+        .where(Product.supplier_id.is_not(None))
+        .group_by(Product.supplier_id)
+        .subquery()
+    )
+    po_sq = (
+        select(
+            PurchaseOrderRequest.supplier_id.label("supplier_id"),
+            func.count(PurchaseOrderRequest.id).label("total_purchase_order_count"),
+            func.sum(case((PurchaseOrderRequest.status.in_(OPEN_STATUSES), 1), else_=0)).label(
+                "open_purchase_order_count"
+            ),
+        )
+        .group_by(PurchaseOrderRequest.supplier_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            Supplier.id,
+            Supplier.name,
+            Supplier.lead_time_days,
+            Supplier.reliability_score,
+            func.coalesce(inventory_sq.c.sku_count, 0),
+            func.coalesce(inventory_sq.c.total_inventory_value, 0.0),
+            func.coalesce(po_sq.c.open_purchase_order_count, 0.0),
+            func.coalesce(po_sq.c.total_purchase_order_count, 0),
+        )
+        .select_from(Supplier)
+        .outerjoin(inventory_sq, inventory_sq.c.supplier_id == Supplier.id)
+        .outerjoin(po_sq, po_sq.c.supplier_id == Supplier.id)
+        .order_by(Supplier.name)
+    )
+    return [
+        SupplierRollupRow(
+            supplier_id=supplier_id,
+            name=name,
+            lead_time_days=lead_time_days,
+            reliability_score=float(reliability_score),
+            sku_count=int(sku_count),
+            total_inventory_value=float(total_value),
+            open_purchase_order_count=int(open_po_count),
+            total_purchase_order_count=int(total_po_count),
+        )
+        for (
+            supplier_id,
+            name,
+            lead_time_days,
+            reliability_score,
+            sku_count,
+            total_value,
+            open_po_count,
+            total_po_count,
+        ) in db.execute(stmt)
+    ]
+
+
+@dataclass(frozen=True)
+class PurchaseOrderKpis:
+    """docs/BUILD.md Backend Module 8. avg_days_to_receive is derived
+    from the real stock_movements rows Backend Module 5's receive
+    endpoint writes (movement_type='purchase_order', reference tags
+    which PO) -- not a separately-tracked timestamp that could drift
+    from what actually happened.
+    """
+
+    open_purchase_order_count: int
+    avg_days_to_receive: float | None
+
+
+def get_purchase_order_kpis(db: Session) -> PurchaseOrderKpis:
+    open_count = db.execute(
+        select(func.count())
+        .select_from(PurchaseOrderRequest)
+        .where(PurchaseOrderRequest.status.in_(OPEN_STATUSES))
+    ).scalar_one()
+
+    received_pos = list(
+        db.scalars(
+            select(PurchaseOrderRequest).where(
+                PurchaseOrderRequest.status.in_(("received", "closed"))
+            )
+        )
+    )
+    days_to_receive: list[float] = []
+    for po in received_pos:
+        last_received_at = db.execute(
+            select(func.max(StockMovement.movement_date)).where(
+                StockMovement.reference == f"PO #{po.id}",
+                StockMovement.movement_type == "purchase_order",
+            )
+        ).scalar_one_or_none()
+        if last_received_at is not None:
+            days_to_receive.append((last_received_at - po.created_at).total_seconds() / 86400)
+
+    avg_days = sum(days_to_receive) / len(days_to_receive) if days_to_receive else None
+    return PurchaseOrderKpis(
+        open_purchase_order_count=int(open_count), avg_days_to_receive=avg_days
     )

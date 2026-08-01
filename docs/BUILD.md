@@ -24,7 +24,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 5 — Purchase Orders | `[x]` new `purchase_order_requests` tables (existing synthetic `purchase_orders` untouched), full lifecycle + receiving, tested, committed |
 | Backend | Module 6 — Customers | `[x]` CRUD live, tested, committed; order-history endpoint now live (Module 7) |
 | Backend | Module 7 — Sales | `[x]` new `sales_orders`/`invoices`/`payments` tables (existing `sales_transactions` untouched, two eras never merged), full lifecycle, tested, committed |
-| Backend | Modules 8–10 | `[ ]` |
+| Backend | Module 8 — Analytics | `[x]` supplier rollup + PO-derived KPIs live; also fixed a latent Module-4 turnover bug (see note), tested, committed |
+| Backend | Modules 9–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -187,18 +188,20 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 8 — Analytics (extend)
+### Backend Module 8 — Analytics (extend) `[x]`
 
-**Status:** revenue/profit/turnover/ABC/top-bottom-products/period-comparison are live.
+**Status:** revenue/profit/turnover/ABC/top-bottom-products/period-comparison were live; supplier rollups and PO-derived KPIs are now too.
+
+**Bug found and fixed while extending this module:** `get_turnover`'s average-stock-on-hand query hadn't been updated for Backend Module 4's location-scoped `stock_levels` (one row per warehouse now, not one per SKU-date) — it was silently averaging per-warehouse fragments instead of summing per SKU-day first. Not yet observable in real numbers (today's data has only the one seeded warehouse, so it was numerically identical), but would have silently produced wrong turnover ratios the moment a second warehouse held stock. Fixed now while touching this file, verified against the unchanged existing turnover test.
 
 **Tasks**
 
-- [ ] Supplier-aggregated analytics (cross-supplier performance rollup, distinct from Module 3's per-supplier view)
-- [ ] PO-derived KPIs (open PO count, average time-to-receive) now that Module 5 exists
+- [x] `GET /analytics/suppliers` — cross-supplier rollup (SKU count, total inventory value, open/total PO count per supplier), distinct from Module 3's per-supplier detail view. Every figure is a real aggregation over already-existing data (Products/Inventory/Purchase Orders) — no new data source.
+- [x] `GET /analytics/purchase-order-kpis` — open PO count, plus average days-to-receive derived from the real `stock_movements` rows Module 5's receive endpoint writes (not a separately-tracked timestamp that could drift from what actually happened; `updated_at` alone wasn't usable for this since a subsequent `close` transition also bumps it).
 
-**Acceptance criteria:** every new analytics figure traces to real data, provenance-labeled per `docs/PRODUCT-SPEC.md` §13.
+**Acceptance criteria:** every new analytics figure traces to real data, provenance-labeled per `docs/PRODUCT-SPEC.md` §13 — verified by test that each new response includes `_provenance` entries for every numeric field, matching the same `ProvenanceMixin` contract every other analytics endpoint already satisfies.
 
-**Tests:** unit (aggregation logic), integration, contract.
+**Tests:** `tests/test_analytics.py` additions (2 new tests) — supplier rollup reflects real SKU count/inventory value/PO counts and updates correctly as a PO closes; PO KPIs count open POs correctly and compute a real average receive time. Full suite (195 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
 **Commit checkpoint:** `feat(analytics): supplier rollups, PO-derived KPIs`
 

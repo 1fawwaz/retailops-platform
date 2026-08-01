@@ -1,0 +1,56 @@
+{
+  "$ref": "#/$defs/PurchaseOrderKpis",
+  "$defs": {
+    "PurchaseOrderKpis": {
+      "properties": {
+        "_provenance": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Provenance"
+        },
+        "_derivation_ref": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "title": "Derivation Ref"
+        },
+        "open_purchase_order_count": {
+          "type": "integer",
+          "title": "Open Purchase Order Count"
+        },
+        "avg_days_to_receive": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avg Days To Receive"
+        }
+      },
+      "type": "object",
+      "required": [
+        "_provenance",
+        "open_purchase_order_count",
+        "avg_days_to_receive"
+      ],
+      "title": "PurchaseOrderKpis",
+      "examples": [
+        {
+          "_derivation_ref": {},
+          "_provenance": {
+            "avg_days_to_receive": "derived",
+            "open_purchase_order_count": "derived"
+          },
+          "avg_days_to_receive": 6.5,
+          "open_purchase_order_count": 4
+        }
+      ]
+    }
+  }
+}

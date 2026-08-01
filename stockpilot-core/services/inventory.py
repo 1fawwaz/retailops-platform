@@ -48,7 +48,7 @@ def _latest_stock_level_by_warehouse_subquery() -> Subquery:
     )
 
 
-def _latest_stock_level_subquery() -> Subquery:
+def latest_stock_level_subquery() -> Subquery:
     """Per-SKU total quantity_on_hand: each warehouse's own latest row,
     summed. With a single warehouse (today's only real case) this is
     numerically identical to the pre-Module-4 single-location query --
@@ -97,7 +97,7 @@ def list_stock(
     limit: int = 100,
     offset: int = 0,
 ) -> list[StockRow]:
-    latest = _latest_stock_level_subquery()
+    latest = latest_stock_level_subquery()
     is_low_stock_expr = case(
         (
             Product.reorder_point.is_not(None)
@@ -172,7 +172,7 @@ def list_dead_stock(
     limit: int = 100,
     offset: int = 0,
 ) -> list[DeadStockRow]:
-    latest = _latest_stock_level_subquery()
+    latest = latest_stock_level_subquery()
     last_movement = (
         select(
             StockMovement.sku.label("sku"),
@@ -236,7 +236,7 @@ def list_slow_movers(
     window falls below velocity_threshold units/day. Distinct from
     dead-stock: these SKUs are still selling, just slowly.
     """
-    latest = _latest_stock_level_subquery()
+    latest = latest_stock_level_subquery()
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=window_days)
     sales = (
         select(
@@ -296,7 +296,7 @@ def get_valuation(db: Session, *, category: str | None = None) -> Valuation:
     grouped by category. Products with no derived unit_cost yet are
     excluded from the value sum (their units still count toward quantity).
     """
-    latest = _latest_stock_level_subquery()
+    latest = latest_stock_level_subquery()
     value_expr = latest.c.quantity_on_hand * Product.unit_cost
     stmt = (
         select(

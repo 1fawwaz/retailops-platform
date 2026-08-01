@@ -18,6 +18,13 @@ def _auth_headers(db_session: Session) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _writer_headers(client: TestClient, email: str = "writer@example.com") -> dict[str, str]:
+    client.post("/auth/register", json={"email": email, "password": "hunter22!!"})
+    response = client.post("/auth/login", data={"username": email, "password": "hunter22!!"})
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _seed_sales(db_session: Session) -> None:
     widgets = Category(name="Widgets")
     gadgets = Category(name="Gadgets")
@@ -266,3 +273,116 @@ def test_period_comparison(client: TestClient, db_session: Session) -> None:
     assert body["revenue_delta"] == body["period2_revenue"] - body["period1_revenue"]
     for field in ("period1_revenue", "period2_revenue", "revenue_delta", "revenue_delta_pct"):
         assert field in body["_provenance"]
+
+
+def test_supplier_rollup_aggregates_skus_inventory_value_and_pos(client: TestClient) -> None:
+    headers = _writer_headers(client)
+    supplier_response = client.post(
+        "/suppliers",
+        json={"name": "Acme Co", "lead_time_days": 7, "reliability_score": 0.9},
+        headers=headers,
+    )
+    supplier_id = supplier_response.json()["id"]
+    warehouse_response = client.post("/warehouses", json={"name": "Main"}, headers=headers)
+    warehouse_id = warehouse_response.json()["id"]
+    client.post(
+        "/products",
+        json={"sku": "SKU-1", "supplier_id": supplier_id, "unit_cost": 2.0},
+        headers=headers,
+    )
+    client.post(
+        "/inventory/adjustments",
+        json={"sku": "SKU-1", "warehouse_id": warehouse_id, "quantity_delta": 50, "reason": "seed"},
+        headers=headers,
+    )
+    po_response = client.post(
+        "/purchase-orders",
+        json={
+            "supplier_id": supplier_id,
+            "warehouse_id": warehouse_id,
+            "lines": [{"sku": "SKU-1", "quantity_ordered": 10}],
+        },
+        headers=headers,
+    )
+    po_id = po_response.json()["id"]
+
+    response = client.get("/analytics/suppliers", headers=headers)
+
+    assert response.status_code == 200
+    rows = [r for r in response.json() if r["supplier_id"] == supplier_id]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["sku_count"] == 1
+    assert row["total_inventory_value"] == 50 * 2.0
+    assert row["total_purchase_order_count"] == 1
+    assert row["open_purchase_order_count"] == 1
+    for field in ("sku_count", "total_inventory_value", "open_purchase_order_count"):
+        assert field in row["_provenance"]
+
+    client.post(f"/purchase-orders/{po_id}/submit", headers=headers)
+    client.post(f"/purchase-orders/{po_id}/approve", headers=headers)
+    client.post(
+        f"/purchase-orders/{po_id}/receive",
+        json={"lines": [{"line_id": po_response.json()["lines"][0]["id"], "quantity": 10}]},
+        headers=headers,
+    )
+    client.post(f"/purchase-orders/{po_id}/close", headers=headers)
+
+    closed_response = client.get("/analytics/suppliers", headers=headers)
+    closed_row = [r for r in closed_response.json() if r["supplier_id"] == supplier_id][0]
+    assert closed_row["open_purchase_order_count"] == 0
+    assert closed_row["total_purchase_order_count"] == 1
+
+
+def test_purchase_order_kpis_count_open_pos_and_average_receive_time(
+    client: TestClient,
+) -> None:
+    headers = _writer_headers(client)
+    supplier_response = client.post(
+        "/suppliers",
+        json={"name": "Acme Co", "lead_time_days": 7, "reliability_score": 0.9},
+        headers=headers,
+    )
+    supplier_id = supplier_response.json()["id"]
+    warehouse_response = client.post("/warehouses", json={"name": "Main"}, headers=headers)
+    warehouse_id = warehouse_response.json()["id"]
+    client.post("/products", json={"sku": "SKU-1", "unit_cost": 2.0}, headers=headers)
+
+    open_po = client.post(
+        "/purchase-orders",
+        json={
+            "supplier_id": supplier_id,
+            "warehouse_id": warehouse_id,
+            "lines": [{"sku": "SKU-1", "quantity_ordered": 5}],
+        },
+        headers=headers,
+    ).json()
+
+    received_po_response = client.post(
+        "/purchase-orders",
+        json={
+            "supplier_id": supplier_id,
+            "warehouse_id": warehouse_id,
+            "lines": [{"sku": "SKU-1", "quantity_ordered": 5}],
+        },
+        headers=headers,
+    )
+    received_po = received_po_response.json()
+    client.post(f"/purchase-orders/{received_po['id']}/submit", headers=headers)
+    client.post(f"/purchase-orders/{received_po['id']}/approve", headers=headers)
+    client.post(
+        f"/purchase-orders/{received_po['id']}/receive",
+        json={"lines": [{"line_id": received_po["lines"][0]["id"], "quantity": 5}]},
+        headers=headers,
+    )
+
+    response = client.get("/analytics/purchase-order-kpis", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["open_purchase_order_count"] == 1  # open_po is still draft
+    assert body["avg_days_to_receive"] is not None
+    assert body["avg_days_to_receive"] >= 0
+    for field in ("open_purchase_order_count", "avg_days_to_receive"):
+        assert field in body["_provenance"]
+    assert open_po["status"] == "draft"

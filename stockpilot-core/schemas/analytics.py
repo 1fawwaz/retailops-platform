@@ -247,3 +247,79 @@ PERIOD_COMPARISON_PROVENANCE = {
     "gross_profit_delta": "derived",
     "gross_profit_delta_pct": "derived",
 }
+
+
+class SupplierRollup(ProvenanceMixin):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "supplier_id": 7,
+                    "name": "Acme Wholesale Co",
+                    "lead_time_days": 7,
+                    "reliability_score": 0.92,
+                    "sku_count": 42,
+                    "total_inventory_value": 18420.50,
+                    "open_purchase_order_count": 2,
+                    "total_purchase_order_count": 9,
+                    "_provenance": {
+                        "lead_time_days": "derived",
+                        "reliability_score": "derived",
+                        "sku_count": "derived",
+                        "total_inventory_value": "derived",
+                        "open_purchase_order_count": "derived",
+                        "total_purchase_order_count": "derived",
+                    },
+                    "_derivation_ref": {},
+                }
+            ]
+        },
+    )
+
+    supplier_id: int
+    name: str
+    lead_time_days: int
+    reliability_score: float
+    sku_count: int
+    total_inventory_value: float
+    open_purchase_order_count: int
+    total_purchase_order_count: int
+
+
+SUPPLIER_ROLLUP_PROVENANCE = {
+    "lead_time_days": "derived",
+    "reliability_score": "derived",
+    "sku_count": "derived",
+    "total_inventory_value": "derived",
+    "open_purchase_order_count": "derived",
+    "total_purchase_order_count": "derived",
+}
+
+
+class PurchaseOrderKpis(ProvenanceMixin):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "open_purchase_order_count": 4,
+                    "avg_days_to_receive": 6.5,
+                    "_provenance": {
+                        "open_purchase_order_count": "derived",
+                        "avg_days_to_receive": "derived",
+                    },
+                    "_derivation_ref": {},
+                }
+            ]
+        },
+    )
+
+    open_purchase_order_count: int
+    avg_days_to_receive: float | None
+
+
+PURCHASE_ORDER_KPIS_PROVENANCE = {
+    "open_purchase_order_count": "derived",
+    "avg_days_to_receive": "derived",
+}
