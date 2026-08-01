@@ -265,5 +265,13 @@ product decision, not something to default silently when reached.
 decision when Backend Module 5 was reached. The live PO workflow lives in
 new tables `purchase_order_requests` / `purchase_order_request_lines`;
 the existing synthetic `purchase_orders` table is completely untouched.
-See `docs/BUILD.md` Backend Module 5. The Sales half (Module 7) remains
-open and will be decided when that module is reached.
+See `docs/BUILD.md` Backend Module 5.
+
+**Status (2026-08-01), Sales half:** also resolved by explicit user
+decision when Backend Module 7 was reached: new `sales_orders` /
+`sales_order_lines` / `invoices` / `payments` tables for orders placed
+through the app going forward; the existing `sales_transactions` table
+stays completely untouched as the permanent historical record analytics
+continues to read. No FK between the two, and revenue is deliberately
+not reconciled into one combined figure. See `docs/BUILD.md` Backend
+Module 7. Both halves of this gap are now resolved.

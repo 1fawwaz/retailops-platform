@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, require_write_access
+from api.routers.sales_orders import to_sales_order_read_model
 from database import get_db
 from models.customer import Customer
 from models.user import User
 from schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
+from schemas.sales_order import SalesOrderRead
 from services.customers import (
     create_customer,
     delete_customer,
@@ -13,6 +15,7 @@ from services.customers import (
     list_customers,
     update_customer,
 )
+from services.sales_orders import list_sales_orders
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -75,3 +78,16 @@ def delete_customer_route(
 ) -> None:
     customer = _get_customer_or_404(db, customer_id)
     delete_customer(db, customer)
+
+
+@router.get("/{customer_id}/orders", response_model=list[SalesOrderRead])
+def list_customer_orders_route(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[SalesOrderRead]:
+    # Deferred in Backend Module 6, now buildable per docs/BUILD.md
+    # Backend Module 7.
+    _get_customer_or_404(db, customer_id)
+    orders = list_sales_orders(db, customer_id=customer_id)
+    return [to_sales_order_read_model(o, db) for o in orders]

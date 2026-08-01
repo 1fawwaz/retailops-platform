@@ -22,8 +22,9 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 3 — Suppliers | `[~]` contacts live; performance metrics deferred to Module 5 (see note) |
 | Backend | Module 4 — Inventory | `[x]` warehouses, location-scoped stock, transfers, adjustments, ledger all live, tested, committed |
 | Backend | Module 5 — Purchase Orders | `[x]` new `purchase_order_requests` tables (existing synthetic `purchase_orders` untouched), full lifecycle + receiving, tested, committed |
-| Backend | Module 6 — Customers | `[x]` CRUD live, tested, committed; order-history endpoint deferred to Module 7 (see note) |
-| Backend | Modules 7–10 | `[ ]` |
+| Backend | Module 6 — Customers | `[x]` CRUD live, tested, committed; order-history endpoint now live (Module 7) |
+| Backend | Module 7 — Sales | `[x]` new `sales_orders`/`invoices`/`payments` tables (existing `sales_transactions` untouched, two eras never merged), full lifecycle, tested, committed |
+| Backend | Modules 8–10 | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -163,20 +164,26 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 7 — Sales (new: orders, invoices, payments)
+### Backend Module 7 — Sales (new: orders, invoices, payments) `[x]`
+
+**Data-model decision (user-confirmed):** `sales_orders`/`invoices`/`payments` are new tables for orders placed through the app going forward. The existing `sales_transactions` table stays completely untouched as the permanent historical record `/analytics/revenue` and the other analytics endpoints continue to read — no FK between the two, and revenue is deliberately **not** reconciled into one combined number. This supersedes this task list's original 4th bullet ("revenue reporting views reconciling with `/analytics/revenue`"), which assumed a merge the user explicitly declined when this module was reached (`docs/stockpilot-gaps.md` #6).
 
 **Tasks**
 
-- [ ] `sales_orders` + `sales_order_lines` tables, linked to `customers`
-- [ ] `invoices` table linked to orders
-- [ ] `payments` table linked to invoices, with a status (pending/paid/partial/failed) — no real payment-provider integration assumed unless explicitly decided; if none is in scope, payments are recorded, not processed (state a real payment gateway is out of scope rather than half-implementing one)
-- [ ] Revenue reporting views reconciling with existing `/analytics/revenue` (same source data, not a second divergent calculation)
+- [x] `sales_orders` + `sales_order_lines` tables, linked to `customers` (Module 6). Status lifecycle `draft → confirmed → fulfilled`, plus `cancelled` (only from `draft`/`confirmed`) — mirrors the Purchase Order pattern from Module 5 since `docs/PRODUCT-SPEC.md` has no explicit sales-order lifecycle of its own to follow (unlike POs' §10/§12).
+- [x] `invoices` table linked to orders (one per order, auto-generated on `confirm`, `total_amount` computed from the order's lines at that moment).
+- [x] `payments` table linked to invoices — recorded, not processed: no real payment-gateway integration, matching the same discipline as Module 1's admin-mediated password reset (a real limitation stated plainly, not a half-real payment flow presented as automated). Invoice status (`unpaid`/`partially_paid`/`paid`) is recomputed from the sum of its recorded payments.
+- [x] `fulfill` deducts inventory through the exact same `apply_stock_delta` path Modules 4/5 established (now also exposing `get_latest_quantity`, was private) — rejects fulfillment that would drive stock negative (`InsufficientStockError`, reused from Module 4's inventory service, not a duplicate exception type). Writes a real `stock_movements` row (`movement_type='sale'`), the same type the historical dataset's own real sales already use.
+- [x] `GET /customers/{id}/orders` — the endpoint deferred in Module 6 is now live, returning that customer's live `sales_orders`.
+- [ ] Revenue reporting views reconciling with `/analytics/revenue` — **superseded, not built:** the user's explicit decision (see above) was that these stay two separate eras, never merged. A Sales-module-specific revenue-by-period report over the new live orders was not part of the user's named Module 7 scope ("Orders, Invoices, Payments") and is not built in this pass.
 
-**Acceptance criteria:** an order → invoice → payment chain is queryable end to end; Sales' own revenue figures match `/analytics/revenue` for the same period.
+**Acceptance criteria:** a full order → confirm (invoice generated) → fulfill (inventory deducted, real stock movement recorded) → payment (invoice status updates) chain is queryable end to end, verified by test; `/analytics/revenue` is unchanged and continues reading only `sales_transactions`.
 
-**Tests:** unit, integration (order→invoice→payment), contract.
+**Tests:** `tests/test_sales_orders.py` (new, 12 tests) — full lifecycle, invoice total matches order total, insufficient-stock fulfillment rejected, edit-after-confirm rejected, illegal cancel (post-fulfillment) rejected, partial-then-full payment moves invoice through `partially_paid` to `paid`, customer order-history endpoint, read-only user denied. Full suite (193 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
 **Commit checkpoint:** `feat(sales): orders, invoices, payments`
+
+**Known limitations carried forward, not silently dropped:** no payment-gateway integration (see task note above); no combined/reconciled revenue view across the two eras (by explicit decision, not an oversight); Sales-module-specific revenue-by-period reporting not built.
 
 * * *
 

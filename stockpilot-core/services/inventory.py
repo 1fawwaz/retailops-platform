@@ -334,7 +334,7 @@ class SameWarehouseTransferError(Exception):
     """A transfer's from_warehouse_id and to_warehouse_id are the same."""
 
 
-def _get_latest_quantity(db: Session, sku: str, warehouse_id: int) -> int:
+def get_latest_quantity(db: Session, sku: str, warehouse_id: int) -> int:
     stmt = (
         select(StockLevel.quantity_on_hand)
         .where(StockLevel.sku == sku, StockLevel.warehouse_id == warehouse_id)
@@ -351,7 +351,7 @@ def apply_stock_delta(db: Session, sku: str, warehouse_id: int, delta: int, as_o
     by the previous one, since a same-day row (if already created by an
     earlier call today) is itself the "most recent" row.
     """
-    new_quantity = _get_latest_quantity(db, sku, warehouse_id) + delta
+    new_quantity = get_latest_quantity(db, sku, warehouse_id) + delta
     row = db.scalar(
         select(StockLevel).where(
             StockLevel.sku == sku,
@@ -381,7 +381,7 @@ def transfer_stock(
 ) -> None:
     if from_warehouse_id == to_warehouse_id:
         raise SameWarehouseTransferError("from_warehouse_id and to_warehouse_id must differ")
-    source_current = _get_latest_quantity(db, sku, from_warehouse_id)
+    source_current = get_latest_quantity(db, sku, from_warehouse_id)
     if source_current < quantity:
         raise InsufficientStockError(
             f"Only {source_current} units of '{sku}' at warehouse {from_warehouse_id}, "
@@ -419,7 +419,7 @@ def transfer_stock(
 def adjust_stock(
     db: Session, *, sku: str, warehouse_id: int, quantity_delta: int, reason: str
 ) -> int:
-    current = _get_latest_quantity(db, sku, warehouse_id)
+    current = get_latest_quantity(db, sku, warehouse_id)
     if current + quantity_delta < 0:
         raise InsufficientStockError(
             f"Adjustment would drive '{sku}' at warehouse {warehouse_id} below zero "
