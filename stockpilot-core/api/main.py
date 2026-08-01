@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import (
     analytics,
@@ -19,8 +20,19 @@ from api.routers import (
     users,
     warehouses,
 )
+from settings import get_settings
 
 app = FastAPI(title="StockPilot Core")
+
+# docs/ARCHITECTURE.md § CORS: only the known frontend origins, backend-
+# owned config -- see settings.py's cors_allowed_origins.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth.router)
 app.include_router(auth.me_router)

@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     demo_user_email: str
     demo_user_password: str
     etl_max_transactions: int | None = None
+    # docs/ARCHITECTURE.md § Environment Variables / CORS: "allow only the
+    # known frontend origins" -- comma-separated, defaults to local dev
+    # only so a missing env var in a real deployment fails closed
+    # (no browser access), not open (allow-all).
+    cors_allowed_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
 
 @lru_cache
