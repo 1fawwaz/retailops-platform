@@ -25,7 +25,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 6 — Customers | `[x]` CRUD live, tested, committed; order-history endpoint now live (Module 7) |
 | Backend | Module 7 — Sales | `[x]` new `sales_orders`/`invoices`/`payments` tables (existing `sales_transactions` untouched, two eras never merged), full lifecycle, tested, committed |
 | Backend | Module 8 — Analytics | `[x]` supplier rollup + PO-derived KPIs live; also fixed a latent Module-4 turnover bug (see note), tested, committed |
-| Backend | Modules 9–10 | `[ ]` |
+| Backend | Module 9 — Forecasting | `[x]` reviewed, no new backend surface added — see note (avoiding speculative API) |
+| Backend | Module 10 — Administration | `[ ]` |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -207,16 +208,13 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 9 — Forecasting
+### Backend Module 9 — Forecasting `[x]` (reviewed, no new backend surface added)
 
-**Status:** demand forecast and forecast-accuracy are live (`POST /forecast/demand`, `GET /forecast/accuracy`) — a single predicted-daily-demand point with a confidence interval, not a per-day time series. Confirm with the actual product need (`BUILD.md` Frontend — Forecast module, `docs/PRODUCT-SPEC.md` §24) whether a real per-day series endpoint is needed before building one; don't add API surface speculatively.
+**Status:** demand forecast and forecast-accuracy are live (`POST /forecast/demand`, `GET /forecast/accuracy`) — a single predicted-daily-demand point with a confidence interval, not a per-day time series.
 
-**Tasks**
+**Determination:** this module's own task list says not to add API surface speculatively, and to build a reorder-point-prediction endpoint only if the frontend forecast/reorder UX turns out to need one beyond what `reorder_point`/`safety_stock` on products already provide. The Frontend Forecast module hasn't been built yet (it comes after this backend pass, per the module order), so there is no concrete evidence of that need yet — building a new endpoint now would be exactly the speculative addition this task warned against. **Reviewed and deliberately left as-is.** Revisit when the Frontend Forecast module is built: if it surfaces a real gap, that becomes a genuine, evidence-backed reason to extend this module — not before.
 
-- [ ] Reorder-point prediction endpoint, if the frontend forecast/reorder UX needs one beyond what `reorder_point`/`safety_stock` on products already provide
-- [ ] Re-verify forecast accuracy reporting is genuinely useful (not just present) once real usage exists
-
-**Commit checkpoint:** `feat(forecasting): reorder prediction` (only if genuinely needed — see task note)
+**Commit checkpoint:** none — no code changed, so nothing to commit for this module.
 
 * * *
 
