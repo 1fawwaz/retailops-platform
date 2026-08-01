@@ -1,8 +1,8 @@
 {
+  "type": "array",
   "items": {
     "$ref": "#/$defs/ProductRead"
   },
-  "type": "array",
   "title": "Response List Products Route Products Get",
   "$defs": {
     "ProductRead": {

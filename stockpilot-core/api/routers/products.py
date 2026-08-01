@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, require_permission
@@ -91,10 +91,15 @@ def _get_product_or_404(db: Session, sku: str) -> Product:
 
 @router.get("", response_model=list[ProductRead])
 def list_products_route(
+    search: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[ProductRead]:
-    return [_to_read_model(p) for p in list_products(db)]
+    rows = list_products(db, search=search, category=category, limit=limit, offset=offset)
+    return [_to_read_model(p) for p in rows]
 
 
 @router.get("/{sku}", response_model=ProductDetail)

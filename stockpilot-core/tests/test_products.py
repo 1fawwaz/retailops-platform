@@ -209,6 +209,53 @@ def test_user_without_products_permission_cannot_create_a_product(client: TestCl
     assert "products:create" in response.json()["detail"]
 
 
+def test_list_products_search_matches_sku_or_description(client: TestClient) -> None:
+    headers = _auth_headers(client)
+    client.post(
+        "/products", json={"sku": "85048", "description": "Christmas glass ball"}, headers=headers
+    )
+    client.post("/products", json={"sku": "22841", "description": "Cake tin"}, headers=headers)
+
+    by_sku = client.get("/products", params={"search": "8504"}, headers=headers)
+    assert [p["sku"] for p in by_sku.json()] == ["85048"]
+
+    by_description = client.get("/products", params={"search": "cake"}, headers=headers)
+    assert [p["sku"] for p in by_description.json()] == ["22841"]
+
+
+def test_list_products_filters_by_category(client: TestClient) -> None:
+    headers = _auth_headers(client)
+    client.post("/categories", json={"name": "Decorations"}, headers=headers)
+    client.post("/categories", json={"name": "Kitchenware"}, headers=headers)
+    categories = {c["name"]: c["id"] for c in client.get("/categories", headers=headers).json()}
+    client.post(
+        "/products",
+        json={"sku": "85048", "category_id": categories["Decorations"]},
+        headers=headers,
+    )
+    client.post(
+        "/products",
+        json={"sku": "22841", "category_id": categories["Kitchenware"]},
+        headers=headers,
+    )
+
+    response = client.get("/products", params={"category": "decorations"}, headers=headers)
+
+    assert [p["sku"] for p in response.json()] == ["85048"]
+
+
+def test_list_products_respects_limit_and_offset(client: TestClient) -> None:
+    headers = _auth_headers(client)
+    for sku in ("SKU-1", "SKU-2", "SKU-3"):
+        client.post("/products", json={"sku": sku}, headers=headers)
+
+    first_page = client.get("/products", params={"limit": 2, "offset": 0}, headers=headers)
+    second_page = client.get("/products", params={"limit": 2, "offset": 2}, headers=headers)
+
+    assert [p["sku"] for p in first_page.json()] == ["SKU-1", "SKU-2"]
+    assert [p["sku"] for p in second_page.json()] == ["SKU-3"]
+
+
 def test_user_with_a_role_granting_the_permission_can_create_a_product(
     client: TestClient,
 ) -> None:

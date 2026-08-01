@@ -1,9 +1,10 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from models.category import Category
 from models.product import Product
 from models.product_history import ProductHistory
 from models.stock_movement import StockMovement
@@ -36,8 +37,34 @@ def get_product_history(db: Session, sku: str) -> list[ProductHistory]:
     return list(db.scalars(stmt))
 
 
-def list_products(db: Session, *, limit: int = 100, offset: int = 0) -> list[Product]:
-    stmt = select(Product).order_by(Product.sku).limit(limit).offset(offset)
+def list_products(
+    db: Session,
+    *,
+    search: str | None = None,
+    category: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[Product]:
+    """search/category/limit/offset -- previously this had no filter
+    params at all and silently capped at 100 rows with no way to reach
+    anything past that, which docs/PRODUCT-SPEC.md's own "searchable/
+    filterable list" requirement for the Products page can't be built
+    against. Found and fixed while building that page's frontend
+    counterpart, matching CLAUDE.md §18: extend the backend first, then
+    connect the frontend, don't approximate a missing capability
+    client-side.
+    """
+    stmt = select(Product).order_by(Product.sku)
+    if search is not None:
+        pattern = f"%{search.lower()}%"
+        stmt = stmt.where(
+            func.lower(Product.sku).like(pattern) | func.lower(Product.description).like(pattern)
+        )
+    if category is not None:
+        stmt = stmt.join(Category, Category.id == Product.category_id).where(
+            func.lower(Category.name) == category.lower()
+        )
+    stmt = stmt.limit(limit).offset(offset)
     return list(db.scalars(stmt))
 
 
