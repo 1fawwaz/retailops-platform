@@ -332,6 +332,25 @@ def test_supplier_rollup_aggregates_skus_inventory_value_and_pos(client: TestCli
     closed_row = [r for r in closed_response.json() if r["supplier_id"] == supplier_id][0]
     assert closed_row["open_purchase_order_count"] == 0
     assert closed_row["total_purchase_order_count"] == 1
+    # Received same-day, well within the 7-day lead time -> on time.
+    assert closed_row["on_time_delivery_rate"] == 1.0
+    assert "on_time_delivery_rate" in closed_row["_provenance"]
+
+
+def test_supplier_rollup_on_time_delivery_rate_is_null_before_any_deliveries(
+    client: TestClient,
+) -> None:
+    headers = _writer_headers(client)
+    supplier_id = client.post(
+        "/suppliers",
+        json={"name": "Acme Co", "lead_time_days": 7, "reliability_score": 0.9},
+        headers=headers,
+    ).json()["id"]
+
+    response = client.get("/analytics/suppliers", headers=headers)
+
+    row = [r for r in response.json() if r["supplier_id"] == supplier_id][0]
+    assert row["on_time_delivery_rate"] is None
 
 
 def test_purchase_order_kpis_count_open_pos_and_average_receive_time(

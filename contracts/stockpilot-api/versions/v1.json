@@ -8341,6 +8341,17 @@
           "total_purchase_order_count": {
             "type": "integer",
             "title": "Total Purchase Order Count"
+          },
+          "on_time_delivery_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Time Delivery Rate"
           }
         },
         "type": "object",
@@ -8353,7 +8364,8 @@
           "sku_count",
           "total_inventory_value",
           "open_purchase_order_count",
-          "total_purchase_order_count"
+          "total_purchase_order_count",
+          "on_time_delivery_rate"
         ],
         "title": "SupplierRollup",
         "examples": [
@@ -8361,6 +8373,7 @@
             "_derivation_ref": {},
             "_provenance": {
               "lead_time_days": "derived",
+              "on_time_delivery_rate": "derived",
               "open_purchase_order_count": "derived",
               "reliability_score": "derived",
               "sku_count": "derived",
@@ -8369,6 +8382,7 @@
             },
             "lead_time_days": 7,
             "name": "Acme Wholesale Co",
+            "on_time_delivery_rate": 0.85,
             "open_purchase_order_count": 2,
             "reliability_score": 0.92,
             "sku_count": 42,

@@ -263,6 +263,7 @@ class SupplierRollup(ProvenanceMixin):
                     "total_inventory_value": 18420.50,
                     "open_purchase_order_count": 2,
                     "total_purchase_order_count": 9,
+                    "on_time_delivery_rate": 0.85,
                     "_provenance": {
                         "lead_time_days": "derived",
                         "reliability_score": "derived",
@@ -270,6 +271,7 @@ class SupplierRollup(ProvenanceMixin):
                         "total_inventory_value": "derived",
                         "open_purchase_order_count": "derived",
                         "total_purchase_order_count": "derived",
+                        "on_time_delivery_rate": "derived",
                     },
                     "_derivation_ref": {},
                 }
@@ -285,6 +287,7 @@ class SupplierRollup(ProvenanceMixin):
     total_inventory_value: float
     open_purchase_order_count: int
     total_purchase_order_count: int
+    on_time_delivery_rate: float | None
 
 
 SUPPLIER_ROLLUP_PROVENANCE = {
@@ -294,6 +297,7 @@ SUPPLIER_ROLLUP_PROVENANCE = {
     "total_inventory_value": "derived",
     "open_purchase_order_count": "derived",
     "total_purchase_order_count": "derived",
+    "on_time_delivery_rate": "derived",
 }
 
 

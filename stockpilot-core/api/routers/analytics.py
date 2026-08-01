@@ -122,6 +122,7 @@ def _to_supplier_rollup(row: SupplierRollupRowData) -> SupplierRollup:
         total_inventory_value=row.total_inventory_value,
         open_purchase_order_count=row.open_purchase_order_count,
         total_purchase_order_count=row.total_purchase_order_count,
+        on_time_delivery_rate=row.on_time_delivery_rate,
         provenance=SUPPLIER_ROLLUP_PROVENANCE,
     )
 

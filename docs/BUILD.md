@@ -19,7 +19,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Frontend | Stage 2 — Inventory | `[x]` (ditto) |
 | Backend | Module 1 — Authentication | `[x]` logout, refresh, `GET /me`, password reset (admin-mediated delivery — see note) all live, tested, committed |
 | Backend | Module 2 — Products | `[~]` categories, brands, sale price, history all live; images blocked on a storage-provider decision (see note) |
-| Backend | Module 3 — Suppliers | `[~]` contacts live; performance metrics deferred to Module 5 (see note) |
+| Backend | Module 3 — Suppliers | `[x]` contacts, on-time delivery rate (via Module 8), and PO linkage all live; defect/return rate not computed — no such data exists (see note) |
 | Backend | Module 4 — Inventory | `[x]` warehouses, location-scoped stock, transfers, adjustments, ledger all live, tested, committed |
 | Backend | Module 5 — Purchase Orders | `[x]` new `purchase_order_requests` tables (existing synthetic `purchase_orders` untouched), full lifecycle + receiving, tested, committed |
 | Backend | Module 6 — Customers | `[x]` CRUD live, tested, committed; order-history endpoint now live (Module 7) |
@@ -84,19 +84,21 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 3 — Suppliers (extend) `[~]`
+### Backend Module 3 — Suppliers (extend) `[x]`
 
-**Status:** list/get/create/update/delete are live. Contacts are now live too.
+**Status:** list/get/create/update/delete, contacts, performance metrics, and PO linkage are all live now.
 
 **Tasks**
 
 - [x] `supplier_contacts` table (multiple contacts per supplier) + full CRUD (`GET/POST /suppliers/{id}/contacts`, `PUT/DELETE /suppliers/{id}/contacts/{contact_id}`); a contact scoped to the wrong supplier ID returns 404, not another supplier's data.
-- [ ] Supplier performance metrics — on-time delivery rate, defect/return rate. **Still deferred, not fabricated:** no real PO lifecycle data exists yet (Module 5 isn't built, and the existing `purchase_orders` table is synthetic stock-ledger-replay data, not real receiving history — `docs/stockpilot-gaps.md` #6). Computing a metric now would mean estimating or defaulting a number with no real basis. Revisit once Module 5 ships.
-- [ ] `GET /suppliers/{id}/purchase-orders` once Module 5 exists
+- [x] Supplier performance metrics — **revisited and closed out once Module 5 shipped, exactly as flagged.** On-time delivery rate is real: `GET /analytics/suppliers` (Module 8) computes it from each supplier's actual receiving `stock_movements` compared against `created_at + lead_time_days`, `None` where no delivery has happened yet to evaluate. Defect/return rate is **still not computed** — there is no defect/return/quality-inspection concept anywhere in this schema to derive it from (not a data-availability timing issue like the on-time rate was; a whole workflow that doesn't exist), so it stays flagged rather than defaulted to zero or fabricated.
+- [x] `GET /suppliers/{id}/purchase-orders` — no dedicated route needed: `GET /purchase-orders?supplier_id={id}` (Module 5) already provides exactly this via its existing filter param.
 
-**Acceptance criteria:** a supplier's contacts are real, queryable, and correctly scoped — verified by test. Performance metrics and PO linkage remain out of scope until Module 5.
+**Acceptance criteria:** a supplier's contacts are real, queryable, and correctly scoped — verified by test. On-time delivery rate is a real, verifiable number (verified by test that a same-day receive against a 7-day lead time scores 1.0, and that a supplier with no deliveries yet gets `None`, not `0`).
 
-**Tests:** `tests/test_suppliers.py` additions — contact CRUD, cross-supplier contact isolation (404 not data leakage), contacts-for-nonexistent-supplier is 404. Full suite (148 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
+**Tests:** `tests/test_suppliers.py` additions (contact CRUD, cross-supplier isolation, 404s) plus `tests/test_analytics.py` additions (on-time delivery rate correctness and the null-before-any-delivery case). Full suite (220 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
+
+**Known limitation carried forward, not silently dropped:** defect/return rate — see the task note above.
 
 **Commit checkpoint:** `feat(suppliers): contacts`
 
@@ -197,12 +199,12 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 **Tasks**
 
-- [x] `GET /analytics/suppliers` — cross-supplier rollup (SKU count, total inventory value, open/total PO count per supplier), distinct from Module 3's per-supplier detail view. Every figure is a real aggregation over already-existing data (Products/Inventory/Purchase Orders) — no new data source.
+- [x] `GET /analytics/suppliers` — cross-supplier rollup (SKU count, total inventory value, open/total PO count, on-time delivery rate per supplier), distinct from Module 3's per-supplier detail view. Every figure is a real aggregation over already-existing data (Products/Inventory/Purchase Orders) — no new data source. `on_time_delivery_rate` was added in a follow-up pass once Module 10 wrapped, closing out Module 3's own deferred task now that Module 5's real receiving data exists to compute it from.
 - [x] `GET /analytics/purchase-order-kpis` — open PO count, plus average days-to-receive derived from the real `stock_movements` rows Module 5's receive endpoint writes (not a separately-tracked timestamp that could drift from what actually happened; `updated_at` alone wasn't usable for this since a subsequent `close` transition also bumps it).
 
 **Acceptance criteria:** every new analytics figure traces to real data, provenance-labeled per `docs/PRODUCT-SPEC.md` §13 — verified by test that each new response includes `_provenance` entries for every numeric field, matching the same `ProvenanceMixin` contract every other analytics endpoint already satisfies.
 
-**Tests:** `tests/test_analytics.py` additions (2 new tests) — supplier rollup reflects real SKU count/inventory value/PO counts and updates correctly as a PO closes; PO KPIs count open POs correctly and compute a real average receive time. Full suite (195 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
+**Tests:** `tests/test_analytics.py` additions — supplier rollup reflects real SKU count/inventory value/PO counts/on-time delivery rate and updates correctly as a PO closes; the null case (no deliveries yet) is distinct from zero; PO KPIs count open POs correctly and compute a real average receive time. Full suite (220 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
 **Commit checkpoint:** `feat(analytics): supplier rollups, PO-derived KPIs`
 

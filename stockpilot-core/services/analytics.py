@@ -451,6 +451,15 @@ class SupplierRollupRow:
     open/total PO counts are derived from Backend Module 5's real
     purchase_order_requests -- none of this is a new data source, just
     a new aggregation over what already exists.
+
+    on_time_delivery_rate closes a gap flagged in Module 3 itself
+    ("deferred until Module 5 ships") and revisited once it had: "on
+    time" = the PO's real receiving stock_movements (movement_type=
+    'purchase_order') landed on or before created_at + the supplier's
+    lead_time_days. There is no defect/return concept anywhere in this
+    schema (no quality-inspection or return workflow exists), so a
+    defect/return rate is NOT computed -- flagged, not fabricated as a
+    zero or a guess.
     """
 
     supplier_id: int
@@ -461,9 +470,52 @@ class SupplierRollupRow:
     total_inventory_value: float
     open_purchase_order_count: int
     total_purchase_order_count: int
+    on_time_delivery_rate: float | None
+
+
+def _on_time_delivery_rates(db: Session) -> dict[int, float | None]:
+    """Per-supplier fraction of received/closed POs whose last real
+    receiving movement landed on or before created_at +
+    lead_time_days. N+1-ish (one movement lookup per PO) but this is an
+    analytics rollup, not a hot path -- matches the same tradeoff
+    get_purchase_order_kpis already makes for avg_days_to_receive.
+    """
+    pos = list(
+        db.scalars(
+            select(PurchaseOrderRequest).where(
+                PurchaseOrderRequest.status.in_(("received", "closed"))
+            )
+        )
+    )
+    lead_times: dict[int, int] = {
+        supplier_id: lead_time_days
+        for supplier_id, lead_time_days in db.execute(select(Supplier.id, Supplier.lead_time_days))
+    }
+    on_time_by_supplier: dict[int, list[bool]] = {}
+    for po in pos:
+        lead_time_days = lead_times.get(po.supplier_id)
+        if lead_time_days is None:
+            continue
+        last_received_at = db.execute(
+            select(func.max(StockMovement.movement_date)).where(
+                StockMovement.reference == f"PO #{po.id}",
+                StockMovement.movement_type == "purchase_order",
+            )
+        ).scalar_one_or_none()
+        if last_received_at is None:
+            continue
+        expected_date = po.created_at.date() + timedelta(days=lead_time_days)
+        on_time_by_supplier.setdefault(po.supplier_id, []).append(
+            last_received_at.date() <= expected_date
+        )
+    return {
+        supplier_id: (sum(results) / len(results)) if results else None
+        for supplier_id, results in on_time_by_supplier.items()
+    }
 
 
 def get_supplier_rollup(db: Session) -> list[SupplierRollupRow]:
+    on_time_rates = _on_time_delivery_rates(db)
     latest_stock = latest_stock_level_subquery()
     inventory_sq = (
         select(
@@ -516,6 +568,7 @@ def get_supplier_rollup(db: Session) -> list[SupplierRollupRow]:
             total_inventory_value=float(total_value),
             open_purchase_order_count=int(open_po_count),
             total_purchase_order_count=int(total_po_count),
+            on_time_delivery_rate=on_time_rates.get(supplier_id),
         )
         for (
             supplier_id,
