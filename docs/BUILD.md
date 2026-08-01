@@ -26,7 +26,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 7 — Sales | `[x]` new `sales_orders`/`invoices`/`payments` tables (existing `sales_transactions` untouched, two eras never merged), full lifecycle, tested, committed |
 | Backend | Module 8 — Analytics | `[x]` supplier rollup + PO-derived KPIs live; also fixed a latent Module-4 turnover bug (see note), tested, committed |
 | Backend | Module 9 — Forecasting | `[x]` reviewed, no new backend surface added — see note (avoiding speculative API) |
-| Backend | Module 10 — Administration | `[ ]` |
+| Backend | Module 10 — Administration | `[x]` roles/permissions real and enforced everywhere, audit logs, notifications (2 of 4 triggers — see note), settings; API keys not built (no evidence of need); all tested, committed |
 | Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
 
 * * *
@@ -218,26 +218,28 @@ Each module: check what already exists (`docs/stockpilot-gaps.md`, `contracts/st
 
 * * *
 
-### Backend Module 10 — Administration (Users, Roles, Permissions, Audit Logs, Notifications, Settings)
+### Backend Module 10 — Administration (Users, Roles, Permissions, Audit Logs, Notifications, Settings) `[x]`
 
-**Real backend functionality, not an invented layer on top of an unsupported backend** — see `docs/ARCHITECTURE.md` §7 for the full decided data model (`roles`/`user_roles`, many-to-many) before starting this module.
+**Real backend functionality, not an invented layer on top of an unsupported backend** — built per `docs/ARCHITECTURE.md` §7's decided data model (`roles`/`user_roles`, many-to-many). Split into three commits given its size: (1) the data model, management endpoints, and `/me` extension; (2) sweeping real enforcement across every existing mutating endpoint; (3) audit logs, notifications, settings.
 
 **Tasks**
 
-- [ ] `roles` + `user_roles` tables + migration, seeded with the six default roles from `docs/PRODUCT-SPEC.md` §6 / `lib/rbac/permissions.ts`
-- [ ] `GET/POST /roles`, `PUT /roles/{id}` — role + permission-set management
-- [ ] `GET /users`, `POST /users/{id}/roles` (assign/revoke) — user/role management, building on Module 1's `/auth/register` and `/me`
-- [ ] Server-side permission enforcement — a dependency every mutating endpoint across every module above uses to check the caller's resolved permission set; this is the task that makes the whole RBAC model real, not just data structures nothing checks
-- [ ] `audit_logs` table + middleware/hook recording every mutating request (who, what, when, before/after where feasible) across every module
-- [ ] `notifications` table + triggers matching `docs/PRODUCT-SPEC.md` §16 (low-stock crossing threshold, PO awaiting approval, forecast revision, new AI recommendation) + `GET/PATCH /notifications`
-- [ ] `settings` table (tenant-level: currency, timezone, notification defaults) + `GET/PUT /settings`
-- [ ] API key management (`api_keys` table, generate/revoke/scope) if genuinely needed for machine-to-machine access beyond the JWT model already in place — confirm the actual use case before building rather than adding it speculatively
+- [x] `roles` + `user_roles` tables + migration, seeded with the six default roles transcribed exactly from `stockpilot-frontend/lib/rbac/permissions.ts` (not re-derived from `docs/PRODUCT-SPEC.md` §6 by hand — the frontend file is the vocabulary spec).
+- [x] `GET/POST /roles`, `PUT /roles/{id}` — role + permission-set management.
+- [x] `GET /users`, `POST/DELETE /users/{id}/roles/{role_id}` (assign/revoke — refined from the task's original "assign/revoke" single verb into the RESTful POST/DELETE pair) — user/role management, building on Module 1's `/auth/register` and `/me`.
+- [x] Server-side permission enforcement — `require_permission(permission)` (`api/deps.py`) replaces `require_write_access` on every mutating endpoint across every module built so far (Products, Categories, Brands, Suppliers, Supplier Contacts, Warehouses, Inventory transfers/adjustments, Purchase Orders, Customers, Sales Orders/Invoices/Payments, Roles, Users). `require_write_access` itself is now deleted (dead code, nothing called it once folded into `require_permission`). GET/read endpoints are deliberately NOT gated by resource permissions (only mutations are, matching this task's own wording — "every mutating endpoint"); two admin-only exceptions (`GET /roles`, `GET /users`) are gated anyway since no non-admin role has any `roles:*`/`users:*` permission at all in the vocabulary, making those genuinely sensitive to expose.
+- [x] `audit_logs` table + real recording — **not middleware**, folded directly into `require_permission` instead (a middleware-based design was tried first and abandoned: it can't see the per-test dependency-injection DB override the test suite relies on, since middleware runs outside FastAPI's `Depends()` graph entirely). Because every mutating endpoint now calls `require_permission`, this captures exactly "who performed which permission-gated action, when, via which method/path" for every real mutation — not a full before/after field diff (would need per-resource hooks added everywhere, a larger undertaking, flagged not built) and not denied attempts (a 403 never reaches the logging line).
+- [x] `notifications` table + two of the four triggers `docs/PRODUCT-SPEC.md` §16 lists, built genuinely real: stock crossing below reorder point (fires only on the crossing itself, checked against the cross-warehouse total so a transfer between locations — which never changes the total — can't produce a false positive), and a Purchase Order reaching `submitted` (awaiting approval). Both fan out to every user holding a role that grants the relevant action permission (`inventory:update` / `purchase_order:update` respectively) — §16 doesn't name a specific recipient, so "whoever can act on it" is the least-arbitrary interpretation available. **The other two triggers are NOT built, flagged not silently dropped:** "a forecast is significantly revised" has no forecast-versioning/history to compare against yet (Module 9 was reviewed and deliberately left with no new surface); "a new AI recommendation is generated" depends on the RetailOps AI integration (Stage: AI Sidebar), not yet built. `GET /notifications`, `PATCH /notifications/{id}` (mark read), `POST /notifications/mark-all-read` — deliberately ungated by any `notifications:*` permission (no non-admin role has one in the vocabulary, which would make a personal inbox admin-only otherwise) and scoped strictly to the caller's own notifications, matching how `GET /me` already treats personal data.
+- [x] `settings` table (tenant-level singleton row: currency — defaults to GBP, matching this being a UK dataset end to end per `CLAUDE.md` — timezone, low-stock-notification toggle) + `GET/PUT /settings`.
+- [ ] API key management — **not built, per this task's own instruction to confirm a real use case first rather than add it speculatively.** No genuine machine-to-machine access need has surfaced beyond the existing JWT model.
 
-**Acceptance criteria:** a user without a permission genuinely cannot perform the gated action via direct API call (not just hidden in the UI); the audit log answers "who changed this PO's status on this date" from a real query; notifications fire on the real triggers, not a hardcoded demo list.
+**Acceptance criteria:** a user without a permission genuinely cannot perform the gated action via direct API call (not just hidden in the UI) — verified by test with a user who is explicitly NOT read-only but has zero roles, distinct from the pre-existing `is_read_only` check; the audit log answers "who changed this PO's status on this date" from a real query — verified by test; notifications fire on real triggers (crossing-only, not every low-stock state), not a hardcoded demo list — verified by test including the negative case (repeated adjustments while already low don't re-notify).
 
-**Tests:** unit (permission-resolution logic), integration (RBAC enforcement — allowed role succeeds, denied role gets a real 403, for every module's mutating endpoints), contract.
+**Tests:** `tests/test_roles.py`, `tests/test_users.py`, `tests/test_audit_logs.py`, `tests/test_notifications.py`, `tests/test_settings.py` (all new) plus targeted additions to `tests/test_products.py` and `tests/test_inventory.py`. Full suite (219 tests) + contract tests pass; ruff, ruff format, mypy --strict clean.
 
-**Commit checkpoint:** `feat(admin): roles, permissions enforcement, audit logs, notifications, settings`
+**Commit checkpoints:** `feat(admin): roles/permissions data model, management endpoints, /me extension`, `feat(admin): enforce real permission checks on every mutating endpoint`, `feat(admin): audit logs, notifications, settings` (this one).
+
+**Known limitations carried forward, not silently dropped:** forecast-revision and new-AI-recommendation notification triggers (no source system yet); full before/after field diffs in the audit log; API key management.
 
 * * *
 

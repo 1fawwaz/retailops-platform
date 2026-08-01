@@ -1,12 +1,13 @@
 from collections.abc import Callable
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models.user import User
+from services.audit_logs import record_audit_log
 from services.rbac import get_resolved_permissions
 from services.security import decode_access_token
 from services.users import get_user_by_email
@@ -34,7 +35,7 @@ def get_current_user(
     return user
 
 
-def require_permission(permission: str) -> Callable[[User, Session], User]:
+def require_permission(permission: str) -> Callable[..., User]:
     """Real server-side enforcement of the roles/permissions model
     (docs/ARCHITECTURE.md §7) -- every mutating endpoint uses this,
     not just the data structures a role's permissions live in. Folds
@@ -42,9 +43,16 @@ def require_permission(permission: str) -> Callable[[User, Session], User]:
     ARCHITECTURE.md §7 explicitly decided not to remove is_read_only in
     this pass, so a read-only account is blocked from every non-read
     permission regardless of what its roles grant.
+
+    Also records an audit log entry the moment access is granted --
+    since every mutating endpoint calls this and no read endpoint does,
+    this naturally covers exactly the "who changed what" surface
+    docs/BUILD.md Backend Module 10 asks for, with no separate
+    middleware or per-route bookkeeping needed.
     """
 
     def _check(
+        request: Request,
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
@@ -59,6 +67,13 @@ def require_permission(permission: str) -> Callable[[User, Session], User]:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing permission: {permission}",
             )
+        record_audit_log(
+            db,
+            user_id=user.id,
+            permission=permission,
+            method=request.method,
+            path=request.url.path,
+        )
         return user
 
     return _check

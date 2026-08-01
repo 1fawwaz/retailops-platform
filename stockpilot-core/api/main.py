@@ -2,16 +2,19 @@ from fastapi import FastAPI
 
 from api.routers import (
     analytics,
+    audit_logs,
     auth,
     brands,
     categories,
     customers,
     forecast,
     inventory,
+    notifications,
     products,
     purchase_orders,
     roles,
     sales_orders,
+    settings,
     suppliers,
     users,
     warehouses,
@@ -35,6 +38,9 @@ app.include_router(analytics.router)
 app.include_router(forecast.router)
 app.include_router(roles.router)
 app.include_router(users.router)
+app.include_router(audit_logs.router)
+app.include_router(notifications.router)
+app.include_router(settings.router)
 
 
 @app.get("/health")

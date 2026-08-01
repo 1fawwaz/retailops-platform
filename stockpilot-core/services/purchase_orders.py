@@ -8,6 +8,7 @@ from models.purchase_order_request_line import PurchaseOrderRequestLine
 from models.stock_movement import StockMovement
 from schemas.purchase_order import PurchaseOrderCreate, PurchaseOrderUpdate, ReceiveRequest
 from services.inventory import apply_stock_delta
+from services.notifications import notify_users_with_permission
 
 
 class InvalidTransitionError(Exception):
@@ -107,6 +108,17 @@ def submit_purchase_order(db: Session, po: PurchaseOrderRequest) -> PurchaseOrde
         raise InvalidTransitionError(f"Cannot submit a purchase order in status '{po.status}'")
     po.status = "submitted"
     db.commit()
+    # "a Purchase Order is awaiting the current user's approval"
+    # (docs/PRODUCT-SPEC.md §16) -- notify everyone who can actually
+    # approve one, not a single hardcoded recipient.
+    notify_users_with_permission(
+        db,
+        permission="purchase_order:update",
+        type="po_awaiting_approval",
+        message=f"Purchase order #{po.id} is awaiting approval",
+        resource_type="purchase_order",
+        resource_id=str(po.id),
+    )
     db.refresh(po)
     return po
 

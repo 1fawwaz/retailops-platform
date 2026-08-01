@@ -1,0 +1,42 @@
+{
+  "$ref": "#/$defs/SettingsRead",
+  "$defs": {
+    "SettingsRead": {
+      "properties": {
+        "currency": {
+          "type": "string",
+          "title": "Currency"
+        },
+        "timezone": {
+          "type": "string",
+          "title": "Timezone"
+        },
+        "low_stock_notifications_enabled": {
+          "type": "boolean",
+          "title": "Low Stock Notifications Enabled"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Updated At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "currency",
+        "timezone",
+        "low_stock_notifications_enabled",
+        "updated_at"
+      ],
+      "title": "SettingsRead",
+      "examples": [
+        {
+          "currency": "GBP",
+          "low_stock_notifications_enabled": true,
+          "timezone": "Europe/London",
+          "updated_at": "2026-01-01T00:00:00Z"
+        }
+      ]
+    }
+  }
+}

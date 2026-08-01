@@ -8,7 +8,13 @@ from models.sales_order import SalesOrder
 from models.sales_order_line import SalesOrderLine
 from models.stock_movement import StockMovement
 from schemas.sales_order import SalesOrderCreate, SalesOrderUpdate
-from services.inventory import InsufficientStockError, apply_stock_delta, get_latest_quantity
+from services.inventory import (
+    InsufficientStockError,
+    apply_stock_delta,
+    get_current_stock,
+    get_latest_quantity,
+)
+from services.notifications import check_low_stock_crossing
 from services.purchase_orders import InvalidTransitionError
 
 
@@ -115,6 +121,7 @@ def fulfill_sales_order(db: Session, order: SalesOrder) -> SalesOrder:
                 f"Only {available} units of '{line.sku}' at warehouse {order.warehouse_id}, "
                 f"cannot fulfill {line.quantity}"
             )
+    totals_before = {line.sku: get_current_stock(db, line.sku) or 0 for line in lines}
     now = datetime.now(UTC).replace(tzinfo=None)
     for line in lines:
         apply_stock_delta(db, line.sku, order.warehouse_id, -line.quantity, now.date())
@@ -131,6 +138,9 @@ def fulfill_sales_order(db: Session, order: SalesOrder) -> SalesOrder:
         )
     order.status = "fulfilled"
     db.commit()
+    for line in lines:
+        before = totals_before[line.sku]
+        check_low_stock_crossing(db, line.sku, before, before - line.quantity)
     db.refresh(order)
     return order
 

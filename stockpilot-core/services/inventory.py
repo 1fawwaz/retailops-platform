@@ -15,6 +15,7 @@ from models.product import Product
 from models.sales_transaction import SalesTransaction
 from models.stock_level import StockLevel
 from models.stock_movement import StockMovement
+from services.notifications import check_low_stock_crossing
 
 
 def _latest_stock_level_by_warehouse_subquery() -> Subquery:
@@ -425,6 +426,10 @@ def adjust_stock(
             f"Adjustment would drive '{sku}' at warehouse {warehouse_id} below zero "
             f"({current} + {quantity_delta})"
         )
+    # Cross-warehouse total, not just this warehouse's -- matches what
+    # /inventory/stock's is_low_stock already compares reorder_point
+    # against (docs/BUILD.md Backend Module 10).
+    total_before = get_current_stock(db, sku) or 0
     today = datetime.now(UTC).date()
     now = datetime.now(UTC).replace(tzinfo=None)
     new_quantity = apply_stock_delta(db, sku, warehouse_id, quantity_delta, today)
@@ -440,6 +445,7 @@ def adjust_stock(
         )
     )
     db.commit()
+    check_low_stock_crossing(db, sku, total_before, total_before + quantity_delta)
     return new_quantity
 
 

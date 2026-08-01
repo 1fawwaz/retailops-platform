@@ -1,8 +1,10 @@
+from models.audit_log import AuditLog
 from models.base import Base
 from models.brand import Brand
 from models.category import Category
 from models.customer import Customer
 from models.invoice import Invoice
+from models.notification import Notification
 from models.password_reset_token import PasswordResetToken
 from models.payment import Payment
 from models.product import Product
@@ -15,6 +17,7 @@ from models.role import Role
 from models.sales_order import SalesOrder
 from models.sales_order_line import SalesOrderLine
 from models.sales_transaction import SalesTransaction
+from models.setting import Setting
 from models.stock_level import StockLevel
 from models.stock_movement import StockMovement
 from models.supplier import Supplier
@@ -24,11 +27,13 @@ from models.user_role import UserRole
 from models.warehouse import Warehouse
 
 __all__ = [
+    "AuditLog",
     "Base",
     "Brand",
     "Category",
     "Customer",
     "Invoice",
+    "Notification",
     "PasswordResetToken",
     "Payment",
     "Product",
@@ -41,6 +46,7 @@ __all__ = [
     "SalesOrder",
     "SalesOrderLine",
     "SalesTransaction",
+    "Setting",
     "StockLevel",
     "StockMovement",
     "Supplier",
