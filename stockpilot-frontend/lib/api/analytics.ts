@@ -1,5 +1,12 @@
 import { apiFetch } from "./client";
 import { revenueResponseSchema, type RevenuePeriod } from "../validation/analytics";
+import { supplierRollupListResponseSchema, type SupplierRollup } from "../validation/suppliers";
+
+// contracts/stockpilot-api: GET /analytics/suppliers -- no query params.
+export async function getSupplierRollup(): Promise<SupplierRollup[]> {
+  const raw = await apiFetch<unknown>("/analytics/suppliers");
+  return supplierRollupListResponseSchema.parse(raw);
+}
 
 export type RevenueGroupBy = "day" | "week" | "month" | "category";
 

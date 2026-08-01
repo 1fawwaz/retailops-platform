@@ -1,11 +1,6 @@
-import { EmptyState } from "../../../components/ui/EmptyState";
+import { SuppliersContent } from "./SuppliersContent";
 
-// docs/PRODUCT-SPEC.md §24 Suppliers / BUILD.md Stage 4.
+// docs/PRODUCT-SPEC.md §24 Suppliers / BUILD.md "Frontend -- Suppliers".
 export default function SuppliersPage() {
-  return (
-    <EmptyState
-      title="Suppliers"
-      description="Your supplier list will appear here once Stage 4 wires supplier records and purchase history."
-    />
-  );
+  return <SuppliersContent />;
 }
