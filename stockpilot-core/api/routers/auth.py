@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user
 from database import get_db
 from models.user import User
+from schemas.me import MeRead
 from schemas.user import (
     AccessTokenResponse,
     LogoutRequest,
@@ -23,8 +24,15 @@ from services.auth_tokens import (
     revoke_all_refresh_tokens_for_user,
     revoke_refresh_token,
 )
+from services.rbac import assign_role, get_resolved_permissions, get_role_by_name, get_user_roles
 from services.security import create_access_token
-from services.users import authenticate_user, create_user, get_user_by_email, set_password
+from services.users import (
+    authenticate_user,
+    count_users,
+    create_user,
+    get_user_by_email,
+    set_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -41,7 +49,16 @@ def register(data: UserCreate, db: Session = Depends(get_db)) -> UserRead:
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
+    # The very first account on a fresh deployment becomes admin --
+    # otherwise nobody could ever assign the first role (user-confirmed
+    # bootstrap decision, docs/BUILD.md Backend Module 10). Every
+    # subsequent registration gets zero roles until an admin assigns one.
+    is_first_user = count_users(db) == 0
     user = create_user(db, email=data.email, password=data.password)
+    if is_first_user:
+        admin_role = get_role_by_name(db, "admin")
+        if admin_role is not None:
+            assign_role(db, user.id, admin_role.id)
     return UserRead.model_validate(user)
 
 
@@ -89,9 +106,15 @@ def refresh(data: RefreshRequest, db: Session = Depends(get_db)) -> AccessTokenR
     return AccessTokenResponse(access_token=access_token)
 
 
-@me_router.get("/me", response_model=UserRead)
-def me(user: User = Depends(get_current_user)) -> UserRead:
-    return UserRead.model_validate(user)
+@me_router.get("/me", response_model=MeRead)
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MeRead:
+    roles = get_user_roles(db, user.id)
+    permissions = get_resolved_permissions(db, user.id)
+    return MeRead(
+        user=UserRead.model_validate(user),
+        roles=[r.name for r in roles],
+        permissions=sorted(permissions),
+    )
 
 
 @router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)

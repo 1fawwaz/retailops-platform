@@ -11,6 +11,7 @@ from models.purchase_order import PurchaseOrder
 from models.purchase_order_request import PurchaseOrderRequest
 from models.purchase_order_request_line import PurchaseOrderRequestLine
 from models.refresh_token import RefreshToken
+from models.role import Role
 from models.sales_order import SalesOrder
 from models.sales_order_line import SalesOrderLine
 from models.sales_transaction import SalesTransaction
@@ -19,6 +20,7 @@ from models.stock_movement import StockMovement
 from models.supplier import Supplier
 from models.supplier_contact import SupplierContact
 from models.user import User
+from models.user_role import UserRole
 from models.warehouse import Warehouse
 
 __all__ = [
@@ -35,6 +37,7 @@ __all__ = [
     "PurchaseOrderRequest",
     "PurchaseOrderRequestLine",
     "RefreshToken",
+    "Role",
     "SalesOrder",
     "SalesOrderLine",
     "SalesTransaction",
@@ -43,5 +46,6 @@ __all__ = [
     "Supplier",
     "SupplierContact",
     "User",
+    "UserRole",
     "Warehouse",
 ]

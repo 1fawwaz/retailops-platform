@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 from api.main import app  # noqa: E402
 from database import get_db  # noqa: E402
 from models.base import Base  # noqa: E402
+from services.rbac import seed_default_roles  # noqa: E402
 
 
 @pytest.fixture
@@ -29,6 +30,7 @@ def db_session() -> Generator[Session]:
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     session = session_factory()
+    seed_default_roles(session)
     try:
         yield session
     finally:

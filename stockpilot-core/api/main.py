@@ -10,8 +10,10 @@ from api.routers import (
     inventory,
     products,
     purchase_orders,
+    roles,
     sales_orders,
     suppliers,
+    users,
     warehouses,
 )
 
@@ -31,6 +33,8 @@ app.include_router(sales_orders.sales_orders_router)
 app.include_router(sales_orders.invoices_router)
 app.include_router(analytics.router)
 app.include_router(forecast.router)
+app.include_router(roles.router)
+app.include_router(users.router)
 
 
 @app.get("/health")

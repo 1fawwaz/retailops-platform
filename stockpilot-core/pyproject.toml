@@ -45,7 +45,13 @@ select = ["E", "F", "I", "UP", "B"]
 "alembic/versions/*.py" = ["E501"]
 
 [tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body"]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "api.deps.require_permission",
+]
 
 [tool.mypy]
 python_version = "3.11"

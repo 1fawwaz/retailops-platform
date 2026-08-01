@@ -248,7 +248,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserRead"
+                  "$ref": "#/components/schemas/MeRead"
                 }
               }
             }
@@ -3950,6 +3950,324 @@
         ]
       }
     },
+    "/roles": {
+      "get": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "List Roles Route",
+        "operationId": "list_roles_route_roles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Roles Route Roles Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Create Role Route",
+        "operationId": "create_role_route_roles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/roles/{role_id}": {
+      "put": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Update Role Route",
+        "operationId": "update_role_route_roles__role_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List Users Route",
+        "operationId": "list_users_route_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserWithRolesRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Users Route Users Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/users/{user_id}": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get User Route",
+        "operationId": "get_user_route_users__user_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithRolesRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{user_id}/roles/{role_id}": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Assign Role Route",
+        "operationId": "assign_role_route_users__user_id__roles__role_id__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithRolesRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Revoke Role Route",
+        "operationId": "revoke_role_route_users__user_id__roles__role_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithRolesRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -4856,6 +5174,54 @@
         "examples": [
           {
             "refresh_token": "8iQ2z...opaque-token...x9F"
+          }
+        ]
+      },
+      "MeRead": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserRead"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "roles",
+          "permissions"
+        ],
+        "title": "MeRead",
+        "description": "docs/ARCHITECTURE.md \u00a76: the ONE call both a profile page and the\nRBAC layer share, not two separate endpoints computing the same\nthing differently. Extended here (Backend Module 10) now that real\nroles/permissions data exists to resolve -- Backend Module 1 shipped\nthis endpoint returning profile only, deliberately, since this data\ndidn't exist yet.",
+        "examples": [
+          {
+            "permissions": [
+              "inventory:read",
+              "inventory:update",
+              "products:read"
+            ],
+            "roles": [
+              "inventory_manager"
+            ],
+            "user": {
+              "created_at": "2026-01-01T00:00:00Z",
+              "email": "demo@retailops.local",
+              "id": 1,
+              "is_active": true,
+              "is_read_only": false
+            }
           }
         ]
       },
@@ -6437,6 +6803,102 @@
           }
         ]
       },
+      "RoleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "title": "RoleCreate",
+        "examples": [
+          {
+            "name": "warehouse_clerk",
+            "permissions": [
+              "inventory:read"
+            ]
+          }
+        ]
+      },
+      "RoleRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "permissions",
+          "created_at"
+        ],
+        "title": "RoleRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 1,
+            "name": "inventory_manager",
+            "permissions": [
+              "inventory:read",
+              "inventory:update"
+            ]
+          }
+        ]
+      },
+      "RoleUpdate": {
+        "properties": {
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "permissions"
+        ],
+        "title": "RoleUpdate",
+        "examples": [
+          {
+            "permissions": [
+              "inventory:read",
+              "inventory:update"
+            ]
+          }
+        ]
+      },
       "SalesOrderCreate": {
         "properties": {
           "customer_id": {
@@ -7667,6 +8129,62 @@
             "id": 1,
             "is_active": true,
             "is_read_only": true
+          }
+        ]
+      },
+      "UserWithRolesRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_read_only": {
+            "type": "boolean",
+            "title": "Is Read Only"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "is_active",
+          "is_read_only",
+          "created_at",
+          "roles"
+        ],
+        "title": "UserWithRolesRead",
+        "description": "docs/BUILD.md Backend Module 10's GET /users -- a user's profile\nplus their assigned role names, for role management.",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "email": "demo@retailops.local",
+            "id": 1,
+            "is_active": true,
+            "is_read_only": false,
+            "roles": [
+              "inventory_manager"
+            ]
           }
         ]
       },

@@ -97,8 +97,12 @@ def test_me_returns_the_authenticated_users_profile(client: TestClient) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["email"] == "user@example.com"
-    assert body["is_active"] is True
+    assert body["user"]["email"] == "user@example.com"
+    assert body["user"]["is_active"] is True
+    # First registered user on a fresh deployment becomes admin
+    # (docs/BUILD.md Backend Module 10).
+    assert body["roles"] == ["admin"]
+    assert "products:create" in body["permissions"]
 
 
 def test_refresh_with_a_valid_refresh_token_returns_a_new_access_token(client: TestClient) -> None:

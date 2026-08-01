@@ -37,6 +37,34 @@ class UserRead(BaseModel):
     created_at: datetime
 
 
+class UserWithRolesRead(BaseModel):
+    """docs/BUILD.md Backend Module 10's GET /users -- a user's profile
+    plus their assigned role names, for role management.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": 1,
+                    "email": "demo@retailops.local",
+                    "is_active": True,
+                    "is_read_only": False,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "roles": ["inventory_manager"],
+                }
+            ]
+        },
+    )
+
+    id: int
+    email: EmailStr
+    is_active: bool
+    is_read_only: bool
+    created_at: datetime
+    roles: list[str]
+
+
 class Token(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
