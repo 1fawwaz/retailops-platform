@@ -1,6 +1,14 @@
 import { AppError, networkAppError, toAppError } from "./errors";
-import { clearToken, getToken, isTokenExpired } from "../auth/token";
+import { clearCachedPermissions } from "../auth/permissionsCache";
+import {
+  clearToken,
+  getRefreshToken,
+  getToken,
+  isTokenExpired,
+  setAccessToken,
+} from "../auth/token";
 import { notifySessionChanged } from "../auth/useSession";
+import { accessTokenResponseSchema } from "../validation/auth";
 
 // docs/ARCHITECTURE.md § API Architecture: the one place a StockPilot
 // Core base URL, an Authorization header, and 401 handling exist.
@@ -21,7 +29,7 @@ export interface RequestOptions {
   body?: unknown;
   /** application/x-www-form-urlencoded instead of JSON -- only /auth/login needs this. */
   form?: Record<string, string>;
-  /** Skip attaching the Authorization header -- only /auth/login and /auth/register. */
+  /** Skip attaching the Authorization header -- only /auth/{login,register,refresh,logout}. */
   skipAuth?: boolean;
 }
 
@@ -35,20 +43,62 @@ function buildUrl(path: string, params?: RequestOptions["params"]): string {
   return url.toString();
 }
 
+function clearSession(): void {
+  clearToken();
+  clearCachedPermissions();
+  notifySessionChanged();
+}
+
 /**
- * On a 401: this frontend has no refresh mechanism (StockPilot Core
- * issues no refresh token -- see docs/adr/001-session-management.md and
- * docs/stockpilot-gaps.md), so a 401 clears the stored token and lets
- * the caller's route guard redirect to /login. No retry is attempted.
+ * A raw fetch, not a call through apiFetch: lib/api/auth.ts's
+ * refreshAccessToken() wraps apiFetch, and apiFetch needs to call a
+ * refresh from inside itself (below) -- going through that wrapper
+ * would be a real import cycle (lib/api/auth.ts already imports
+ * apiFetch from this file). Returns the new access token, or null if
+ * there's no refresh token or the refresh itself failed.
+ */
+async function silentRefresh(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+  try {
+    const response = await fetch(buildUrl("/auth/refresh"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) return null;
+    const parsed = accessTokenResponseSchema.parse(await response.json());
+    setAccessToken(parsed.access_token);
+    return parsed.access_token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * docs/ARCHITECTURE.md § Authentication flow: on a 401, or when the
+ * stored access token has already expired client-side, this attempts
+ * one silent refresh before falling back to clearing the session and
+ * letting the caller's route guard redirect to /login. No second
+ * retry -- a refreshed-but-still-401 response is a real auth failure,
+ * not a transient one.
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return doFetch<T>(path, options, false);
+}
+
+async function doFetch<T>(path: string, options: RequestOptions, isRetry: boolean): Promise<T> {
   const { method = "GET", params, body, form, skipAuth = false } = options;
 
-  const token = skipAuth ? null : getToken();
-  if (!skipAuth && token && isTokenExpired(token)) {
-    clearToken();
-    notifySessionChanged();
-    throw new AppError("auth", "Your session has expired. Please log in again.", { status: 401 });
+  let token = skipAuth ? null : getToken();
+  if (!skipAuth && token && isTokenExpired(token) && !isRetry) {
+    token = await silentRefresh();
+    if (!token) {
+      clearSession();
+      throw new AppError("auth", "Your session has expired. Please log in again.", {
+        status: 401,
+      });
+    }
   }
 
   const headers: Record<string, string> = {};
@@ -71,11 +121,12 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (!response.ok) {
-    const appError = await toAppError(response);
-    if (appError.kind === "auth") {
-      clearToken();
-      notifySessionChanged();
+    if (response.status === 401 && !skipAuth && !isRetry) {
+      const refreshed = await silentRefresh();
+      if (refreshed) return doFetch<T>(path, options, true);
     }
+    const appError = await toAppError(response);
+    if (appError.kind === "auth") clearSession();
     throw appError;
   }
 

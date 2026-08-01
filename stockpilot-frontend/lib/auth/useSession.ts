@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { permissionsSnapshot } from "./permissionsCache";
 import { decodeToken, getToken, isTokenExpired } from "./token";
 import type { Session } from "./session";
 
@@ -17,7 +18,9 @@ export function notifySessionChanged(): void {
   window.dispatchEvent(new Event(SESSION_EVENT));
 }
 
-function subscribe(callback: () => void): () => void {
+/** Exported so lib/rbac/index.ts's useCan() can subscribe to the same
+ * event/storage pair without duplicating this wiring. */
+export function subscribeToSessionChanges(callback: () => void): () => void {
   window.addEventListener(SESSION_EVENT, callback);
   window.addEventListener("storage", callback);
   return () => {
@@ -26,19 +29,27 @@ function subscribe(callback: () => void): () => void {
   };
 }
 
-// Returns the raw token string (or null) -- a primitive, so it's
-// trivially stable for useSyncExternalStore's equality check. Deriving
-// the Session object happens in useSession() below, not here.
-function getSnapshot(): string | null {
-  return getToken();
+// Composite of the raw token AND the cached-permissions blob: a
+// primitive string, trivially stable for useSyncExternalStore's
+// equality check, but one that changes when EITHER changes -- a
+// permissions-only update (no token change, e.g. after login's /me
+// fetch resolves) must still trigger a re-render for components
+// reading useCan(). Deriving the Session object happens in
+// useSession() below, not here.
+function getSnapshot(): string {
+  return `${getToken() ?? ""}::${permissionsSnapshot()}`;
 }
 
-function getServerSnapshot(): string | null {
-  return null;
+function getServerSnapshot(): string {
+  return "";
 }
 
 export function useSession(): Session | null {
-  const token = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // The snapshot's only job is to change (any change) when it's time to
+  // re-render; the actual session is always derived fresh from the real
+  // token, not parsed back out of the composite string above.
+  useSyncExternalStore(subscribeToSessionChanges, getSnapshot, getServerSnapshot);
+  const token = getToken();
   if (!token || isTokenExpired(token)) return null;
   const claims = decodeToken(token);
   if (!claims) return null;

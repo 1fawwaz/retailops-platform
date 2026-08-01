@@ -7,6 +7,7 @@ beforeEach(() => {
     `${btoa(JSON.stringify({ alg: "HS256" }))}.${btoa(
       JSON.stringify({ sub: "u@example.com", exp: 9999999999 }),
     )}.sig`,
+    "test-refresh-token",
   );
 });
 

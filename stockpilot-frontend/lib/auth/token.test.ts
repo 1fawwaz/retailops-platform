@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearToken, decodeToken, getToken, isTokenExpired, setToken } from "./token";
+import {
+  clearToken,
+  decodeToken,
+  getRefreshToken,
+  getToken,
+  isTokenExpired,
+  setAccessToken,
+  setToken,
+} from "./token";
 
 // A real HS256 JWT shape (header.payload.signature), base64url-encoded --
 // signature is a dummy string since this module never verifies it
@@ -18,17 +26,27 @@ beforeEach(() => {
 describe("token storage", () => {
   it("returns null when nothing is stored", () => {
     expect(getToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
   });
 
-  it("round-trips a stored token", () => {
-    setToken("abc.def.ghi");
+  it("round-trips both the access and refresh token", () => {
+    setToken("abc.def.ghi", "refresh-123");
     expect(getToken()).toBe("abc.def.ghi");
+    expect(getRefreshToken()).toBe("refresh-123");
   });
 
-  it("clears the stored token", () => {
-    setToken("abc.def.ghi");
+  it("clears both tokens", () => {
+    setToken("abc.def.ghi", "refresh-123");
     clearToken();
     expect(getToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
+  });
+
+  it("setAccessToken updates only the access token, not the refresh token", () => {
+    setToken("abc.def.ghi", "refresh-123");
+    setAccessToken("new-access-token");
+    expect(getToken()).toBe("new-access-token");
+    expect(getRefreshToken()).toBe("refresh-123");
   });
 });
 

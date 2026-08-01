@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
+import { ensurePermissionsLoaded } from "./refreshPermissions";
 import { useSession } from "./useSession";
 
 /**
@@ -27,6 +28,10 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (session === null) {
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+    } else {
+      // Populates the permissions cache on a page refresh / fresh tab,
+      // where login()'s own /me fetch never ran (lib/auth/session.ts).
+      ensurePermissionsLoaded();
     }
   }, [session, router, pathname]);
 

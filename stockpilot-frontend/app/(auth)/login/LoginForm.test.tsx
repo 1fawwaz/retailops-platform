@@ -40,7 +40,7 @@ describe("LoginForm", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ access_token: token, token_type: "bearer" }), {
+        new Response(JSON.stringify({ access_token: token, refresh_token: "test-refresh-token", token_type: "bearer" }), {
           status: 200,
         }),
       ),
@@ -86,7 +86,7 @@ describe("LoginForm", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ access_token: token, token_type: "bearer" }), {
+        new Response(JSON.stringify({ access_token: token, refresh_token: "test-refresh-token", token_type: "bearer" }), {
           status: 200,
         }),
       ),
@@ -107,7 +107,7 @@ describe("LoginForm", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ access_token: token, token_type: "bearer" }), {
+        new Response(JSON.stringify({ access_token: token, refresh_token: "test-refresh-token", token_type: "bearer" }), {
           status: 200,
         }),
       ),

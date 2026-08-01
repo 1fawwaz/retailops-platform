@@ -1,21 +1,37 @@
 // docs/adr/001-session-management.md: StockPilot Core issues a bearer
-// token in the response body, not a cookie -- this module is the one
-// place that token is stored/read/cleared. Client-side localStorage,
-// origin-scoped (does not survive across stockpilot.<domain> /
-// ai.stockpilot.<domain>, by design -- see the ADR).
-const STORAGE_KEY = "stockpilot.access_token";
+// token pair in the response body, not a cookie -- this module is the
+// one place those tokens are stored/read/cleared. Client-side
+// localStorage, origin-scoped (does not survive across
+// stockpilot.<domain> / ai.stockpilot.<domain>, by design -- see the
+// ADR). refresh_token was added in Backend Module 1.
+const ACCESS_TOKEN_KEY = "stockpilot.access_token";
+const REFRESH_TOKEN_KEY = "stockpilot.refresh_token";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(STORAGE_KEY);
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
-export function setToken(token: string): void {
-  window.localStorage.setItem(STORAGE_KEY, token);
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+export function setToken(accessToken: string, refreshToken: string): void {
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
+/** Updates only the access token -- used after a silent refresh, which
+ * does not rotate the refresh token (docs/ARCHITECTURE.md §6: "no
+ * rotation in the first cut"). */
+export function setAccessToken(accessToken: string): void {
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
 }
 
 export function clearToken(): void {
-  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 interface DecodedTokenClaims {
