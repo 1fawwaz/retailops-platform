@@ -271,7 +271,14 @@ Copy each `*/.env.example` to `*/.env` and fill in `POSTGRES_*`, a shared `JWT_S
 
 ## Deployment
 
-Not yet complete as of this writing. The target architecture (both Python services on Railway/Render with managed Postgres, the frontend on Vercel, secrets via platform environment variables, a seeded demo database with a read-only login, CI gates on tests/type-checks/contracts/the eval grounding gate) is specified in `docs/BUILD-SPEC.md`'s Stage 7. This documentation deliverable was intentionally written first so it could be produced without depending on external hosting accounts; deploy is the remaining Stage 7 sub-task.
+Deployment of the live hosted services is not fully verified from this
+environment. The target architecture — both Python services with managed
+Postgres, the frontend(s) on Vercel, secrets via platform environment
+variables, a seeded demo database with a read-only login, CI gates on
+tests/type-checks/contracts and the eval grounding gate — is specified in
+`docs/ARCHITECTURE.md` § Deployment and `docs/BUILD.md` Stage 12. The
+build/packaging surface is `stockpilot-core/Dockerfile` and
+`retailops-ai/Dockerfile`; the frontends' production builds are `next build`.
 
 ## ADR index
 

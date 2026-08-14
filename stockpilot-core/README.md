@@ -1,9 +1,9 @@
 # stockpilot-core
 
 Headless FastAPI + PostgreSQL retail operations API with demand forecasting. See
-`docs/BUILD-SPEC.md` for the full specification and `docs/data-derivation.md` for
-how the dataset's missing columns (cost price, stock levels, suppliers,
-categories) were derived.
+the frozen API contract in `../contracts/stockpilot-api/` for the live surface
+and `../docs/data-derivation.md` for how the dataset's missing columns (cost
+price, stock levels, suppliers, categories) were derived.
 
 ## Scope
 

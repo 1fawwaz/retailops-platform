@@ -12,9 +12,9 @@ type FetchState =
  * drawer." An overlay (the one place box-shadow is permitted, §4), not
  * a card -- fetches GET /agent/execution/{id} once per open and shows
  * the specific tool call this citation resolved to: its raw response
- * verbatim, so "the grounding architecture [is] provable in one click"
- * (BUILD-SPEC's own F4 wording), not summarized or reformatted away
- * from what the tool actually returned.
+ * verbatim, so "the grounding architecture [is] provable in one click",
+ * not summarized or reformatted away from what the tool actually
+ * returned.
  */
 export function ProvenanceDrawer({
   citation,

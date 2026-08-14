@@ -56,8 +56,8 @@ def score_replan(scenario: Scenario, outcome: ScenarioOutcome) -> bool:
     itself an entry) -- a genuine extra retrieval round only happens
     when a second entry gets appended, i.e. replan_rounds > 1.
 
-    None of the ten named scenarios in docs/BUILD-SPEC.md's own list
-    call for genuine insufficiency-driven replanning (that mechanism has
+    None of the ten named scenarios in evals/scenarios/ (s01–s10) call
+    for genuine insufficiency-driven replanning (that mechanism has
     its own dedicated deterministic test,
     tests/test_graph.py::test_replan_loop_triggers_a_second_targeted_retrieval_round,
     from Stage 3 Task 3.3) -- every scenario here defaults to

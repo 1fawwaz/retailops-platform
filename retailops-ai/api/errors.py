@@ -2,8 +2,7 @@
 whatever exception surfaces at the API boundary into ONE of a few
 user-safe messages. CLAUDE.md's own logging discipline (structured JSON,
 never a secret in a response) applied to the failure path specifically:
-"error taxonomy with user-safe messages and full detail in logs only"
-per docs/BUILD-SPEC.md's Stage 6 backend-hardening bullet.
+"error taxonomy with user-safe messages and full detail in logs only".
 
 Every already-typed failure mode this codebase produces (StockPilot
 outage, LLM outage/rate-limit-exhaustion) is normally absorbed by the

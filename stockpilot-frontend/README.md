@@ -15,13 +15,14 @@ This app never touches PostgreSQL or a backend ORM model directly — business d
 
 ## Status
 
-**Stage 0 (bootstrap) only.** Every primary nav item routes to a real, empty-state page — no page has real StockPilot Core data wired yet. See `../docs/BUILD.md` for what each later stage adds.
+Dashboard, Inventory, Products, and Suppliers are wired to real StockPilot Core data (typed API clients, zod boundary validation, data tables). Auth and RBAC are live: sessions come from StockPilot Core, and permissions are resolved from `/me` and cached (`lib/auth/refreshPermissions.ts`) — no hardcoded role.
 
-**Known gaps, not silently deferred** (`../docs/stockpilot-gaps.md` #4 and #5):
+**Placeholder pages** (empty-state shells, no data wired yet): Analytics, Forecasts, Purchase Orders, Sales (orders/customers), Notifications, Audit Logs, Reports, and the Settings pages. StockPilot Core already exposes these APIs (see `../contracts/`); the pages are waiting on their build stages in `../docs/BUILD.md`, not on the backend.
 
-- StockPilot Core currently has no Purchase Orders, Sales/Orders/Customers, Notifications, Audit Logs, or Settings/Users/Roles API. `BUILD.md` Stages 5, 6, and 9 cannot be built against real data until that changes.
-- StockPilot Core's `User` model has no role/permission field. `lib/rbac/` is real, typed, and ready to wire up, but every session is currently placeholder-assigned the most-permissive role — see `lib/rbac/index.ts`'s own comment. Not a real authorization boundary yet.
+**Known gaps, not silently deferred:**
+
 - Real cross-domain single sign-on with RetailOps AI Frontend is not implemented — StockPilot Core issues a bearer token in the response body, not a shared cookie. Each frontend requires its own login. See `docs/adr/001-session-management.md`.
+- The AI sidebar is a reserved mount point (`components/ai-sidebar/AiSidebarMount.tsx`), not yet embedded — it ships with BUILD.md Stage 10.
 
 ## Local setup
 

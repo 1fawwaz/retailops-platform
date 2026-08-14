@@ -1,8 +1,8 @@
 """Stage 6 backend hardening: JWT validation for retailops-ai's own API.
 
-Per docs/BUILD-SPEC.md's own words -- "JWT integrated with StockPilot's
-auth, no second user system" -- this service has no login endpoint, no
-password hashing, and no user table of its own. It trusts tokens issued
+Design rationale: "JWT integrated with StockPilot's auth, no second user
+system" -- this service has no login endpoint, no password hashing, and
+no user table of its own. It trusts tokens issued
 by StockPilot's own /auth/login (stockpilot-core/services/security.py::
 create_access_token) purely via a shared secret: both services' `.env`
 files carry the identical JWT_SECRET/JWT_ALGORITHM values (synced once

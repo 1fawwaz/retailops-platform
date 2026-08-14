@@ -165,6 +165,14 @@ endpoints first as its own tracked work, or (c) mark those stages
 roadmap-only in the `stockpilot-frontend` README, matching the "ship-thin
 vs. ship-long" honesty framing `BUILD.md` already calls for.
 
+**Status (2026-08-14):** resolved. StockPilot Core now exposes
+`purchase-orders`, `sales-orders`, `customers`, `notifications`,
+`audit-logs`, `users`, `roles`, and `settings` routes — the frozen
+contract (`contracts/stockpilot-api/versions/v1.json`) is 66 paths / 88
+operations. The `stockpilot-frontend` README no longer lists this as an
+open blocker. This entry stays as the historical record of why the
+backend build-out was in scope.
+
 ## 5. No role/permission field on the User model — RBAC has no backend to enforce it (found: `stockpilot-frontend` BUILD.md Stage 0)
 
 **Needed by:** `docs/PRODUCT-SPEC.md` §6's six-role model (Admin,

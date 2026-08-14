@@ -30,6 +30,16 @@ git show 22096ac:docs/BUILD-SPEC.md
 
 8. **`stockpilot-core/README.md:4`** — `See docs/BUILD-SPEC.md for the full specification`. A direct pointer for a reader — currently sends them to the ERP frontend roadmap instead of anything about StockPilot Core. Highest-priority fix of the 8: this one actively misleads a reader today, not just an internal comment.
 
+## Resolution status (2026-08-14)
+
+- **#8** — RESOLVED: `stockpilot-core/README.md` now points at `../contracts/stockpilot-api/` and `../docs/data-derivation.md`.
+- **#1** — RESOLVED: root `README.md` Deployment section no longer cites BUILD-SPEC.md; states the honest current state and points at `docs/ARCHITECTURE.md` § Deployment / `docs/BUILD.md` Stage 12.
+- **#2, #3, #5** — RESOLVED: the citations were dropped and the design rationale stated in the module's own words (`retailops-ai/auth.py`, `retailops-ai/api/errors.py`, `retailops-ai/frontend/components/ProvenanceDrawer.tsx`).
+- **#4** — RESOLVED: `retailops-ai/evals/scorers.py` now cites `evals/scenarios/` (s01–s10) directly instead of the stale doc path.
+- **#6, #7** — LEFT AS IS: ADR context is historical record, per ADR append-only convention.
+
 ## Suggested triage order
 
 Highest reader-facing impact first: **#8, #1** (READMEs, direct pointers) → **#4** (only one with checkable factual content) → **#2, #3, #5** (design-rationale comments, low risk but easy cleanup) → **#6, #7** (ADR historical context, may not need changing at all — ADRs document a point in time).
+
+All items above are now addressed (see Resolution status).
