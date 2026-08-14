@@ -18,11 +18,11 @@ from schemas.user import (
 )
 from services.auth_tokens import (
     consume_password_reset_token,
-    get_active_refresh_token,
     issue_password_reset_token,
     issue_refresh_token,
     revoke_all_refresh_tokens_for_user,
     revoke_refresh_token,
+    rotate_refresh_token,
 )
 from services.rbac import assign_role, get_resolved_permissions, get_role_by_name, get_user_roles
 from services.security import create_access_token
@@ -90,20 +90,17 @@ def logout(data: LogoutRequest, db: Session = Depends(get_db)) -> Response:
 
 @router.post("/refresh", response_model=AccessTokenResponse)
 def refresh(data: RefreshRequest, db: Session = Depends(get_db)) -> AccessTokenResponse:
-    token = get_active_refresh_token(db, data.refresh_token)
-    if token is None:
+    # SEC-02: refresh tokens are single-use and rotated. A replayed
+    # (already-rotated) token revokes the user's whole session family.
+    result = rotate_refresh_token(db, data.refresh_token)
+    if result is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
-    user = db.get(User, token.user_id)
-    if user is None or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
-        )
+    user, new_refresh_token = result
     access_token = create_access_token(subject=user.email)
-    return AccessTokenResponse(access_token=access_token)
+    return AccessTokenResponse(access_token=access_token, refresh_token=new_refresh_token)
 
 
 @me_router.get("/me", response_model=MeRead)

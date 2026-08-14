@@ -23,10 +23,15 @@ export function setToken(accessToken: string, refreshToken: string): void {
 }
 
 /** Updates only the access token -- used after a silent refresh, which
- * does not rotate the refresh token (docs/ARCHITECTURE.md §6: "no
- * rotation in the first cut"). */
+ * rotates the refresh token (SEC-02), so setRefreshToken() must be
+ * called alongside it with the returned value. */
 export function setAccessToken(accessToken: string): void {
   window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+}
+
+/** Stores a newly rotated refresh token returned by /auth/refresh. */
+export function setRefreshToken(refreshToken: string): void {
+  window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
 export function clearToken(): void {

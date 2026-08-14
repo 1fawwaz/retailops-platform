@@ -116,6 +116,24 @@ def test_refresh_with_a_valid_refresh_token_returns_a_new_access_token(client: T
     assert body["token_type"] == "bearer"
 
 
+def test_refresh_rotates_the_refresh_token(client: TestClient) -> None:
+    # SEC-02: /refresh must rotate the refresh token -- the old one is
+    # single-use and cannot be reused to keep the session alive.
+    tokens = _login(client)
+
+    first = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert first.status_code == 200
+    new_refresh = first.json()["refresh_token"]
+    assert isinstance(new_refresh, str) and new_refresh
+    assert new_refresh != tokens["refresh_token"]
+
+    old_reuse = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert old_reuse.status_code == 401
+
+    valid = client.post("/auth/refresh", json={"refresh_token": new_refresh})
+    assert valid.status_code == 200
+
+
 def test_refresh_with_an_unknown_token_is_rejected(client: TestClient) -> None:
     response = client.post("/auth/refresh", json={"refresh_token": "not-a-real-token"})
 

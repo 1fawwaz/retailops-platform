@@ -34,6 +34,26 @@ def get_active_refresh_token(db: Session, raw_token: str) -> RefreshToken | None
     return token
 
 
+def rotate_refresh_token(db: Session, raw_token: str) -> tuple[User, str] | None:
+    """Single-use rotate on /refresh (SEC-02): validate the presented
+    refresh token, revoke it, and issue a fresh one so a leaked token is
+    worthless after its first use.
+
+    Returns (user, new_raw_token) on success, or None if the token is
+    unknown/expired/inactive -- the caller must not distinguish these
+    cases in its response (docs/ARCHITECTURE.md §6).
+    """
+    token = get_active_refresh_token(db, raw_token)
+    if token is None:
+        return None
+    user = db.get(User, token.user_id)
+    if user is None or not user.is_active:
+        return None
+    revoke_refresh_token(db, raw_token)
+    new_raw_token = issue_refresh_token(db, user)
+    return user, new_raw_token
+
+
 def revoke_refresh_token(db: Session, raw_token: str) -> None:
     token = db.scalar(
         select(RefreshToken).where(RefreshToken.token_hash == hash_opaque_token(raw_token))

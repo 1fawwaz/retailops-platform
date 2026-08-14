@@ -13,8 +13,11 @@ export const tokenSchema = z.object({
 export type Token = z.infer<typeof tokenSchema>;
 
 // Mirrors contracts/stockpilot-api/schemas/refresh_auth_refresh_post.json.
+// SEC-02: /refresh rotates the refresh token, so this returns one the
+// client must persist (replacing the one it just used).
 export const accessTokenResponseSchema = z.object({
   access_token: z.string(),
+  refresh_token: z.string(),
   token_type: z.string().default("bearer"),
 });
 export type AccessTokenResponse = z.infer<typeof accessTokenResponseSchema>;

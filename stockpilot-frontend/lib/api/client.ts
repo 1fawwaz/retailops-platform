@@ -6,6 +6,7 @@ import {
   getToken,
   isTokenExpired,
   setAccessToken,
+  setRefreshToken,
 } from "../auth/token";
 import { notifySessionChanged } from "../auth/useSession";
 import { accessTokenResponseSchema } from "../validation/auth";
@@ -68,6 +69,9 @@ async function silentRefresh(): Promise<string | null> {
     });
     if (!response.ok) return null;
     const parsed = accessTokenResponseSchema.parse(await response.json());
+    // SEC-02: /auth/refresh rotates the refresh token -- persist the new
+    // one or the next silent refresh would present an already-used token.
+    setRefreshToken(parsed.refresh_token);
     setAccessToken(parsed.access_token);
     return parsed.access_token;
   } catch {

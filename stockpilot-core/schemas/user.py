@@ -97,6 +97,7 @@ class AccessTokenResponse(BaseModel):
             "examples": [
                 {
                     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "refresh_token": "8iQ2z...opaque-token...x9F",
                     "token_type": "bearer",
                 }
             ]
@@ -104,6 +105,9 @@ class AccessTokenResponse(BaseModel):
     )
 
     access_token: str
+    # Present from SEC-02 onward: /refresh rotates the refresh token, so
+    # the client must persist the returned one, not keep the old one.
+    refresh_token: str
     token_type: str = "bearer"
 
 
