@@ -4417,6 +4417,22 @@
             }
           },
           {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -4836,6 +4852,10 @@
             "type": "string",
             "title": "Path"
           },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -4849,6 +4869,7 @@
           "permission",
           "method",
           "path",
+          "outcome",
           "created_at"
         ],
         "title": "AuditLogRead",
@@ -4857,6 +4878,7 @@
             "created_at": "2026-02-01T09:00:00Z",
             "id": 1,
             "method": "POST",
+            "outcome": "granted",
             "path": "/purchase-orders/1/approve",
             "permission": "purchase_order:update",
             "user_id": 4

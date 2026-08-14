@@ -8,12 +8,13 @@ from models.base import Base
 
 class AuditLog(Base):
     """Records who performed a permission-gated mutating action and
-    when. Written at the point require_permission grants access, so it
-    captures accepted actions with their user/permission/method/path --
-    not a full before/after field diff (that would need per-resource
-    hooks added everywhere; flagged as a larger undertaking, not built
-    in this pass) and not denied attempts (a 403 never reaches this
-    point). See docs/BUILD.md Backend Module 10.
+    when, and equally when one was DENIED (SEC-05). Written at the point
+    require_permission decides the outcome, so it captures both accepted
+    and rejected actions with their user/permission/method/path and an
+    `outcome` of "granted" or "denied" -- not a full before/after field
+    diff (that would need per-resource hooks added everywhere; flagged
+    as a larger undertaking, not built in this pass). See docs/BUILD.md
+    Backend Module 10.
     """
 
     __tablename__ = "audit_logs"
@@ -24,4 +25,5 @@ class AuditLog(Base):
     permission: Mapped[str] = mapped_column(String)
     method: Mapped[str] = mapped_column(String)
     path: Mapped[str] = mapped_column(String)
+    outcome: Mapped[str] = mapped_column(String, default="granted")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

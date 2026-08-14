@@ -52,3 +52,45 @@ def test_non_admin_cannot_view_audit_logs(client: TestClient) -> None:
     response = client.get("/audit-logs", headers=second_headers)
 
     assert response.status_code == 403
+
+
+def test_granted_mutation_is_audited_as_granted(client: TestClient) -> None:
+    admin_headers = _auth_headers(client)
+
+    client.post("/products", json={"sku": "SKU-GRANTED"}, headers=admin_headers)
+
+    response = client.get(
+        "/audit-logs", params={"permission": "products:create"}, headers=admin_headers
+    )
+    assert response.status_code == 200
+    entries = response.json()
+    assert any(e["path"] == "/products" and e["outcome"] == "granted" for e in entries)
+    assert all(e["outcome"] == "granted" for e in entries)
+
+
+def test_denied_mutation_is_audited_as_denied(client: TestClient) -> None:
+    # SEC-05: a user lacking a permission is still audited -- the denied
+    # attempt is recorded with outcome="denied", not silently dropped.
+    admin_headers = _auth_headers(client, email="admin@example.com")
+    second_headers = _auth_headers(client, email="second@example.com")
+
+    denied = client.post("/products", json={"sku": "SKU-DENIED"}, headers=second_headers)
+    assert denied.status_code == 403
+
+    response = client.get(
+        "/audit-logs",
+        params={"permission": "products:create", "outcome": "denied"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    denied_entries = [e for e in response.json() if e["path"] == "/products"]
+    assert any(e["outcome"] == "denied" for e in denied_entries)
+
+
+def test_audit_log_filters_by_outcome(client: TestClient) -> None:
+    admin_headers = _auth_headers(client)
+    client.post("/products", json={"sku": "SKU-OK"}, headers=admin_headers)
+
+    granted = client.get("/audit-logs", params={"outcome": "granted"}, headers=admin_headers)
+    assert granted.status_code == 200
+    assert all(e["outcome"] == "granted" for e in granted.json())

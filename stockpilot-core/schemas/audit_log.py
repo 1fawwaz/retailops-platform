@@ -14,6 +14,7 @@ class AuditLogRead(BaseModel):
                     "permission": "purchase_order:update",
                     "method": "POST",
                     "path": "/purchase-orders/1/approve",
+                    "outcome": "granted",
                     "created_at": "2026-02-01T09:00:00Z",
                 }
             ]
@@ -25,4 +26,5 @@ class AuditLogRead(BaseModel):
     permission: str
     method: str
     path: str
+    outcome: str
     created_at: datetime

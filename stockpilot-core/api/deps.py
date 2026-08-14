@@ -44,9 +44,12 @@ def require_permission(permission: str) -> Callable[..., User]:
     this pass, so a read-only account is blocked from every non-read
     permission regardless of what its roles grant.
 
-    Also records an audit log entry the moment access is granted --
-    since every mutating endpoint calls this and no read endpoint does,
-    this naturally covers exactly the "who changed what" surface
+    Also records an audit log entry for the outcome -- "granted" the
+    moment access is granted, and "denied" when a mutating action is
+    rejected for a missing permission or the read-only override (SEC-05:
+    denied attempts are audited too, not just successful changes). Since
+    every mutating endpoint calls this and no read endpoint does, this
+    naturally covers exactly the "who changed what" surface
     docs/BUILD.md Backend Module 10 asks for, with no separate
     middleware or per-route bookkeeping needed.
     """
@@ -57,12 +60,28 @@ def require_permission(permission: str) -> Callable[..., User]:
         db: Session = Depends(get_db),
     ) -> User:
         if user.is_read_only and not permission.endswith(":read"):
+            record_audit_log(
+                db,
+                user_id=user.id,
+                permission=permission,
+                method=request.method,
+                path=request.url.path,
+                outcome="denied",
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="This account is read-only",
             )
         resolved = get_resolved_permissions(db, user.id)
         if permission not in resolved:
+            record_audit_log(
+                db,
+                user_id=user.id,
+                permission=permission,
+                method=request.method,
+                path=request.url.path,
+                outcome="denied",
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing permission: {permission}",
@@ -73,6 +92,7 @@ def require_permission(permission: str) -> Callable[..., User]:
             permission=permission,
             method=request.method,
             path=request.url.path,
+            outcome="granted",
         )
         return user
 
