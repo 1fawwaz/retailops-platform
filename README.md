@@ -287,6 +287,7 @@ build/packaging surface is `stockpilot-core/Dockerfile` and
 | [001](docs/adr/001-agent-environment-boundary.md) | Two services, HTTP-only, separate databases — why the environment/agent split is load-bearing, not decorative |
 | [002](docs/adr/002-postgresql.md) | PostgreSQL over the alternatives, and the SQLite test-fixture tradeoffs that follow from it |
 | [003](docs/adr/003-provenance-model.md) | The four-label provenance model and where it's enforced |
+| [004](docs/adr/004-grounded-output-validation.md) | Every model-output figure is grounded in a retrieved tool value and validated before serving |
 | [006](docs/adr/006-evaluation-strategy.md) | The 10-scenario eval suite's scoring methodology and its scripted-LLM scope |
 | [007](docs/adr/007-multi-provider-fallback.md) | The provider-layer fallback chain, the conversation-pinning fix, and both live-found Groq bugs |
 
