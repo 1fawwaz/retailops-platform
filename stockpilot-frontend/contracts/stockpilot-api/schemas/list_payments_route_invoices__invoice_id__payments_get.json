@@ -1,0 +1,59 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/PaymentRead"
+  },
+  "title": "Response List Payments Route Invoices  Invoice Id  Payments Get",
+  "$defs": {
+    "PaymentRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "invoice_id": {
+          "type": "integer",
+          "title": "Invoice Id"
+        },
+        "amount": {
+          "type": "number",
+          "title": "Amount"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Method"
+        },
+        "paid_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Paid At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "invoice_id",
+        "amount",
+        "method",
+        "paid_at"
+      ],
+      "title": "PaymentRead",
+      "examples": [
+        {
+          "amount": 24.95,
+          "id": 1,
+          "invoice_id": 1,
+          "method": "bank_transfer",
+          "paid_at": "2026-02-02T09:00:00Z"
+        }
+      ]
+    }
+  }
+}

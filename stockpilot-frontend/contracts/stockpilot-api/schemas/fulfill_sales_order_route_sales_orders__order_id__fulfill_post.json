@@ -1,0 +1,120 @@
+{
+  "$ref": "#/$defs/SalesOrderRead",
+  "$defs": {
+    "SalesOrderLineRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "sku": {
+          "type": "string",
+          "title": "Sku"
+        },
+        "quantity": {
+          "type": "integer",
+          "title": "Quantity"
+        },
+        "unit_price": {
+          "type": "number",
+          "title": "Unit Price"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "sku",
+        "quantity",
+        "unit_price"
+      ],
+      "title": "SalesOrderLineRead",
+      "examples": [
+        {
+          "id": 1,
+          "quantity": 5,
+          "sku": "85048",
+          "unit_price": 4.99
+        }
+      ]
+    },
+    "SalesOrderRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "customer_id": {
+          "type": "integer",
+          "title": "Customer Id"
+        },
+        "warehouse_id": {
+          "type": "integer",
+          "title": "Warehouse Id"
+        },
+        "status": {
+          "type": "string",
+          "title": "Status"
+        },
+        "created_by_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created By User Id"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Updated At"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/SalesOrderLineRead"
+          },
+          "type": "array",
+          "title": "Lines"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "customer_id",
+        "warehouse_id",
+        "status",
+        "created_by_user_id",
+        "created_at",
+        "updated_at",
+        "lines"
+      ],
+      "title": "SalesOrderRead",
+      "examples": [
+        {
+          "created_at": "2026-02-01T09:00:00Z",
+          "created_by_user_id": 4,
+          "customer_id": 1,
+          "id": 1,
+          "lines": [
+            {
+              "id": 1,
+              "quantity": 5,
+              "sku": "85048",
+              "unit_price": 4.99
+            }
+          ],
+          "status": "draft",
+          "updated_at": "2026-02-01T09:00:00Z",
+          "warehouse_id": 1
+        }
+      ]
+    }
+  }
+}

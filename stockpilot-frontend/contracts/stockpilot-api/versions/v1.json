@@ -87,24 +87,168 @@
         }
       }
     },
-    "/products": {
-      "get": {
+    "/auth/logout": {
+      "post": {
         "tags": [
-          "products"
+          "auth"
         ],
-        "summary": "List Products Route",
-        "operationId": "list_products_route_products_get",
+        "summary": "Logout",
+        "operationId": "logout_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Refresh",
+        "operationId": "refresh_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ProductRead"
-                  },
-                  "type": "array",
-                  "title": "Response List Products Route Products Get"
+                  "$ref": "#/components/schemas/AccessTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password-reset/request": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Request Password Reset",
+        "operationId": "request_password_reset_auth_password_reset_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password-reset/confirm": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Confirm Password Reset",
+        "operationId": "confirm_password_reset_auth_password_reset_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeRead"
                 }
               }
             }
@@ -115,6 +259,103 @@
             "OAuth2PasswordBearer": []
           }
         ]
+      }
+    },
+    "/products": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "List Products Route",
+        "operationId": "list_products_route_products_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductRead"
+                  },
+                  "title": "Response List Products Route Products Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
         "tags": [
@@ -122,15 +363,20 @@
         ],
         "summary": "Create Product Route",
         "operationId": "create_product_route_products_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ProductCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -153,12 +399,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
+        }
       }
     },
     "/products/{sku}": {
@@ -299,6 +540,205 @@
             }
           }
         }
+      }
+    },
+    "/products/{sku}/history": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Get Product History Route",
+        "operationId": "get_product_history_route_products__sku__history_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sku"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductHistoryEntry"
+                  },
+                  "title": "Response Get Product History Route Products  Sku  History Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "List Categories Route",
+        "operationId": "list_categories_route_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Categories Route Categories Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Create Category Route",
+        "operationId": "create_category_route_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/brands": {
+      "get": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "List Brands Route",
+        "operationId": "list_brands_route_brands_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrandRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Brands Route Brands Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "Create Brand Route",
+        "operationId": "create_brand_route_brands_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/suppliers": {
@@ -513,6 +953,299 @@
             }
           }
         }
+      }
+    },
+    "/suppliers/{supplier_id}/contacts": {
+      "get": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "List Contacts Route",
+        "operationId": "list_contacts_route_suppliers__supplier_id__contacts_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Supplier Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierContactRead"
+                  },
+                  "title": "Response List Contacts Route Suppliers  Supplier Id  Contacts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "Create Contact Route",
+        "operationId": "create_contact_route_suppliers__supplier_id__contacts_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Supplier Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierContactCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierContactRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suppliers/{supplier_id}/contacts/{contact_id}": {
+      "put": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "Update Contact Route",
+        "operationId": "update_contact_route_suppliers__supplier_id__contacts__contact_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Supplier Id"
+            }
+          },
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierContactUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierContactRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "suppliers"
+        ],
+        "summary": "Delete Contact Route",
+        "operationId": "delete_contact_route_suppliers__supplier_id__contacts__contact_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Supplier Id"
+            }
+          },
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/warehouses": {
+      "get": {
+        "tags": [
+          "warehouses"
+        ],
+        "summary": "List Warehouses Route",
+        "operationId": "list_warehouses_route_warehouses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WarehouseRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Warehouses Route Warehouses Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "warehouses"
+        ],
+        "summary": "Create Warehouse Route",
+        "operationId": "create_warehouse_route_warehouses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarehouseRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/inventory/stock": {
@@ -734,6 +1467,24 @@
             }
           },
           {
+            "name": "as_of_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO date for historical analysis",
+              "title": "As Of Date"
+            },
+            "description": "ISO date for historical analysis"
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -819,6 +1570,24 @@
               "default": 0.2,
               "title": "Velocity Threshold"
             }
+          },
+          {
+            "name": "as_of_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO date for historical analysis",
+              "title": "As Of Date"
+            },
+            "description": "ISO date for historical analysis"
           },
           {
             "name": "limit",
@@ -909,6 +1678,1588 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InventoryValuation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/{sku}/ledger": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Get Inventory Ledger",
+        "operationId": "get_inventory_ledger_inventory__sku__ledger_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sku"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerEntry"
+                  },
+                  "title": "Response Get Inventory Ledger Inventory  Sku  Ledger Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/transfers": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Create Transfer",
+        "operationId": "create_transfer_inventory_transfers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/inventory/adjustments": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Create Adjustment",
+        "operationId": "create_adjustment_inventory_adjustments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/purchase-orders": {
+      "get": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "List Purchase Orders Route",
+        "operationId": "list_purchase_orders_route_purchase_orders_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "supplier_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Supplier Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PurchaseOrderRead"
+                  },
+                  "title": "Response List Purchase Orders Route Purchase Orders Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Create Purchase Order Route",
+        "operationId": "create_purchase_order_route_purchase_orders_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrderCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/purchase-orders/{po_id}": {
+      "get": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Get Purchase Order Route",
+        "operationId": "get_purchase_order_route_purchase_orders__po_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Update Purchase Order Route",
+        "operationId": "update_purchase_order_route_purchase_orders__po_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrderUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/purchase-orders/{po_id}/submit": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Submit Purchase Order Route",
+        "operationId": "submit_purchase_order_route_purchase_orders__po_id__submit_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/purchase-orders/{po_id}/approve": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Approve Purchase Order Route",
+        "operationId": "approve_purchase_order_route_purchase_orders__po_id__approve_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/purchase-orders/{po_id}/cancel": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Cancel Purchase Order Route",
+        "operationId": "cancel_purchase_order_route_purchase_orders__po_id__cancel_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/purchase-orders/{po_id}/close": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Close Purchase Order Route",
+        "operationId": "close_purchase_order_route_purchase_orders__po_id__close_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/purchase-orders/{po_id}/receive": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Receive Purchase Order Route",
+        "operationId": "receive_purchase_order_route_purchase_orders__po_id__receive_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "List Customers Route",
+        "operationId": "list_customers_route_customers_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerRead"
+                  },
+                  "title": "Response List Customers Route Customers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Create Customer Route",
+        "operationId": "create_customer_route_customers_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{customer_id}": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Get Customer Route",
+        "operationId": "get_customer_route_customers__customer_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Update Customer Route",
+        "operationId": "update_customer_route_customers__customer_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Delete Customer Route",
+        "operationId": "delete_customer_route_customers__customer_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers/{customer_id}/orders": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "List Customer Orders Route",
+        "operationId": "list_customer_orders_route_customers__customer_id__orders_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SalesOrderRead"
+                  },
+                  "title": "Response List Customer Orders Route Customers  Customer Id  Orders Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales-orders": {
+      "get": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "List Sales Orders Route",
+        "operationId": "list_sales_orders_route_sales_orders_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SalesOrderRead"
+                  },
+                  "title": "Response List Sales Orders Route Sales Orders Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Create Sales Order Route",
+        "operationId": "create_sales_order_route_sales_orders_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrderCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales-orders/{order_id}": {
+      "get": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Get Sales Order Route",
+        "operationId": "get_sales_order_route_sales_orders__order_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Update Sales Order Route",
+        "operationId": "update_sales_order_route_sales_orders__order_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesOrderUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales-orders/{order_id}/confirm": {
+      "post": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Confirm Sales Order Route",
+        "operationId": "confirm_sales_order_route_sales_orders__order_id__confirm_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales-orders/{order_id}/fulfill": {
+      "post": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Fulfill Sales Order Route",
+        "operationId": "fulfill_sales_order_route_sales_orders__order_id__fulfill_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales-orders/{order_id}/cancel": {
+      "post": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Cancel Sales Order Route",
+        "operationId": "cancel_sales_order_route_sales_orders__order_id__cancel_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrderRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales-orders/{order_id}/invoice": {
+      "get": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Get Invoice For Order Route",
+        "operationId": "get_invoice_for_order_route_sales_orders__order_id__invoice_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoices": {
+      "get": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "List Invoices Route",
+        "operationId": "list_invoices_route_invoices_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InvoiceRead"
+                  },
+                  "title": "Response List Invoices Route Invoices Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoices/{invoice_id}": {
+      "get": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Get Invoice Route",
+        "operationId": "get_invoice_route_invoices__invoice_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoices/{invoice_id}/payments": {
+      "get": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "List Payments Route",
+        "operationId": "list_payments_route_invoices__invoice_id__payments_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentRead"
+                  },
+                  "title": "Response List Payments Route Invoices  Invoice Id  Payments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Record Payment Route",
+        "operationId": "record_payment_route_invoices__invoice_id__payments_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRead"
                 }
               }
             }
@@ -1492,6 +3843,62 @@
         }
       }
     },
+    "/analytics/suppliers": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Supplier Rollup Route",
+        "operationId": "get_supplier_rollup_route_analytics_suppliers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierRollup"
+                  },
+                  "type": "array",
+                  "title": "Response Get Supplier Rollup Route Analytics Suppliers Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/analytics/purchase-order-kpis": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get Purchase Order Kpis Route",
+        "operationId": "get_purchase_order_kpis_route_analytics_purchase_order_kpis_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderKpis"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
     "/analytics/period-comparison": {
       "get": {
         "tags": [
@@ -1646,6 +4053,619 @@
         ]
       }
     },
+    "/roles": {
+      "get": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "List Roles Route",
+        "operationId": "list_roles_route_roles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Roles Route Roles Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Create Role Route",
+        "operationId": "create_role_route_roles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/roles/{role_id}": {
+      "put": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Update Role Route",
+        "operationId": "update_role_route_roles__role_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List Users Route",
+        "operationId": "list_users_route_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserWithRolesRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Users Route Users Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/users/{user_id}": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get User Route",
+        "operationId": "get_user_route_users__user_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithRolesRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{user_id}/roles/{role_id}": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Assign Role Route",
+        "operationId": "assign_role_route_users__user_id__roles__role_id__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithRolesRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Revoke Role Route",
+        "operationId": "revoke_role_route_users__user_id__roles__role_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithRolesRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit-logs": {
+      "get": {
+        "tags": [
+          "audit-logs"
+        ],
+        "summary": "List Audit Logs Route",
+        "operationId": "list_audit_logs_route_audit_logs_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "permission",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Permission"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditLogRead"
+                  },
+                  "title": "Response List Audit Logs Route Audit Logs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List Notifications Route",
+        "operationId": "list_notifications_route_notifications_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "unread_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Unread Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationRead"
+                  },
+                  "title": "Response List Notifications Route Notifications Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/{notification_id}": {
+      "patch": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark Notification Read Route",
+        "operationId": "mark_notification_read_route_notifications__notification_id__patch",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Notification Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationMarkRead"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/mark-all-read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark All Notifications Read Route",
+        "operationId": "mark_all_notifications_read_route_notifications_mark_all_read_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Settings Route",
+        "operationId": "get_settings_route_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Settings Route",
+        "operationId": "update_settings_route_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -1727,6 +4747,122 @@
           }
         ]
       },
+      "AccessTokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "AccessTokenResponse",
+        "examples": [
+          {
+            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "refresh_token": "8iQ2z...opaque-token...x9F",
+            "token_type": "bearer"
+          }
+        ]
+      },
+      "AdjustmentRequest": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "quantity_delta": {
+            "type": "integer",
+            "title": "Quantity Delta"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "warehouse_id",
+          "quantity_delta",
+          "reason"
+        ],
+        "title": "AdjustmentRequest",
+        "examples": [
+          {
+            "quantity_delta": -3,
+            "reason": "Cycle count correction",
+            "sku": "85048",
+            "warehouse_id": 1
+          }
+        ]
+      },
+      "AuditLogRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "permission": {
+            "type": "string",
+            "title": "Permission"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "permission",
+          "method",
+          "path",
+          "created_at"
+        ],
+        "title": "AuditLogRead",
+        "examples": [
+          {
+            "created_at": "2026-02-01T09:00:00Z",
+            "id": 1,
+            "method": "POST",
+            "path": "/purchase-orders/1/approve",
+            "permission": "purchase_order:update",
+            "user_id": 4
+          }
+        ]
+      },
       "Body_login_auth_login_post": {
         "properties": {
           "grant_type": {
@@ -1785,6 +4921,285 @@
           "password"
         ],
         "title": "Body_login_auth_login_post"
+      },
+      "BrandCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "BrandCreate",
+        "examples": [
+          {
+            "name": "Acme Housewares"
+          }
+        ]
+      },
+      "BrandRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "title": "BrandRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 1,
+            "name": "Acme Housewares"
+          }
+        ]
+      },
+      "CategoryCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CategoryCreate",
+        "examples": [
+          {
+            "name": "Decorations"
+          }
+        ]
+      },
+      "CategoryRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "title": "CategoryRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 3,
+            "name": "Decorations"
+          }
+        ]
+      },
+      "CustomerCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CustomerCreate",
+        "examples": [
+          {
+            "country": "United Kingdom",
+            "email": "priya@example.com",
+            "name": "Priya Shah",
+            "phone": "+44 20 7946 0958"
+          }
+        ]
+      },
+      "CustomerRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "phone",
+          "country",
+          "created_at"
+        ],
+        "title": "CustomerRead",
+        "examples": [
+          {
+            "country": "United Kingdom",
+            "created_at": "2026-01-01T00:00:00Z",
+            "email": "priya@example.com",
+            "id": 1,
+            "name": "Priya Shah",
+            "phone": "+44 20 7946 0958"
+          }
+        ]
+      },
+      "CustomerUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          }
+        },
+        "type": "object",
+        "title": "CustomerUpdate",
+        "examples": [
+          {
+            "phone": "+44 20 7946 0000"
+          }
+        ]
       },
       "DeadStockItem": {
         "properties": {
@@ -2098,6 +5513,171 @@
           }
         ]
       },
+      "InvoiceRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sales_order_id": {
+            "type": "integer",
+            "title": "Sales Order Id"
+          },
+          "total_amount": {
+            "type": "number",
+            "title": "Total Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Issued At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sales_order_id",
+          "total_amount",
+          "status",
+          "issued_at"
+        ],
+        "title": "InvoiceRead",
+        "examples": [
+          {
+            "id": 1,
+            "issued_at": "2026-02-01T09:00:00Z",
+            "sales_order_id": 1,
+            "status": "unpaid",
+            "total_amount": 24.95
+          }
+        ]
+      },
+      "LedgerEntry": {
+        "properties": {
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "movement_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Movement Date"
+          },
+          "quantity_delta": {
+            "type": "integer",
+            "title": "Quantity Delta"
+          },
+          "movement_type": {
+            "type": "string",
+            "title": "Movement Type"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "provenance": {
+            "type": "string",
+            "title": "Provenance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "warehouse_id",
+          "movement_date",
+          "quantity_delta",
+          "movement_type",
+          "reference",
+          "provenance"
+        ],
+        "title": "LedgerEntry",
+        "description": "One stock_movements row for a SKU, across all warehouses. Carries\nits own provenance label rather than the ProvenanceMixin dict, since\nsale-driven and injected-PO rows are derived/observed differently\nper row -- same reasoning as MovementHistoryEntry in schemas/product.py.",
+        "examples": [
+          {
+            "movement_date": "2026-01-14T00:00:00Z",
+            "movement_type": "sale",
+            "provenance": "observed",
+            "quantity_delta": -12,
+            "warehouse_id": 1
+          }
+        ]
+      },
+      "LogoutRequest": {
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "title": "LogoutRequest",
+        "examples": [
+          {
+            "refresh_token": "8iQ2z...opaque-token...x9F"
+          }
+        ]
+      },
+      "MeRead": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserRead"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "roles",
+          "permissions"
+        ],
+        "title": "MeRead",
+        "description": "docs/ARCHITECTURE.md \u00a76: the ONE call both a profile page and the\nRBAC layer share, not two separate endpoints computing the same\nthing differently. Extended here (Backend Module 10) now that real\nroles/permissions data exists to resolve -- Backend Module 1 shipped\nthis endpoint returning profile only, deliberately, since this data\ndidn't exist yet.",
+        "examples": [
+          {
+            "permissions": [
+              "inventory:read",
+              "inventory:update",
+              "products:read"
+            ],
+            "roles": [
+              "inventory_manager"
+            ],
+            "user": {
+              "created_at": "2026-01-01T00:00:00Z",
+              "email": "demo@retailops.local",
+              "id": 1,
+              "is_active": true,
+              "is_read_only": false
+            }
+          }
+        ]
+      },
       "MovementHistoryEntry": {
         "properties": {
           "movement_date": {
@@ -2133,6 +5713,216 @@
             "movement_type": "sale",
             "provenance": "observed",
             "quantity_delta": -12
+          }
+        ]
+      },
+      "NotificationMarkRead": {
+        "properties": {
+          "is_read": {
+            "type": "boolean",
+            "title": "Is Read",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "NotificationMarkRead",
+        "examples": [
+          {
+            "is_read": true
+          }
+        ]
+      },
+      "NotificationRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Type"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "is_read": {
+            "type": "boolean",
+            "title": "Is Read"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "message",
+          "resource_type",
+          "resource_id",
+          "is_read",
+          "created_at"
+        ],
+        "title": "NotificationRead",
+        "examples": [
+          {
+            "created_at": "2026-02-01T09:00:00Z",
+            "id": 1,
+            "is_read": false,
+            "message": "'85048' has crossed its reorder point (95 <= 120)",
+            "resource_id": "85048",
+            "resource_type": "product",
+            "type": "low_stock"
+          }
+        ]
+      },
+      "PasswordResetConfirm": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "new_password": {
+            "type": "string",
+            "minLength": 8,
+            "title": "New Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "title": "PasswordResetConfirm",
+        "examples": [
+          {
+            "new_password": "a-new-strong-password",
+            "token": "8iQ2z...opaque-token...x9F"
+          }
+        ]
+      },
+      "PasswordResetRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "PasswordResetRequest",
+        "examples": [
+          {
+            "email": "analyst@retailops.local"
+          }
+        ]
+      },
+      "PaymentCreate": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "PaymentCreate",
+        "examples": [
+          {
+            "amount": 24.95,
+            "method": "bank_transfer"
+          }
+        ]
+      },
+      "PaymentRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "invoice_id": {
+            "type": "integer",
+            "title": "Invoice Id"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "paid_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paid At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "invoice_id",
+          "amount",
+          "method",
+          "paid_at"
+        ],
+        "title": "PaymentRead",
+        "examples": [
+          {
+            "amount": 24.95,
+            "id": 1,
+            "invoice_id": 1,
+            "method": "bank_transfer",
+            "paid_at": "2026-02-02T09:00:00Z"
           }
         ]
       },
@@ -2380,6 +6170,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -2390,6 +6191,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [
@@ -2421,10 +6233,12 @@
         "title": "ProductCreate",
         "examples": [
           {
+            "brand_id": 1,
             "category_id": 3,
             "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
             "reorder_point": 120,
             "safety_stock": 40,
+            "sale_price": 4.99,
             "sku": "85048",
             "supplier_id": 7,
             "unit_cost": 2.15
@@ -2484,6 +6298,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -2494,6 +6319,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [
@@ -2548,7 +6384,9 @@
           "description",
           "category_id",
           "supplier_id",
+          "brand_id",
           "unit_cost",
+          "sale_price",
           "reorder_point",
           "safety_stock",
           "created_at",
@@ -2562,6 +6400,7 @@
               "quantity_on_hand": "data-derivation.md#stock-ledger",
               "reorder_point": "data-derivation.md#reorder-point",
               "safety_stock": "data-derivation.md#reorder-point",
+              "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
               "unit_cost": "data-derivation.md#cost-price"
             },
             "_provenance": {
@@ -2569,9 +6408,11 @@
               "quantity_on_hand": "derived",
               "reorder_point": "derived",
               "safety_stock": "derived",
+              "sale_price": "derived",
               "sku": "observed",
               "unit_cost": "derived"
             },
+            "brand_id": 1,
             "category_id": 3,
             "created_at": "2026-01-01T00:00:00Z",
             "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
@@ -2586,9 +6427,75 @@
             "quantity_on_hand": 96,
             "reorder_point": 120,
             "safety_stock": 40,
+            "sale_price": 4.99,
             "sku": "85048",
             "supplier_id": 7,
             "unit_cost": 2.15
+          }
+        ]
+      },
+      "ProductHistoryEntry": {
+        "properties": {
+          "field_name": {
+            "type": "string",
+            "title": "Field Name"
+          },
+          "old_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Value"
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          },
+          "changed_by_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed By User Id"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Changed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field_name",
+          "old_value",
+          "new_value",
+          "changed_by_user_id",
+          "changed_at"
+        ],
+        "title": "ProductHistoryEntry",
+        "description": "One product_history row: a single field-level change. old_value\nand new_value are stringified since the changed field's type varies\n(int, float, str) -- an audit trail, not business data, so no\nprovenance labelling.",
+        "examples": [
+          {
+            "changed_at": "2026-02-01T09:00:00Z",
+            "changed_by_user_id": 4,
+            "field_name": "unit_cost",
+            "new_value": "2.25",
+            "old_value": "2.15"
           }
         ]
       },
@@ -2722,6 +6629,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -2732,6 +6650,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [
@@ -2768,7 +6697,9 @@
           "description",
           "category_id",
           "supplier_id",
+          "brand_id",
           "unit_cost",
+          "sale_price",
           "reorder_point",
           "safety_stock",
           "created_at"
@@ -2779,20 +6710,24 @@
             "_derivation_ref": {
               "reorder_point": "data-derivation.md#reorder-point",
               "safety_stock": "data-derivation.md#reorder-point",
+              "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
               "unit_cost": "data-derivation.md#cost-price"
             },
             "_provenance": {
               "description": "observed",
               "reorder_point": "derived",
               "safety_stock": "derived",
+              "sale_price": "derived",
               "sku": "observed",
               "unit_cost": "derived"
             },
+            "brand_id": 1,
             "category_id": 3,
             "created_at": "2026-01-01T00:00:00Z",
             "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
             "reorder_point": 120,
             "safety_stock": 40,
+            "sale_price": 4.99,
             "sku": "85048",
             "supplier_id": 7,
             "unit_cost": 2.15
@@ -2834,6 +6769,17 @@
             ],
             "title": "Supplier Id"
           },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
           "unit_cost": {
             "anyOf": [
               {
@@ -2844,6 +6790,17 @@
               }
             ],
             "title": "Unit Cost"
+          },
+          "sale_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price"
           },
           "reorder_point": {
             "anyOf": [
@@ -2948,6 +6905,392 @@
           }
         ]
       },
+      "PurchaseOrderCreate": {
+        "properties": {
+          "supplier_id": {
+            "type": "integer",
+            "title": "Supplier Id"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLineCreate"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier_id",
+          "warehouse_id",
+          "lines"
+        ],
+        "title": "PurchaseOrderCreate",
+        "examples": [
+          {
+            "lines": [
+              {
+                "quantity_ordered": 200,
+                "sku": "85048",
+                "unit_cost": 2.15
+              }
+            ],
+            "supplier_id": 7,
+            "warehouse_id": 1
+          }
+        ]
+      },
+      "PurchaseOrderKpis": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "open_purchase_order_count": {
+            "type": "integer",
+            "title": "Open Purchase Order Count"
+          },
+          "avg_days_to_receive": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Days To Receive"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "open_purchase_order_count",
+          "avg_days_to_receive"
+        ],
+        "title": "PurchaseOrderKpis",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "avg_days_to_receive": "derived",
+              "open_purchase_order_count": "derived"
+            },
+            "avg_days_to_receive": 6.5,
+            "open_purchase_order_count": 4
+          }
+        ]
+      },
+      "PurchaseOrderLineCreate": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "quantity_ordered": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity Ordered"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "quantity_ordered"
+        ],
+        "title": "PurchaseOrderLineCreate",
+        "examples": [
+          {
+            "quantity_ordered": 200,
+            "sku": "85048"
+          }
+        ]
+      },
+      "PurchaseOrderLineRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "quantity_ordered": {
+            "type": "integer",
+            "title": "Quantity Ordered"
+          },
+          "quantity_received": {
+            "type": "integer",
+            "title": "Quantity Received"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Cost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sku",
+          "quantity_ordered",
+          "quantity_received",
+          "unit_cost"
+        ],
+        "title": "PurchaseOrderLineRead",
+        "examples": [
+          {
+            "id": 1,
+            "quantity_ordered": 200,
+            "quantity_received": 0,
+            "sku": "85048",
+            "unit_cost": 2.15
+          }
+        ]
+      },
+      "PurchaseOrderRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "supplier_id": {
+            "type": "integer",
+            "title": "Supplier Id"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLineRead"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "supplier_id",
+          "warehouse_id",
+          "status",
+          "created_by_user_id",
+          "created_at",
+          "updated_at",
+          "lines"
+        ],
+        "title": "PurchaseOrderRead",
+        "examples": [
+          {
+            "created_at": "2026-02-01T09:00:00Z",
+            "created_by_user_id": 4,
+            "id": 1,
+            "lines": [
+              {
+                "id": 1,
+                "quantity_ordered": 200,
+                "quantity_received": 0,
+                "sku": "85048",
+                "unit_cost": 2.15
+              }
+            ],
+            "status": "draft",
+            "supplier_id": 7,
+            "updated_at": "2026-02-01T09:00:00Z",
+            "warehouse_id": 1
+          }
+        ]
+      },
+      "PurchaseOrderUpdate": {
+        "properties": {
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PurchaseOrderLineCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "title": "PurchaseOrderUpdate",
+        "description": "Only valid while the PO is still Draft (docs/PRODUCT-SPEC.md \u00a712).\nLines, if provided, wholesale-replace the PO's existing lines.",
+        "examples": [
+          {
+            "lines": [
+              {
+                "quantity_ordered": 250,
+                "sku": "85048"
+              }
+            ]
+          }
+        ]
+      },
+      "ReceiveLineRequest": {
+        "properties": {
+          "line_id": {
+            "type": "integer",
+            "title": "Line Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "over_receipt_confirmed": {
+            "type": "boolean",
+            "title": "Over Receipt Confirmed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "line_id",
+          "quantity"
+        ],
+        "title": "ReceiveLineRequest",
+        "examples": [
+          {
+            "line_id": 1,
+            "over_receipt_confirmed": false,
+            "quantity": 200
+          }
+        ]
+      },
+      "ReceiveRequest": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiveLineRequest"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines"
+        ],
+        "title": "ReceiveRequest",
+        "examples": [
+          {
+            "lines": [
+              {
+                "line_id": 1,
+                "over_receipt_confirmed": false,
+                "quantity": 200
+              }
+            ]
+          }
+        ]
+      },
+      "RefreshRequest": {
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshRequest",
+        "examples": [
+          {
+            "refresh_token": "8iQ2z...opaque-token...x9F"
+          }
+        ]
+      },
       "RevenuePeriod": {
         "properties": {
           "_provenance": {
@@ -2995,6 +7338,424 @@
             "period": "2011-11",
             "revenue": 801102.97,
             "units": 445513
+          }
+        ]
+      },
+      "RoleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "title": "RoleCreate",
+        "examples": [
+          {
+            "name": "warehouse_clerk",
+            "permissions": [
+              "inventory:read"
+            ]
+          }
+        ]
+      },
+      "RoleRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "permissions",
+          "created_at"
+        ],
+        "title": "RoleRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 1,
+            "name": "inventory_manager",
+            "permissions": [
+              "inventory:read",
+              "inventory:update"
+            ]
+          }
+        ]
+      },
+      "RoleUpdate": {
+        "properties": {
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "permissions"
+        ],
+        "title": "RoleUpdate",
+        "examples": [
+          {
+            "permissions": [
+              "inventory:read",
+              "inventory:update"
+            ]
+          }
+        ]
+      },
+      "SalesOrderCreate": {
+        "properties": {
+          "customer_id": {
+            "type": "integer",
+            "title": "Customer Id"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SalesOrderLineCreate"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer_id",
+          "warehouse_id",
+          "lines"
+        ],
+        "title": "SalesOrderCreate",
+        "examples": [
+          {
+            "customer_id": 1,
+            "lines": [
+              {
+                "quantity": 5,
+                "sku": "85048",
+                "unit_price": 4.99
+              }
+            ],
+            "warehouse_id": 1
+          }
+        ]
+      },
+      "SalesOrderLineCreate": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Unit Price"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "quantity",
+          "unit_price"
+        ],
+        "title": "SalesOrderLineCreate",
+        "examples": [
+          {
+            "quantity": 5,
+            "sku": "85048",
+            "unit_price": 4.99
+          }
+        ]
+      },
+      "SalesOrderLineRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "type": "number",
+            "title": "Unit Price"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sku",
+          "quantity",
+          "unit_price"
+        ],
+        "title": "SalesOrderLineRead",
+        "examples": [
+          {
+            "id": 1,
+            "quantity": 5,
+            "sku": "85048",
+            "unit_price": 4.99
+          }
+        ]
+      },
+      "SalesOrderRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "customer_id": {
+            "type": "integer",
+            "title": "Customer Id"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "title": "Warehouse Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SalesOrderLineRead"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "customer_id",
+          "warehouse_id",
+          "status",
+          "created_by_user_id",
+          "created_at",
+          "updated_at",
+          "lines"
+        ],
+        "title": "SalesOrderRead",
+        "examples": [
+          {
+            "created_at": "2026-02-01T09:00:00Z",
+            "created_by_user_id": 4,
+            "customer_id": 1,
+            "id": 1,
+            "lines": [
+              {
+                "id": 1,
+                "quantity": 5,
+                "sku": "85048",
+                "unit_price": 4.99
+              }
+            ],
+            "status": "draft",
+            "updated_at": "2026-02-01T09:00:00Z",
+            "warehouse_id": 1
+          }
+        ]
+      },
+      "SalesOrderUpdate": {
+        "properties": {
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "warehouse_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse Id"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SalesOrderLineCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "title": "SalesOrderUpdate",
+        "description": "Only valid while the order is still Draft.",
+        "examples": [
+          {
+            "lines": [
+              {
+                "quantity": 8,
+                "sku": "85048",
+                "unit_price": 4.99
+              }
+            ]
+          }
+        ]
+      },
+      "SettingsRead": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "low_stock_notifications_enabled": {
+            "type": "boolean",
+            "title": "Low Stock Notifications Enabled"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "timezone",
+          "low_stock_notifications_enabled",
+          "updated_at"
+        ],
+        "title": "SettingsRead",
+        "examples": [
+          {
+            "currency": "GBP",
+            "low_stock_notifications_enabled": true,
+            "timezone": "Europe/London",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        ]
+      },
+      "SettingsUpdate": {
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "low_stock_notifications_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Stock Notifications Enabled"
+          }
+        },
+        "type": "object",
+        "title": "SettingsUpdate",
+        "examples": [
+          {
+            "currency": "GBP"
           }
         ]
       },
@@ -3281,6 +8042,191 @@
           }
         ]
       },
+      "SupplierContactCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "SupplierContactCreate",
+        "examples": [
+          {
+            "email": "priya@acmewholesale.example",
+            "name": "Priya Shah",
+            "phone": "+44 20 7946 0958",
+            "role": "Account Manager"
+          }
+        ]
+      },
+      "SupplierContactRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "supplier_id": {
+            "type": "integer",
+            "title": "Supplier Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "supplier_id",
+          "name",
+          "email",
+          "phone",
+          "role",
+          "created_at"
+        ],
+        "title": "SupplierContactRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "email": "priya@acmewholesale.example",
+            "id": 1,
+            "name": "Priya Shah",
+            "phone": "+44 20 7946 0958",
+            "role": "Account Manager",
+            "supplier_id": 7
+          }
+        ]
+      },
+      "SupplierContactUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "title": "SupplierContactUpdate",
+        "examples": [
+          {
+            "phone": "+44 20 7946 0000"
+          }
+        ]
+      },
       "SupplierCreate": {
         "properties": {
           "name": {
@@ -3457,6 +8403,104 @@
           }
         ]
       },
+      "SupplierRollup": {
+        "properties": {
+          "_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Provenance"
+          },
+          "_derivation_ref": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Derivation Ref"
+          },
+          "supplier_id": {
+            "type": "integer",
+            "title": "Supplier Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "lead_time_days": {
+            "type": "integer",
+            "title": "Lead Time Days"
+          },
+          "reliability_score": {
+            "type": "number",
+            "title": "Reliability Score"
+          },
+          "sku_count": {
+            "type": "integer",
+            "title": "Sku Count"
+          },
+          "total_inventory_value": {
+            "type": "number",
+            "title": "Total Inventory Value"
+          },
+          "open_purchase_order_count": {
+            "type": "integer",
+            "title": "Open Purchase Order Count"
+          },
+          "total_purchase_order_count": {
+            "type": "integer",
+            "title": "Total Purchase Order Count"
+          },
+          "on_time_delivery_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Time Delivery Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "_provenance",
+          "supplier_id",
+          "name",
+          "lead_time_days",
+          "reliability_score",
+          "sku_count",
+          "total_inventory_value",
+          "open_purchase_order_count",
+          "total_purchase_order_count",
+          "on_time_delivery_rate"
+        ],
+        "title": "SupplierRollup",
+        "examples": [
+          {
+            "_derivation_ref": {},
+            "_provenance": {
+              "lead_time_days": "derived",
+              "on_time_delivery_rate": "derived",
+              "open_purchase_order_count": "derived",
+              "reliability_score": "derived",
+              "sku_count": "derived",
+              "total_inventory_value": "derived",
+              "total_purchase_order_count": "derived"
+            },
+            "lead_time_days": 7,
+            "name": "Acme Wholesale Co",
+            "on_time_delivery_rate": 0.85,
+            "open_purchase_order_count": 2,
+            "reliability_score": 0.92,
+            "sku_count": 42,
+            "supplier_id": 7,
+            "total_inventory_value": 18420.5,
+            "total_purchase_order_count": 9
+          }
+        ]
+      },
       "SupplierUpdate": {
         "properties": {
           "name": {
@@ -3507,6 +8551,10 @@
             "type": "string",
             "title": "Access Token"
           },
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token"
+          },
           "token_type": {
             "type": "string",
             "title": "Token Type",
@@ -3515,13 +8563,64 @@
         },
         "type": "object",
         "required": [
-          "access_token"
+          "access_token",
+          "refresh_token"
         ],
         "title": "Token",
         "examples": [
           {
             "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "refresh_token": "8iQ2z...opaque-token...x9F",
             "token_type": "bearer"
+          }
+        ]
+      },
+      "TransferRequest": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "from_warehouse_id": {
+            "type": "integer",
+            "title": "From Warehouse Id"
+          },
+          "to_warehouse_id": {
+            "type": "integer",
+            "title": "To Warehouse Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "from_warehouse_id",
+          "to_warehouse_id",
+          "quantity"
+        ],
+        "title": "TransferRequest",
+        "examples": [
+          {
+            "from_warehouse_id": 1,
+            "quantity": 20,
+            "reason": "Rebalancing ahead of regional promotion",
+            "sku": "85048",
+            "to_warehouse_id": 2
           }
         ]
       },
@@ -3666,6 +8765,62 @@
           }
         ]
       },
+      "UserWithRolesRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_read_only": {
+            "type": "boolean",
+            "title": "Is Read Only"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "is_active",
+          "is_read_only",
+          "created_at",
+          "roles"
+        ],
+        "title": "UserWithRolesRead",
+        "description": "docs/BUILD.md Backend Module 10's GET /users -- a user's profile\nplus their assigned role names, for role management.",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "email": "demo@retailops.local",
+            "id": 1,
+            "is_active": true,
+            "is_read_only": false,
+            "roles": [
+              "inventory_manager"
+            ]
+          }
+        ]
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -3763,6 +8918,55 @@
             "category": "Decorations",
             "inventory_value": 26832.5,
             "quantity_on_hand": 12480
+          }
+        ]
+      },
+      "WarehouseCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "WarehouseCreate",
+        "examples": [
+          {
+            "name": "North Depot"
+          }
+        ]
+      },
+      "WarehouseRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "title": "WarehouseRead",
+        "examples": [
+          {
+            "created_at": "2026-01-01T00:00:00Z",
+            "id": 1,
+            "name": "Main Warehouse"
           }
         ]
       }

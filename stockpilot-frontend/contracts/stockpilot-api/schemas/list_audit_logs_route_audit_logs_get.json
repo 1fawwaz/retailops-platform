@@ -1,0 +1,58 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/AuditLogRead"
+  },
+  "title": "Response List Audit Logs Route Audit Logs Get",
+  "$defs": {
+    "AuditLogRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "user_id": {
+          "type": "integer",
+          "title": "User Id"
+        },
+        "permission": {
+          "type": "string",
+          "title": "Permission"
+        },
+        "method": {
+          "type": "string",
+          "title": "Method"
+        },
+        "path": {
+          "type": "string",
+          "title": "Path"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "user_id",
+        "permission",
+        "method",
+        "path",
+        "created_at"
+      ],
+      "title": "AuditLogRead",
+      "examples": [
+        {
+          "created_at": "2026-02-01T09:00:00Z",
+          "id": 1,
+          "method": "POST",
+          "path": "/purchase-orders/1/approve",
+          "permission": "purchase_order:update",
+          "user_id": 4
+        }
+      ]
+    }
+  }
+}

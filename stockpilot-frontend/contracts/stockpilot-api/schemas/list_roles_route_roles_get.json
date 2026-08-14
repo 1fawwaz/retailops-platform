@@ -1,0 +1,52 @@
+{
+  "items": {
+    "$ref": "#/$defs/RoleRead"
+  },
+  "type": "array",
+  "title": "Response List Roles Route Roles Get",
+  "$defs": {
+    "RoleRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "name": {
+          "type": "string",
+          "title": "Name"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "title": "Permissions"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "permissions",
+        "created_at"
+      ],
+      "title": "RoleRead",
+      "examples": [
+        {
+          "created_at": "2026-01-01T00:00:00Z",
+          "id": 1,
+          "name": "inventory_manager",
+          "permissions": [
+            "inventory:read",
+            "inventory:update"
+          ]
+        }
+      ]
+    }
+  }
+}

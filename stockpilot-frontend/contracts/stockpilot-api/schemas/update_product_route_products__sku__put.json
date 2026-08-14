@@ -54,6 +54,17 @@
           ],
           "title": "Supplier Id"
         },
+        "brand_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Brand Id"
+        },
         "unit_cost": {
           "anyOf": [
             {
@@ -64,6 +75,17 @@
             }
           ],
           "title": "Unit Cost"
+        },
+        "sale_price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sale Price"
         },
         "reorder_point": {
           "anyOf": [
@@ -100,7 +122,9 @@
         "description",
         "category_id",
         "supplier_id",
+        "brand_id",
         "unit_cost",
+        "sale_price",
         "reorder_point",
         "safety_stock",
         "created_at"
@@ -111,20 +135,24 @@
           "_derivation_ref": {
             "reorder_point": "data-derivation.md#reorder-point",
             "safety_stock": "data-derivation.md#reorder-point",
+            "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
             "unit_cost": "data-derivation.md#cost-price"
           },
           "_provenance": {
             "description": "observed",
             "reorder_point": "derived",
             "safety_stock": "derived",
+            "sale_price": "derived",
             "sku": "observed",
             "unit_cost": "derived"
           },
+          "brand_id": 1,
           "category_id": 3,
           "created_at": "2026-01-01T00:00:00Z",
           "description": "15CM CHRISTMAS GLASS BALL 20 LIGHTS",
           "reorder_point": 120,
           "safety_stock": 40,
+          "sale_price": 4.99,
           "sku": "85048",
           "supplier_id": 7,
           "unit_cost": 2.15

@@ -1,0 +1,52 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/InvoiceRead"
+  },
+  "title": "Response List Invoices Route Invoices Get",
+  "$defs": {
+    "InvoiceRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "sales_order_id": {
+          "type": "integer",
+          "title": "Sales Order Id"
+        },
+        "total_amount": {
+          "type": "number",
+          "title": "Total Amount"
+        },
+        "status": {
+          "type": "string",
+          "title": "Status"
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Issued At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "sales_order_id",
+        "total_amount",
+        "status",
+        "issued_at"
+      ],
+      "title": "InvoiceRead",
+      "examples": [
+        {
+          "id": 1,
+          "issued_at": "2026-02-01T09:00:00Z",
+          "sales_order_id": 1,
+          "status": "unpaid",
+          "total_amount": 24.95
+        }
+      ]
+    }
+  }
+}

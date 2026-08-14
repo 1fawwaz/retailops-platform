@@ -1,0 +1,74 @@
+{
+  "$ref": "#/$defs/NotificationRead",
+  "$defs": {
+    "NotificationRead": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "title": "Id"
+        },
+        "type": {
+          "type": "string",
+          "title": "Type"
+        },
+        "message": {
+          "type": "string",
+          "title": "Message"
+        },
+        "resource_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resource Type"
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resource Id"
+        },
+        "is_read": {
+          "type": "boolean",
+          "title": "Is Read"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "message",
+        "resource_type",
+        "resource_id",
+        "is_read",
+        "created_at"
+      ],
+      "title": "NotificationRead",
+      "examples": [
+        {
+          "created_at": "2026-02-01T09:00:00Z",
+          "id": 1,
+          "is_read": false,
+          "message": "'85048' has crossed its reorder point (95 <= 120)",
+          "resource_id": "85048",
+          "resource_type": "product",
+          "type": "low_stock"
+        }
+      ]
+    }
+  }
+}

@@ -7,6 +7,10 @@
           "type": "string",
           "title": "Access Token"
         },
+        "refresh_token": {
+          "type": "string",
+          "title": "Refresh Token"
+        },
         "token_type": {
           "type": "string",
           "title": "Token Type",
@@ -15,12 +19,14 @@
       },
       "type": "object",
       "required": [
-        "access_token"
+        "access_token",
+        "refresh_token"
       ],
       "title": "Token",
       "examples": [
         {
           "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "refresh_token": "8iQ2z...opaque-token...x9F",
           "token_type": "bearer"
         }
       ]

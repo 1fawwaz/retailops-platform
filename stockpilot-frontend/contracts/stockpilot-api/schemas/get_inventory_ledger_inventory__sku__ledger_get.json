@@ -1,0 +1,65 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/LedgerEntry"
+  },
+  "title": "Response Get Inventory Ledger Inventory  Sku  Ledger Get",
+  "$defs": {
+    "LedgerEntry": {
+      "properties": {
+        "warehouse_id": {
+          "type": "integer",
+          "title": "Warehouse Id"
+        },
+        "movement_date": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Movement Date"
+        },
+        "quantity_delta": {
+          "type": "integer",
+          "title": "Quantity Delta"
+        },
+        "movement_type": {
+          "type": "string",
+          "title": "Movement Type"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reference"
+        },
+        "provenance": {
+          "type": "string",
+          "title": "Provenance"
+        }
+      },
+      "type": "object",
+      "required": [
+        "warehouse_id",
+        "movement_date",
+        "quantity_delta",
+        "movement_type",
+        "reference",
+        "provenance"
+      ],
+      "title": "LedgerEntry",
+      "description": "One stock_movements row for a SKU, across all warehouses. Carries\nits own provenance label rather than the ProvenanceMixin dict, since\nsale-driven and injected-PO rows are derived/observed differently\nper row -- same reasoning as MovementHistoryEntry in schemas/product.py.",
+      "examples": [
+        {
+          "movement_date": "2026-01-14T00:00:00Z",
+          "movement_type": "sale",
+          "provenance": "observed",
+          "quantity_delta": -12,
+          "warehouse_id": 1
+        }
+      ]
+    }
+  }
+}
