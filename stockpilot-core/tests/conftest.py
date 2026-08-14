@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 from api.main import app  # noqa: E402
 from database import get_db  # noqa: E402
 from models.base import Base  # noqa: E402
+from services.rate_limit import reset_rate_limits  # noqa: E402
 from services.rbac import seed_default_roles  # noqa: E402
 
 
@@ -44,6 +45,9 @@ def client(db_session: Session) -> Generator[TestClient]:
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+    # SEC-01: each test starts with a clean rate-limit store so hits in
+    # one test never 429 a later test in the same process.
+    reset_rate_limits()
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

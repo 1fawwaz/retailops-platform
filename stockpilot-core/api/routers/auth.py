@@ -24,6 +24,7 @@ from services.auth_tokens import (
     revoke_refresh_token,
     rotate_refresh_token,
 )
+from services.rate_limit import rate_limited
 from services.rbac import assign_role, get_resolved_permissions, get_role_by_name, get_user_roles
 from services.security import create_access_token
 from services.users import (
@@ -36,6 +37,18 @@ from services.users import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# SEC-01: the public, unauthenticated endpoints are rate-limited per
+# client IP to blunt brute-force/password-stuffing. In-memory store --
+# see services/rate_limit.py for the multi-worker caveat.
+_login_limiter = rate_limited("auth:login", max_requests=30, window_seconds=300)
+_register_limiter = rate_limited("auth:register", max_requests=10, window_seconds=3600)
+_password_reset_request_limiter = rate_limited(
+    "auth:password-reset-request", max_requests=10, window_seconds=3600
+)
+_password_reset_confirm_limiter = rate_limited(
+    "auth:password-reset-confirm", max_requests=10, window_seconds=3600
+)
+
 # GET /me is deliberately a top-level route, not /auth/me
 # (docs/ARCHITECTURE.md §6): it's the one call both a future profile page
 # and the RBAC layer share.
@@ -43,7 +56,11 @@ me_router = APIRouter(tags=["auth"])
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(data: UserCreate, db: Session = Depends(get_db)) -> UserRead:
+def register(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    _: None = Depends(_register_limiter),
+) -> UserRead:
     if get_user_by_email(db, data.email) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -66,6 +83,7 @@ def register(data: UserCreate, db: Session = Depends(get_db)) -> UserRead:
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
+    _: None = Depends(_login_limiter),
 ) -> Token:
     user = authenticate_user(db, email=form_data.username, password=form_data.password)
     if user is None:
@@ -115,7 +133,11 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)) ->
 
 
 @router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
-def request_password_reset(data: PasswordResetRequest, db: Session = Depends(get_db)) -> Response:
+def request_password_reset(
+    data: PasswordResetRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(_password_reset_request_limiter),
+) -> Response:
     # Always 202 regardless of whether the email matches a real account --
     # never confirm/deny account existence via response shape
     # (docs/ARCHITECTURE.md §6). No delivery channel exists yet (same
@@ -129,7 +151,11 @@ def request_password_reset(data: PasswordResetRequest, db: Session = Depends(get
 
 
 @router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
-def confirm_password_reset(data: PasswordResetConfirm, db: Session = Depends(get_db)) -> Response:
+def confirm_password_reset(
+    data: PasswordResetConfirm,
+    db: Session = Depends(get_db),
+    _: None = Depends(_password_reset_confirm_limiter),
+) -> Response:
     user = consume_password_reset_token(db, data.token)
     if user is None:
         raise HTTPException(
