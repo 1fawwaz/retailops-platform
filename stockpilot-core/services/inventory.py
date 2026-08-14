@@ -166,10 +166,26 @@ class DeadStockRow:
     days_since_movement: int | None
 
 
+def _latest_business_date(db: Session) -> datetime:
+    """Derive the latest valid business-date datetime from the data
+    rather than using the machine clock. For the historical Online
+    Retail II dataset this is 2011-12-09; for a live database with
+    real-time movements it will be 'now'. Used as the reference point
+    for dead-stock and slow-mover window calculations so that
+    historical analytics are deterministic regardless of when the
+    query runs.
+    """
+    result = db.execute(select(func.max(StockMovement.movement_date))).scalar_one_or_none()
+    if result is not None:
+        return result
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 def list_dead_stock(
     db: Session,
     *,
     days: int = 90,
+    as_of_date: datetime | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[DeadStockRow]:
@@ -182,7 +198,7 @@ def list_dead_stock(
         .group_by(StockMovement.sku)
         .subquery()
     )
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = as_of_date if as_of_date is not None else _latest_business_date(db)
     cutoff = now - timedelta(days=days)
     stmt = (
         select(
@@ -230,6 +246,7 @@ def list_slow_movers(
     *,
     window_days: int = 90,
     velocity_threshold: float = 0.2,
+    as_of_date: datetime | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[SlowMoverRow]:
@@ -238,7 +255,8 @@ def list_slow_movers(
     dead-stock: these SKUs are still selling, just slowly.
     """
     latest = latest_stock_level_subquery()
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=window_days)
+    now = as_of_date if as_of_date is not None else _latest_business_date(db)
+    cutoff = now - timedelta(days=window_days)
     sales = (
         select(
             SalesTransaction.sku.label("sku"),

@@ -1467,6 +1467,24 @@
             }
           },
           {
+            "name": "as_of_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO date for historical analysis",
+              "title": "As Of Date"
+            },
+            "description": "ISO date for historical analysis"
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -1552,6 +1570,24 @@
               "default": 0.2,
               "title": "Velocity Threshold"
             }
+          },
+          {
+            "name": "as_of_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO date for historical analysis",
+              "title": "As Of Date"
+            },
+            "description": "ISO date for historical analysis"
           },
           {
             "name": "limit",

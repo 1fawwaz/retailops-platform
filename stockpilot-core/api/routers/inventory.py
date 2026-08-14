@@ -160,12 +160,18 @@ def get_low_stock(
 @router.get("/dead-stock", response_model=list[DeadStockItem])
 def get_dead_stock(
     days: int = Query(default=90, ge=1),
+    as_of_date: str | None = Query(default=None, description="ISO date for historical analysis"),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[DeadStockItem]:
-    rows = list_dead_stock(db, days=days, limit=limit, offset=offset)
+    from datetime import datetime as _dt
+
+    override: _dt | None = None
+    if as_of_date is not None:
+        override = _dt.fromisoformat(as_of_date).replace(hour=23, minute=59, second=59)
+    rows = list_dead_stock(db, days=days, as_of_date=override, limit=limit, offset=offset)
     return [_to_dead_stock_item(row) for row in rows]
 
 
@@ -173,15 +179,22 @@ def get_dead_stock(
 def get_slow_movers(
     window_days: int = Query(default=90, ge=1),
     velocity_threshold: float = Query(default=0.2, gt=0),
+    as_of_date: str | None = Query(default=None, description="ISO date for historical analysis"),
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[SlowMoverItem]:
+    from datetime import datetime as _dt
+
+    override: _dt | None = None
+    if as_of_date is not None:
+        override = _dt.fromisoformat(as_of_date).replace(hour=23, minute=59, second=59)
     rows = list_slow_movers(
         db,
         window_days=window_days,
         velocity_threshold=velocity_threshold,
+        as_of_date=override,
         limit=limit,
         offset=offset,
     )

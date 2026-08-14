@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -69,7 +69,10 @@ def list_products(
 
 
 def get_movement_history(db: Session, sku: str, *, days: int = 90) -> list[StockMovement]:
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
+    from services.inventory import _latest_business_date
+
+    now = _latest_business_date(db)
+    cutoff = now - timedelta(days=days)
     stmt = (
         select(StockMovement)
         .where(StockMovement.sku == sku, StockMovement.movement_date >= cutoff)
