@@ -42,9 +42,11 @@ class FakeProvider:
         self.name = name
         self._error = error
         self.calls: list[str] = []
+        self.output_caps: list[int | None] = []
 
     def generate(self, *, model: str, messages: list[Any], **_: Any) -> AIMessage:
         self.calls.append(model)
+        self.output_caps.append(_.get("max_output_tokens"))
         if self._error is not None:
             raise self._error
         return AIMessage(
@@ -56,6 +58,7 @@ class FakeProvider:
         self, *, model: str, messages: list[Any], response_schema: type, **_: Any
     ) -> StructuredResult[Any]:
         self.calls.append(model)
+        self.output_caps.append(_.get("max_output_tokens"))
         if self._error is not None:
             raise self._error
         return StructuredResult(
@@ -67,6 +70,7 @@ class FakeProvider:
 
     def stream(self, *, model: str, messages: list[Any], **_: Any) -> Iterator[StreamChunk]:
         self.calls.append(model)
+        self.output_caps.append(_.get("max_output_tokens"))
         if self._error is not None:
             raise self._error
         yield StreamChunk(text="chunk", provider=self.name, model=model)
@@ -148,6 +152,33 @@ def test_fresh_chain_falls_over_to_the_configured_fallback_on_failure(
     assert result.content == "served by gemini"
     assert groq.calls == [PLANNER_MODEL]
     assert gemini.calls == [FALLBACK_MODEL]
+
+
+def test_every_facade_call_is_output_capped_by_default(
+    fake_providers: tuple[FakeProvider, FakeProvider],
+) -> None:
+    """Stage 3 timeout fix: the facade defaults max_output_tokens to the
+    configured budget so a request's input+output stays under a
+    provider's per-request ceiling (measured: Groq 413 at 8000 TPM) even
+    when the caller doesn't ask -- an explicit value still wins.
+    """
+    _, groq = fake_providers
+
+    registry.generate(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")])
+    registry.generate(
+        model=PLANNER_MODEL,
+        messages=[HumanMessage(content="hi")],
+        max_output_tokens=4096,
+    )
+    list(registry.stream(model=PLANNER_MODEL, messages=[HumanMessage(content="hi")]))
+    registry.generate_structured(
+        model=PLANNER_MODEL,
+        messages=[HumanMessage(content="hi")],
+        response_schema=Sentiment,
+    )
+
+    budget_cap = get_model_config().budgets.max_output_tokens
+    assert groq.output_caps == [budget_cap, 4096, budget_cap, budget_cap]
 
 
 def test_provider_for_role_model_rejects_an_unconfigured_model() -> None:

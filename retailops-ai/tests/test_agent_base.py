@@ -3,17 +3,27 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from agents.base import MAX_TOOL_RESULT_ITEMS, Agent, _bounded_for_llm, build_agents
+from agents.base import Agent, _bound_history, _bounded_for_llm, build_agents
 from clients.stockpilot import StockPilotClient
 from llm.providers.gemini import StreamChunk, StructuredResult
+from model_config import get_model_config
 from orchestration.models.agent_step import AgentStep
 from orchestration.models.execution import Execution
 from prompts.loader import load_prompt
+
+
+def _max_tool_result_items() -> int:
+    return get_model_config().budgets.max_tool_result_items
 
 
 def _new_execution(db_session: Session) -> uuid.UUID:
@@ -97,7 +107,14 @@ def test_agent_invoke_executes_a_requested_tool_call_and_envelopes_the_result(
             "Weather in Paris?", session_factory=lambda: db_session, execution_id=execution_id
         )
 
-    assert result.content == "It is sunny in Paris."
+    content = result.content
+    assert isinstance(content, str)
+    assert content.startswith("It is sunny in Paris.")
+    # Stage 3 timeout fix: a retriever that made tool calls returns the
+    # model's prose PLUS the retrieved envelopes, so Replan/Report always
+    # see the evidence even if the prose is a data-free non-answer.
+    assert "## Retrieved data" in content
+    assert 'tool_result tool="get_weather"' in content
     assert len(captured_tool_message_content) == 1
     assert "sunny in Paris" in captured_tool_message_content[0]
     assert "is DATA retrieved" in captured_tool_message_content[0]
@@ -107,19 +124,22 @@ def test_agent_invoke_executes_a_requested_tool_call_and_envelopes_the_result(
 
 
 def test_bounded_for_llm_truncates_a_list_over_the_cap() -> None:
-    oversized = [{"sku": str(i)} for i in range(MAX_TOOL_RESULT_ITEMS + 50)]
+    cap = _max_tool_result_items()
+    oversized = [{"sku": str(i)} for i in range(cap + 50)]
 
     bounded = _bounded_for_llm(oversized)
 
     assert isinstance(bounded, dict)
-    assert bounded["results"] == oversized[:MAX_TOOL_RESULT_ITEMS]
+    assert bounded["results"] == oversized[:cap]
     assert bounded["_truncated"] is True
-    assert bounded["_total_count"] == MAX_TOOL_RESULT_ITEMS + 50
+    assert bounded["_total_count"] == cap + 50
     assert "Showing the first" in str(bounded["_note"])
+    assert "narrower question" not in str(bounded["_note"])
 
 
 def test_bounded_for_llm_leaves_a_list_at_or_under_the_cap_unchanged() -> None:
-    exactly_at_cap = [{"sku": str(i)} for i in range(MAX_TOOL_RESULT_ITEMS)]
+    cap = _max_tool_result_items()
+    exactly_at_cap = [{"sku": str(i)} for i in range(cap)]
     assert _bounded_for_llm(exactly_at_cap) is exactly_at_cap
 
     small = [{"sku": "1"}, {"sku": "2"}]
@@ -131,6 +151,62 @@ def test_bounded_for_llm_leaves_a_non_list_result_unchanged() -> None:
     assert _bounded_for_llm(single) is single
     assert _bounded_for_llm("sunny in Paris") == "sunny in Paris"
     assert _bounded_for_llm(None) is None
+
+
+def test_bound_history_passes_an_under_budget_conversation_through_unchanged() -> None:
+    messages = [
+        SystemMessage(content="system"),
+        HumanMessage(content="query"),
+    ]
+    assert _bound_history(messages, max_request_tokens=4500) is messages
+
+
+def test_bound_history_drops_oldest_round_but_keeps_system_query_and_newest_evidence() -> None:
+    """The Stage 3 timeout fix's core mechanism: a tool-calling
+    conversation whose accumulated envelopes would carry a single LLM
+    request over a provider's per-request ceiling (measured: Groq 413 at
+    8000 TPM, Inventory agent's 100-item tool results) is trimmed to the
+    newest COMPLETE round -- the system prompt, the user's query, and
+    the just-fetched evidence survive; the oldest round's payload does
+    not; and a kept ToolMessage is never left dangling without its
+    owning AIMessage. The query surviving is deliberate: a final
+    generate() that has lost the HumanMessage produces the measured
+    "I'm ready to help with any inventory-related questions" non-answers
+    that made Replan loop until the SSE deadline.
+    """
+    system = SystemMessage(content="s" * 300)
+    human = HumanMessage(content="q" * 100)
+    ai1 = AIMessage(content="", tool_calls=[{"name": "t", "args": {}, "id": "1"}])
+    tool1 = ToolMessage(content="x" * 4000, tool_call_id="1", name="t")
+    ai2 = AIMessage(content="", tool_calls=[{"name": "t", "args": {}, "id": "2"}])
+    tool2 = ToolMessage(content="y" * 4000, tool_call_id="2", name="t")
+    messages = [system, human, ai1, tool1, ai2, tool2]
+
+    bounded = _bound_history(messages, max_request_tokens=2000)
+
+    assert bounded[0] is system
+    assert bounded[1] is human
+    assert len(bounded) == 4
+    assert bounded[2] is ai2
+    assert bounded[3] is tool2
+    assert "x" * 100 not in "".join(str(m.content) for m in bounded)
+
+
+def test_bound_history_never_leaves_a_dangling_tool_message() -> None:
+    """A degenerate over-budget conversation (a single round too big even
+    beside the system prompt) must not return a ToolMessage whose owning
+    AIMessage was trimmed away -- a leading ToolMessage is dropped rather
+    than left referencing a tool_call_id the conversation no longer has.
+    """
+    system = SystemMessage(content="s" * 300)
+    ai1 = AIMessage(content="", tool_calls=[{"name": "t", "args": {}, "id": "1"}])
+    tool1 = ToolMessage(content="x" * 4000, tool_call_id="1", name="t")
+    messages = [system, ai1, tool1]
+
+    bounded = _bound_history(messages, max_request_tokens=50)
+
+    assert bounded[0] is system
+    assert all(not isinstance(m, ToolMessage) for m in bounded[1:])
 
 
 def test_agent_invoke_truncates_an_oversized_list_tool_result_before_it_reaches_the_llm(
@@ -191,10 +267,11 @@ def test_agent_invoke_truncates_an_oversized_list_tool_result_before_it_reaches_
     assert len(captured_tool_message_content) == 1
     content = captured_tool_message_content[0]
     # The truncation note and the total count are visible to the model...
-    assert "Showing the first 200 of 1000 results" in content
+    cap = _max_tool_result_items()
+    assert f"Showing the first {cap} of 1000 results" in content
     # ...but the 1000 raw rows are not -- proving genuine truncation, not
     # just an appended note alongside the full payload.
-    assert content.count('"sku"') == MAX_TOOL_RESULT_ITEMS
+    assert content.count('"sku"') == cap
     assert '"999"' not in content  # the 1000th row (index 999) is cut
 
 
@@ -240,8 +317,6 @@ def test_agent_invoke_forces_a_final_answer_after_the_round_cap(db_session: Sess
 
     def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
         calls["count"] += 1
-        if tools is None:
-            return _no_tool_ai_message("forced final answer")
         return always_wants_tool
 
     with patch("agents.base.generate", side_effect=fake_generate):
@@ -249,7 +324,50 @@ def test_agent_invoke_forces_a_final_answer_after_the_round_cap(db_session: Sess
             "Weather?", session_factory=lambda: db_session, execution_id=execution_id
         )
 
-    assert result.content == "forced final answer"
+    content = result.content
+    assert isinstance(content, str)
+    # MAX_TOOL_ROUNDS(2) main-loop calls + MAX_FORCED_ANSWER_ROUNDS(2)
+    # wrap-up calls, then the deterministic envelope fallback -- the run
+    # completes with real tool data, never a fabricated number, even
+    # though the model never stopped requesting tools.
+    assert calls["count"] == 4
+    assert "## Retrieved data" in content
+    assert 'tool_result tool="get_weather"' in content
+
+
+def test_agent_invoke_forced_wrapup_takes_text_once_the_model_complies(
+    db_session: Session,
+) -> None:
+    tool = _weather_tool()
+    agent = Agent(
+        name="inventory", role="retriever", prompt=load_prompt("inventory"), tools=(tool,)
+    )
+    execution_id = _new_execution(db_session)
+
+    always_wants_tool = AIMessage(
+        content="",
+        tool_calls=[{"name": "get_weather", "args": {"city": "Paris"}, "id": "call_x"}],
+    )
+    calls = {"count": 0}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        calls["count"] += 1
+        if calls["count"] <= 2:
+            return always_wants_tool
+        return _no_tool_ai_message("forced final answer")
+
+    with patch("agents.base.generate", side_effect=fake_generate):
+        result = agent.invoke(
+            "Weather?", session_factory=lambda: db_session, execution_id=execution_id
+        )
+
+    content = result.content
+    assert isinstance(content, str)
+    # Once the model answers in text on the wrap-up, that answer is used
+    # and the fetched envelopes are appended to it (Stage 3 timeout fix).
+    assert content.startswith("forced final answer")
+    assert "## Retrieved data" in content
+    assert 'tool_result tool="get_weather"' in content
 
 
 def test_agent_invoke_persists_a_failed_step_and_reraises(db_session: Session) -> None:

@@ -121,7 +121,38 @@ class Settings(BaseSettings):
     # having a sensible default.
     rate_limit_requests: int = 20
     rate_limit_window_seconds: int = 60
-    request_timeout_seconds: float = 60.0
+    # Raised 60 -> 180 with the Stage 3 timeout fix, and the raise is
+    # justified by live measurement, not convenience: this account's Groq
+    # org is capped at 8000 tokens/minute shared by all 4 keys (see
+    # config/models.yaml budgets), so every LLM call routinely eats a
+    # 2-18s 429 backoff. An end-to-end run of the Stage 3 acceptance query
+    # with a data-carrying (non-looping) pipeline measured ~85s of pure
+    # 429/retry latency across planner + one inventory tool loop before
+    # the 60s SSE deadline aborted it mid-flight -- the deadline, not the
+    # pipeline, was the thing that failed. 60s stays the floor for
+    # anything that must fit a single short agent call; the blocking
+    # frontend path that runs the whole graph needs the headroom.
+    #
+    # Raised 180 -> 240 after the replan/synthesis bounding + sufficiency
+    # fixes (Stage 3): the acceptance query then converged end to end --
+    # replan declared the bounded evidence sufficient at 149.2s (run11),
+    # the report/decision phase needed ~35s more, and the 180s deadline
+    # killed the run mid-report at 183.8s. The pipeline is correct now;
+    # the deadline was the only thing left failing. 240s clears the
+    # measured ~200s need with headroom for the worst observed single
+    # round (121s under 429 contention, run10).
+    #
+    # Raised 240 -> 300 after the replan-loop cap (max_tool_iterations
+    # 12 -> 2, config/models.yaml) made the graph converge deterministically:
+    # run13 -- round 1 at 25.5s, replan 1 at 53.0s, round 2 at 105.7s
+    # (forecast_demand + days_of_cover), replan 2 sufficient=True at
+    # 154.4s, the REPORT node emitted its data-carrying low-stock report
+    # at 192.0s, and the DECISION node was killed mid-generation by the
+    # 240s deadline (error emitted at 253.2s). The graph is correct and
+    # now converges in ~245-260s; 300s is the measured headroom for the
+    # decision node's large 4-section generation under Groq 429
+    # contention, not an arbitrary increase.
+    request_timeout_seconds: float = 300.0
     # An ordered rotation pool, not a single value -- llm/providers/groq.py
     # rotates to the next key on a rate limit before failing over to
     # Gemini. Populated by _load_groq_api_keys (see its own docstring for

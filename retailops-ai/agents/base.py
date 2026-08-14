@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -50,24 +50,35 @@ from serialization import to_jsonable
 from tools.derived_tools import build_derived_tools
 from tools.stockpilot_tools import build_stockpilot_tools
 
-MAX_TOOL_ROUNDS = 4
-# Real, live-discovered need (Stage 7 demo capture): a broad question
-# ("which products are low on stock") can make a retrieval agent call a
-# list-shaped tool at its own allowed limit=1000, and feeding all 1000
-# rows back into that agent's own conversation history can exceed a
-# real LLM's context window (Groq: 400 "context_length_exceeded"),
-# crashing the whole request instead of degrading. Capped here, not at
-# the tool-schema level (tools/schemas.py's own limit=1000 ceiling is a
-# legitimate pagination bound, not itself the bug) and not by shrinking
-# what's PERSISTED (tool_calls.raw_response, written by
-# tools/stockpilot_tools.py's own wrapper before this function ever
-# runs, stays the full untruncated result -- citation validation reads
-# that DB row, never what an agent's own prompt actually saw, so
-# invariant 1/2 are unaffected by this cap). 200 is generous for what a
-# retrieval agent's own prose needs to reason over while keeping even a
-# maximally-sized real response comfortably inside typical context
-# windows.
-MAX_TOOL_RESULT_ITEMS = 200
+# A retriever gets at most this many tool rounds before the loop forces
+# a text-only wrap-up. Lowered 4 -> 2 with the Stage 3 timeout fix,
+# measured reason: this account's Groq org is capped at 8000 tokens/minute
+# shared by all 4 keys (see config/models.yaml budgets), so each extra
+# round costs a 2-18s 429 backoff. The Inventory agent routinely burned
+# all 4 rounds re-fetching get_low_stock (each round's history trim shows
+# it a fresh truncated view), taking 60-132s for ONE invocation -- but the
+# first round already fetches the data the query needs, and the forced
+# wrap-up (with the inventory prompt's output contract) writes it up as a
+# SKU table. Two rounds + wrap-up is enough for a data-carrying answer;
+# the graph-level replan loop (not more per-agent rounds) is the designed
+# mechanism for gathering more evidence. MAX_TOOL_ROUNDS only affects
+# tool-bearing retrieval agents -- report/decision are tool-less by design.
+MAX_TOOL_ROUNDS = 2
+# Post-cap forced-answer retries. After MAX_TOOL_ROUNDS the wrap-up tries
+# to get a plain-text answer; a weak model can still request a tool there,
+# and Groq hard-rejects tools + tool_choice=none with a 400 tool_use_failed
+# that would otherwise kill the whole run. These rounds execute any tool the
+# model still insists on and re-force text; on exhaustion the gathered
+# envelopes become the answer (see _forced_envelope_answer). Deliberately
+# small -- this is a last-resort path, not a way around the cap.
+MAX_FORCED_ANSWER_ROUNDS = 2
+# Tool-result and conversation size bounds are CONFIG-DRIVEN, in
+# config/models.yaml budgets -- see the comments there for the measured
+# reason (Groq 413 at 8000 TPM; the Inventory agent's tool loop fed
+# 100-item list results back in full until a single request carried
+# 39,815 tokens and every key rejected it). The old module constant
+# MAX_TOOL_RESULT_ITEMS=200 was no cap at all for such responses.
+_CHARS_PER_TOKEN = 3.0
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -105,27 +116,181 @@ ANALYTICS_TOOL_NAMES = (
 
 
 def _bounded_for_llm(jsonable: object) -> object:
-    """Caps a list-shaped tool result to MAX_TOOL_RESULT_ITEMS before
-    it's wrapped in an envelope and fed into an agent's own
-    conversation history -- see MAX_TOOL_RESULT_ITEMS's own comment for
-    why. `jsonable` is expected to already be the output of
-    to_jsonable() (plain dicts/lists/primitives only), so slicing a
-    list here and wrapping it in a plain dict is always JSON-safe; a
-    non-list result (a single-entity lookup, a scalar) passes through
-    unchanged, since those are never what's caused this in practice.
+    """Caps a list-shaped tool result to the configured
+    budgets.max_tool_result_items before it's wrapped in an envelope and
+    fed into an agent's own conversation history -- see
+    config/models.yaml budgets for why. `jsonable` is expected to
+    already be the output of to_jsonable() (plain dicts/lists/primitives
+    only), so slicing a list here and wrapping it in a plain dict is
+    always JSON-safe; a non-list result (a single-entity lookup, a
+    scalar) passes through unchanged, since those are never what's
+    caused this in practice.
     """
-    if isinstance(jsonable, list) and len(jsonable) > MAX_TOOL_RESULT_ITEMS:
+    max_items = get_model_config().budgets.max_tool_result_items
+    if isinstance(jsonable, list) and len(jsonable) > max_items:
         return {
-            "results": jsonable[:MAX_TOOL_RESULT_ITEMS],
+            "results": jsonable[:max_items],
             "_truncated": True,
             "_total_count": len(jsonable),
             "_note": (
-                f"Showing the first {MAX_TOOL_RESULT_ITEMS} of {len(jsonable)} results. "
-                "Ask a narrower question (a category, a lower limit, or a specific SKU) "
-                "to see results beyond this."
+                f"Showing the first {max_items} of {len(jsonable)} results. "
+                "The remaining rows are not shown in this view; answer using "
+                "the rows above."
             ),
         }
     return jsonable
+
+
+def _conversation_chars(messages: Iterable[BaseMessage]) -> int:
+    """Rough serialized-size measure of a message list, used by
+    _bound_history's budget check. Message `.content` is a str for every
+    message type this codebase builds (the big payload is always a
+    ToolMessage's envelope string); tool_call args ride on AIMessage and
+    are small enough that ignoring them is fine for a safety-net bound.
+    """
+    total = 0
+    for message in messages:
+        content = message.content
+        total += len(content) if isinstance(content, str) else len(str(content))
+    return total
+
+
+def _bound_history(messages: list[BaseMessage], max_request_tokens: int) -> list[BaseMessage]:
+    """Keeps any single LLM request under the configured
+    budgets.max_request_tokens by trimming the OLDEST complete tool
+    round(s) -- an AIMessage plus the ToolMessages that follow it, so a
+    kept ToolMessage can never dangle without the tool_calls message
+    that owns it. Never drops the system prompt, never drops the newest
+    evidence just fetched, and never drops the user's query: the final
+    generate() must always still see the question it is answering --
+    dropping the HumanMessage left the Inventory agent answering an
+    empty prompt and produced its "I'm ready to help with any
+    inventory-related questions" non-answers (measured, Stage 3 timeout
+    fix). This is what stops a retrieval agent that calls several
+    list-shaped tools in one turn from accumulating a conversation that
+    413s against a provider's per-request ceiling (measured: Groq 8000
+    TPM).
+    """
+    budget_chars = int(max_request_tokens * _CHARS_PER_TOKEN)
+    if _conversation_chars(messages) <= budget_chars:
+        return messages
+
+    system = messages[0]
+    system_size = _conversation_chars([system])
+    human = messages[1] if isinstance(messages[1], HumanMessage) else None
+    human_size = _conversation_chars([human]) if human is not None else 0
+    kept: list[BaseMessage] = []
+    used = human_size
+    for message in reversed(messages[1:]):
+        if message is human:
+            continue
+        if not kept:
+            kept.append(message)
+            used += _conversation_chars([message])
+            continue
+        if used + _conversation_chars([message]) <= budget_chars - system_size:
+            kept.append(message)
+            used += _conversation_chars([message])
+        else:
+            break
+
+    result = [system]
+    if human is not None:
+        result.append(human)
+    result.extend(reversed(kept))
+    while len(result) > 1 and isinstance(result[1], ToolMessage):
+        result.pop(1)
+    owned_ids = {
+        call["id"]
+        for message in result
+        for call in (message.tool_calls if isinstance(message, AIMessage) else [])
+    }
+    while (
+        len(result) > 1
+        and isinstance(result[-1], ToolMessage)
+        and result[-1].tool_call_id not in owned_ids
+    ):
+        result.pop()
+    return result
+
+
+def _retrieved_data_appendix(tool_messages: Sequence[BaseMessage]) -> str:
+    """The deduped `<tool_result>` envelope appendix for a retriever's
+    actual tool output. Empty string when there is nothing to carry (no
+    successful tool results). Shared by _append_retrieved_data and the
+    forced wrap-up's deterministic fallback so both render evidence
+    identically.
+    """
+    seen: set[tuple[str, str]] = set()
+    sections: list[str] = []
+    for message in tool_messages:
+        if not isinstance(message, ToolMessage):
+            continue
+        content = message.content
+        if not isinstance(content, str) or not content.strip():
+            continue
+        if content.startswith("Error calling") or content.startswith("Error: no such tool"):
+            continue
+        name = message.name
+        if name is None:
+            continue
+        key = (name, content)
+        if key in seen:
+            continue
+        seen.add(key)
+        sections.append(f'<tool_result tool="{name}">\n{content}\n</tool_result>')
+    if not sections:
+        return ""
+    return "\n\n## Retrieved data\n\n" + "\n\n".join(sections)
+
+
+def _forced_envelope_answer(tool_messages: Sequence[BaseMessage]) -> AIMessage:
+    """Deterministic last resort for the forced wrap-up: when a weak model
+    keeps requesting tools even after being told to answer in text (Groq
+    rejects tools + tool_choice=none outright with a 400 tool_use_failed,
+    so the wrap-up can't just retry), the retrieved envelopes ARE the
+    honest answer -- verbatim tool data, never a fabricated number. The
+    report agent downstream reads exactly this content.
+    """
+    appendix = _retrieved_data_appendix(tool_messages)
+    body = (
+        "The tool budget for this step was reached before the model produced a "
+        "plain-text answer. The retrieved data below is reported verbatim rather "
+        "than summarized."
+    )
+    return AIMessage(content=body + appendix)
+
+
+def _append_retrieved_data(response: AIMessage, tool_messages: Sequence[BaseMessage]) -> AIMessage:
+    """Stage 3 timeout fix: a retriever's returned/persisted output is the
+    model's prose plus the actual retrieved tool envelopes, so the graph's
+    Replan/Report always see the fetched evidence even when the retrieval
+    model (measured: gpt-oss-120b via Groq is nondeterministic here)
+    answers with a data-free refusal or drifts off-topic -- the data is in
+    its context, but its prose cannot be relied on to carry it. Dedupes by
+    (tool name, content) so a repeated tool call isn't echoed; tool error
+    messages are never treated as data. Tool-less agents (report/decision)
+    have nothing to append and pass through unchanged; invoke() only calls
+    this when the agent actually made tool calls.
+
+    `tool_messages` is the list of ToolMessages COLLECTED AS THEY WERE
+    PRODUCED during the tool loop -- not the final conversation `messages`,
+    which _bound_history() may have trimmed of every ToolMessage (measured:
+    when one round makes several tool calls, the next round's trimming can
+    drop them all as dangling, leaving the model with no evidence to answer
+    and nothing for this helper to find). Collecting as produced makes the
+    evidence survive regardless of history trimming.
+    """
+    appendix = _retrieved_data_appendix(tool_messages)
+    if not appendix or appendix in str(response.content):
+        return response
+    return AIMessage(
+        content=str(response.content) + appendix,
+        additional_kwargs=response.additional_kwargs,
+        tool_calls=response.tool_calls,
+        usage_metadata=response.usage_metadata,
+        response_metadata=response.response_metadata,
+    )
 
 
 @dataclass(frozen=True)
@@ -170,6 +335,7 @@ class Agent:
             SystemMessage(content=self.prompt.text),
             HumanMessage(content=query),
         ]
+        budget = get_model_config().budgets
         tools_by_name = {tool.name: tool for tool in self.tools}
         response: AIMessage | None = None
         status = "completed"
@@ -180,32 +346,91 @@ class Agent:
         # otherwise a successfully completed agent_steps row would look
         # indistinguishable from one that never used a tool at all.
         tool_calls_made: list[dict[str, object]] = []
+        tool_messages: list[ToolMessage] = []
 
         try:
             for _ in range(MAX_TOOL_ROUNDS):
+                messages = _bound_history(messages, budget.max_request_tokens)
                 response = generate(
-                    model=self.model_id, messages=messages, tools=list(self.tools) or None
+                    model=self.model_id,
+                    messages=messages,
+                    tools=list(self.tools) or None,
                 )
                 messages.append(response)
                 if not response.tool_calls:
                     break
                 for tool_call in response.tool_calls:
                     tool_calls_made.append(dict(tool_call))
-                    messages.append(self._run_tool_call(tool_call, tools_by_name))
+                    tool_result = self._run_tool_call(tool_call, tools_by_name)
+                    tool_messages.append(tool_result)
+                    messages.append(tool_result)
             else:
                 # Exhausted the round cap with a tool still requested --
                 # force a final text-only answer with what's gathered so far.
+                # The instruction must be explicit that the tool results
+                # already in the conversation ARE the data to report: on a
+                # weak model (measured: gpt-oss-120b via Groq) a softer
+                # "answer using the information already gathered" got
+                # replied to with a hallucinated "I cannot retrieve that
+                # data" refusal -- the data was in its context -- which
+                # starved Replan and looped to the SSE deadline (Stage 3
+                # timeout fix).
                 messages.append(
                     HumanMessage(
                         content="You have reached the maximum number of tool calls for "
-                        "this step. Answer now using only the information already "
-                        "gathered."
+                        "this step. The tool results in the messages above are real, "
+                        "retrieved data -- you DO have the information, and the answer "
+                        "IS that data. Report it now: enumerate the relevant products "
+                        "and numbers from those tool results. Do not say you lack data, "
+                        "do not offer further help, and do not ask the user to narrow "
+                        "the question."
                     )
                 )
-                response = generate(model=self.model_id, messages=messages, tools=None)
+                messages = _bound_history(messages, budget.max_request_tokens)
+                for _ in range(MAX_FORCED_ANSWER_ROUNDS):
+                    # Tools stay attached here -- never tools=None. A weak
+                    # model that still requests a tool with tool_choice=none
+                    # makes Groq reject the request outright (400
+                    # tool_use_failed, failed_generation embedded), which
+                    # killed the whole run. With tools attached the call is
+                    # valid either way: if the model still calls a tool we
+                    # execute it and re-force text (bounded); if it never
+                    # stops, the else branch below falls back to the gathered
+                    # envelopes -- deterministic, never a fabricated number.
+                    response = generate(
+                        model=self.model_id,
+                        messages=messages,
+                        tools=list(self.tools) or None,
+                    )
+                    messages.append(response)
+                    if not response.tool_calls:
+                        break
+                    for tool_call in response.tool_calls:
+                        tool_calls_made.append(dict(tool_call))
+                        tool_result = self._run_tool_call(tool_call, tools_by_name)
+                        tool_messages.append(tool_result)
+                        messages.append(tool_result)
+                    messages.append(
+                        HumanMessage(
+                            content="You MUST now answer in plain text only. Do not call "
+                            "any more tools -- the data you need is already in the "
+                            "messages above."
+                        )
+                    )
+                    messages = _bound_history(messages, budget.max_request_tokens)
+                else:
+                    response = _forced_envelope_answer(tool_messages)
         except Exception as exc:  # noqa: BLE001 -- recorded below, then re-raised unchanged
             status = "failed"
             error = exc
+
+        if error is None and self.tools and tool_calls_made and response is not None:
+            # Guarantee the fetched evidence survives into the returned and
+            # persisted output regardless of the model's prose (see
+            # _append_retrieved_data) -- Replan and Report read exactly this
+            # content, and a data-free answer is what looped the graph to
+            # the SSE deadline (Stage 3 timeout fix).
+            response = _append_retrieved_data(response, tool_messages)
 
         latency_ms = int((time.monotonic() - started) * 1000)
         self._persist_step(
@@ -379,6 +604,13 @@ class Agent:
             try:
                 result = tool.invoke(tool_call["args"])
                 content = envelope(name, _bounded_for_llm(to_jsonable(result)))
+                max_chars = get_model_config().budgets.max_tool_result_chars
+                if len(content) > max_chars:
+                    content = (
+                        content[:max_chars] + "\n...(truncated to the configured request-size "
+                        "budget: this bounded view is expected by design; the "
+                        "omitted rows are not included here)"
+                    )
             except Exception as exc:  # noqa: BLE001 -- surfaced to the model as a tool error
                 content = f"Error calling {name}: {exc}"
         return ToolMessage(content=content, tool_call_id=call_id, name=name)

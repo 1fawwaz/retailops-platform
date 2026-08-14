@@ -129,6 +129,18 @@ def _resolve_chain(model: str, messages: list[BaseMessage]) -> list[tuple[LLMPro
     return [(_PROVIDERS_BY_NAME[pinned], effective_model)]
 
 
+def _effective_max_output_tokens(max_output_tokens: int | None) -> int:
+    """Every LLM call is output-capped by default (config/models.yaml
+    budgets.max_output_tokens), so a request's input+output stays under a
+    provider's per-request ceiling even when an agent's conversation is
+    large -- the measured reason for this is documented on that budget.
+    An explicit caller-supplied value still wins.
+    """
+    if max_output_tokens is not None:
+        return max_output_tokens
+    return get_model_config().budgets.max_output_tokens
+
+
 def generate(
     *,
     model: str,
@@ -142,7 +154,7 @@ def generate(
         model=model,
         messages=messages,
         tools=tools,
-        max_output_tokens=max_output_tokens,
+        max_output_tokens=_effective_max_output_tokens(max_output_tokens),
         temperature=temperature,
     )
 
@@ -160,7 +172,7 @@ def generate_structured(
         model=model,
         messages=messages,
         response_schema=response_schema,
-        max_output_tokens=max_output_tokens,
+        max_output_tokens=_effective_max_output_tokens(max_output_tokens),
         temperature=temperature,
     )
 
@@ -178,7 +190,7 @@ def stream(
         model=model,
         messages=messages,
         tools=tools,
-        max_output_tokens=max_output_tokens,
+        max_output_tokens=_effective_max_output_tokens(max_output_tokens),
         temperature=temperature,
     )
 

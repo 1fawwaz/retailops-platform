@@ -75,12 +75,14 @@ Decision explicitly to flag the answer as based on incomplete evidence.
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from collections.abc import Callable
 from typing import Any, cast
 
 from langchain_core.messages import AIMessage
+from langchain_core.tools import StructuredTool
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -117,6 +119,66 @@ def _content_str(message: AIMessage) -> str:
     # against langchain_core's wider `str | list[str | dict]` type.
     content = message.content
     return content if isinstance(content, str) else str(content)
+
+
+# Cap on each retriever's findings section when forwarded into the replan and
+# synthesis prompts. The data-appendix fix (agents/base.py::
+# _append_retrieved_data) makes a retriever's output 10-18KB (prose plus the
+# appended tool envelopes), and concatenating those unbounded pushed a single
+# replan request past Groq's per-request TPM ceiling -- measured: the round-2
+# sufficiency judgement failed with 413 "Requested 9489" (limit 8000) and the
+# Groq-to-Gemini failover then raised on an invalid structured response.
+# _bound_history() bounds invoke()'s tool loop, but invoke_structured() and
+# the tool-less report/decision prompt have no loop, so the evidence they
+# forward must be capped here. The head is kept (the findings prose plus the
+# start of the retrieved rows); the tail is cut with an explicit note so
+# downstream stays honest about truncation. The stored agent_results are left
+# untouched -- only the downstream prompt is bounded, so _extract_skus() keeps
+# seeing the full appendix.
+#
+# 2500 proved too aggressive (measured live, run10): it cut every section
+# before the forecast/risk envelopes, so Replan could not see the evidence it
+# needed to judge sufficiency (it kept demanding the very data that was in the
+# truncated tail), and the report/decision would have been starved of data too.
+# 4000 keeps the prose plus the start of the first envelope -- enough to see
+# the low-stock rows and the forecast -- while the worst-case prompt stays
+# under Groq's per-request ceiling: replan 2734+3*4000 ~= 5.5K tokens, report
+# ~5.3K, decision 2140+4*4000 ~= 6.8K, all below the 8000-token limit.
+EVIDENCE_SECTION_CHARS = 4000
+
+
+def _bounded_findings_section(label: str, content: str, max_chars: int) -> str:
+    if len(content) <= max_chars:
+        return f"{label}\n{content}"
+    return (
+        f"{label}\n{content[:max_chars].rstrip()}\n"
+        f"--- (truncated: the full retrieved evidence is larger than the "
+        f"{max_chars}-char budget for this section)"
+    )
+
+
+def _extract_skus(results: dict[str, str]) -> list[str]:
+    """Deterministically pulls the concrete SKUs out of the retrieval
+    agents' persisted outputs -- the `"sku": "..."` JSON fields inside the
+    appended tool-result envelopes (agents/base.py::_append_retrieved_data),
+    not the model's prose. The Planner's sufficiency prose routinely says
+    "forecast demand for those SKUs" without ever naming them (measured:
+    gpt-oss-120b via Groq), which strands the forecast agent -- its only
+    tools take a required `skus` argument and it has no tool of its own to
+    enumerate SKUs, so it answers by asking the user for a list. Injecting
+    the already-retrieved SKUs into a retried agent's prompt unblocks that
+    in the replan loop. Dedupes, preserves order, and falls back to [] when
+    nothing was retrieved.
+    """
+    skus: list[str] = []
+    seen: set[str] = set()
+    for content in results.values():
+        for match in re.finditer(r'"sku"\s*:\s*"([^"]+)"', content):
+            sku = match.group(1)
+            if sku not in seen:
+                seen.add(sku)
+                skus.append(sku)
+    return skus
 
 
 def _owned_tool_call_ids(
@@ -195,10 +257,28 @@ def _make_planner_node(
     return node
 
 
+def _accepts_sku_arg(tool: StructuredTool) -> bool:
+    """True when a tool's args schema exposes a sku/skus property, so the
+    graph knows to append the SKU list the Planner produced (Task 2.3
+    injection). Schema may be a pydantic v2 model class, a pydantic v1
+    model class, or a raw dict -- narrow before reading properties.
+    """
+    schema = tool.args_schema
+    props: dict[str, Any] = {}
+    if isinstance(schema, dict):
+        props = schema.get("properties") or {}
+    elif isinstance(schema, type):
+        json_schema_fn = getattr(schema, "model_json_schema", None)
+        if callable(json_schema_fn):
+            props = json_schema_fn().get("properties") or {}
+    return "sku" in props or "skus" in props
+
+
 def _make_retrieval_node(
     agent: Agent, session_factory: Callable[[], Session], execution_id: uuid.UUID
 ) -> NodeFn:
     owned_tool_names = {tool.name for tool in agent.tools}
+    needs_skus = any(_accepts_sku_arg(tool) for tool in agent.tools)
 
     def node(state: ExecutionState) -> dict[str, object]:
         iteration = len(state["replan_history"]) + 1
@@ -215,6 +295,15 @@ def _make_retrieval_node(
             )
         elif state["plan"]:
             prompt = f"{prompt}\n\nPlanner's guidance:\n{state['plan']}"
+
+        if needs_skus and iteration > 1:
+            skus = _extract_skus(state["agent_results"])
+            if skus:
+                prompt = (
+                    f"{prompt}\n\nAlready-retrieved SKUs from the inventory "
+                    f"agent's earlier tool results (use these, do not ask the "
+                    f"user for a SKU list):\n{', '.join(skus)}"
+                )
 
         before_ids = _owned_tool_call_ids(session_factory, execution_id, owned_tool_names)
 
@@ -282,14 +371,23 @@ def _make_retrieval_node(
 
 
 def _make_replan_node(
-    agent: Agent, session_factory: Callable[[], Session], execution_id: uuid.UUID
+    agent: Agent,
+    session_factory: Callable[[], Session],
+    execution_id: uuid.UUID,
+    retrieval_agents: dict[str, Agent],
 ) -> NodeFn:
     """The Planner, re-invoked to judge sufficiency (Task 3.3) -- a
     tool-less structured-output call (invoke_structured), not the free
     text of the initial plan. `iteration` is derived from how many
     judgements exist already, not tracked as a separate state field:
     the replan_history this judgement is about to be appended to is
-    exactly the round it's evaluating.
+    exactly the round it's evaluating. `retrieval_agents` carries the
+    actual tool-bound Agent instances so the judgement is grounded in
+    the real, available data surface -- the Planner is gpt-oss-120b and
+    demonstrably invents 'missing' metrics the toolset cannot produce
+    (measured live: sell-through rate, promotion/seasonality flags, a
+    composite risk flag, days_of_inventory_left), which otherwise loops
+    the retry fan-out forever.
     """
 
     def node(state: ExecutionState) -> dict[str, object]:
@@ -299,16 +397,42 @@ def _make_replan_node(
         sections = [f"Original question:\n{state['query']}"]
         if state["plan"]:
             sections.append(f"Initial plan:\n{state['plan']}")
+        capabilities = "\n".join(
+            f"- {name.capitalize()} agent can call only: "
+            + (", ".join(t.name for t in retrieval_agents[name].tools) or "(no tools)")
+            for name in RETRIEVAL_AGENT_NAMES
+        )
+        sections.append(
+            "Available data surface (the retrieval agents can call ONLY these tools):\n"
+            f"{capabilities}"
+        )
         for name in RETRIEVAL_AGENT_NAMES:
             result = state["agent_results"].get(name)
             if result:
-                sections.append(f"{name.capitalize()} agent findings:\n{result}")
+                sections.append(
+                    _bounded_findings_section(
+                        f"{name.capitalize()} agent findings:", result, EVIDENCE_SECTION_CHARS
+                    )
+                )
         sections.append(
             f"This is your sufficiency judgement after retrieval round {iteration} "
-            f"of at most {max_iterations}. Judge whether the evidence above is "
-            "sufficient to answer the original question. If it is not, say exactly "
-            "what's missing and name which retrieval agent(s) should run again with "
-            "a more targeted ask."
+            f"of at most {max_iterations}. Evidence is delivered under a strict "
+            "request-size budget: each agent's view is capped and shows the most "
+            "relevant rows first, and trailing rows are omitted by design -- a "
+            "bounded view is expected, and missing tail rows are NOT a gap. "
+            "Sufficiency means the evidence lets you answer the user's question, "
+            "not that every dataset is reproduced in full. Judge sufficiency "
+            "strictly against the tools listed above: a metric exists only if "
+            "one of those tools returns it, so never report a metric as missing "
+            "unless a listed tool could actually produce it. If the evidence "
+            "already covers the urgent items (the low-stock SKUs, their demand "
+            "forecasts, and their reorder/days-of-cover risk), mark it "
+            "sufficient and move to the report, which will state coverage "
+            "honestly. Never ask for the full, untruncated output of a tool "
+            "(impossible by design) and never ask an agent to produce a metric "
+            "its tools cannot return. If the evidence is genuinely not "
+            "sufficient, say exactly what's missing and name which retrieval "
+            "agent(s) should run again with a more targeted ask."
         )
         prompt = "\n\n".join(sections)
 
@@ -390,7 +514,11 @@ def _make_synthesis_node(
         for name in (*RETRIEVAL_AGENT_NAMES, "report"):
             result = state["agent_results"].get(name)
             if result:
-                sections.append(f"{name.capitalize()} agent findings:\n{result}")
+                sections.append(
+                    _bounded_findings_section(
+                        f"{name.capitalize()} agent findings:", result, EVIDENCE_SECTION_CHARS
+                    )
+                )
         if state["citation_failures"]:
             # Only ever non-empty when this is Decision Engine regenerating
             # after Task 3.5's Validator rejected its first attempt --
@@ -596,7 +724,15 @@ def build_execution_graph(
         )
     builder.add_node(
         "replan",
-        cast(Any, _make_replan_node(agents["planner"], session_factory, execution_id)),
+        cast(
+            Any,
+            _make_replan_node(
+                agents["planner"],
+                session_factory,
+                execution_id,
+                {name: agents[name] for name in RETRIEVAL_AGENT_NAMES},
+            ),
+        ),
     )
     builder.add_node(
         "report",

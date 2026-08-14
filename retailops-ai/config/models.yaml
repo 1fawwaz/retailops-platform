@@ -54,5 +54,41 @@ fallback:
   # quota on this account -- gemini-3.1-pro-preview's quota is hard-zero, see comment above
 
 budgets:
-  max_tool_iterations: 12
+  # Replan-loop cap (was 12, cut to 2, measured live run12): each
+  # insufficient-replan round re-invokes retrieval agents and each round
+  # costs 40-90s under this account's Groq 429 contention. With a cap of
+  # 12, the acceptance query ("Which products are low on stock...") could
+  # not converge inside any practical deadline -- run11 converged at round
+  # 2, run12's replan judged round 2 insufficient and spent round 3 (99s)
+  # only for the inventory agent to exhaust every LLM provider, then the
+  # 240s deadline aborted at 250.2s. The data surface is complete after 2
+  # rounds for this and similar queries (round 1 gathers the low-stock
+  # list, round 2 gets the SKU-gated forecasts/reorder timing via the
+  # _extract_skus injection), and Task 3.6 already flags truncated
+  # reasoning when the cap is reached while Replan still says insufficient
+  # (orchestration/graph.py::_make_synthesis_node), so the graph now
+  # proceeds to Report deterministically after 2 rounds instead of looping.
+  max_tool_iterations: 2
   max_tokens_per_execution: 60000
+  # Stage 3 timeout fix (measured live, real app): this account's Groq
+  # org rejects ANY single request over its 8000-token TPM ceiling with
+  # HTTP 413 "Request too large ... Limit 8000, Requested <N>" -- all 4
+  # keys alike (the limit is per-org, so key rotation never helps). The
+  # Inventory agent's tool-calling loop was the offender: after a
+  # 100-item list tool result was fed back in full, the next request
+  # carried the whole accumulated history (measured Requested 39815 and
+  # 21366), deterministically 413'ing every key, then stalling on Groq
+  # 429 retries and falling back to slow Gemini (measured 67,158 input
+  # tokens / 78.7s), until the 60s SSE deadline fired.
+  #
+  # max_request_tokens bounds the total input of any single LLM request
+  # (enforced by Agent._bound_history over the whole tool-calling
+  # conversation); max_output_tokens caps every reply so input+output
+  # stays under the 8000 ceiling; max_tool_result_items /
+  # max_tool_result_chars bound how much of one tool result is fed back
+  # in. These replaced the old module constant MAX_TOOL_RESULT_ITEMS=200,
+  # which was no cap at all for a 100-item response.
+  max_request_tokens: 4500
+  max_output_tokens: 1024
+  max_tool_result_items: 40
+  max_tool_result_chars: 8000

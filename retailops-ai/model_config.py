@@ -39,6 +39,14 @@ class ModelRoles(BaseModel):
 class ModelBudgets(BaseModel):
     max_tool_iterations: int
     max_tokens_per_execution: int
+    # Stage 3 timeout fix -- see config/models.yaml budgets comments for
+    # the measured reason each of these exists. Defaults (not required
+    # fields) so legacy constructors that pass only the two original
+    # keys keep working; the live config file always sets all four.
+    max_request_tokens: int = 4500
+    max_output_tokens: int = 1024
+    max_tool_result_items: int = 40
+    max_tool_result_chars: int = 8000
 
 
 class ModelConfig(BaseModel):

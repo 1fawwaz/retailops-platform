@@ -14,7 +14,13 @@ def test_get_model_config_loads_real_config_file() -> None:
 def test_budgets_match_claude_md_spec() -> None:
     config = get_model_config()
 
-    assert config.budgets.max_tool_iterations == 12
+    # 2, not 12, since the Stage 3 replan-loop cap was cut to 2 with the
+    # measured latency rationale (config/models.yaml budgets) -- the data
+    # surface is complete after 2 rounds for the acceptance query and the
+    # graph proceeds to Report deterministically after that (Task 3.6
+    # truncated-reasoning flag), instead of looping 4-90s rounds under
+    # Groq 429 contention until any deadline.
+    assert config.budgets.max_tool_iterations == 2
     assert config.budgets.max_tokens_per_execution == 60000
 
 
