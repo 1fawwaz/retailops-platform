@@ -31,6 +31,7 @@ def _to_sku_forecast(result: SkuForecastResult) -> SkuForecast:
         training_window_start=result.training_window_start,
         training_window_end=result.training_window_end,
         data_quality=result.data_quality,
+        confidence_method=result.confidence_method,
         provenance=SKU_FORECAST_PROVENANCE,
     )
 

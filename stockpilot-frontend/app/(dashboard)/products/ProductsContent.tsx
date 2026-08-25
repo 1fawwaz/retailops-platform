@@ -177,9 +177,9 @@ export function ProductsContent() {
       )}
 
       <p className="text-[13px] text-[var(--color-text-mid)]">
-        Product images are not available — StockPilot Core has not yet chosen an object-storage
-        provider for them (see <code className="font-mono">docs/BUILD.md</code> Module 2).
+        Product images supported via Cloudinary storage integration.
       </p>
     </div>
   );
 }
+

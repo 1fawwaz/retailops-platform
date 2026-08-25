@@ -77,8 +77,8 @@ export function ProductForm({ mode, defaultValues, submitLabel, onSubmit }: Prod
           label: supplier.name,
         }))}
       />
-      <FormField<ProductFormValues> name="unit_cost" label="Cost price (£)" type="number" />
-      <FormField<ProductFormValues> name="sale_price" label="Sale price (£)" type="number" />
+      <FormField<ProductFormValues> name="unit_cost" label="Cost price (₹)" type="number" />
+      <FormField<ProductFormValues> name="sale_price" label="Sale price (₹)" type="number" />
       <FormField<ProductFormValues> name="reorder_point" label="Reorder point" type="number" />
       <FormField<ProductFormValues> name="safety_stock" label="Safety stock" type="number" />
       {submitError && (

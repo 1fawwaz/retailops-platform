@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from schemas.email import LocalEmail
 
 
 class UserCreate(BaseModel):
@@ -10,7 +12,7 @@ class UserCreate(BaseModel):
         }
     )
 
-    email: EmailStr
+    email: LocalEmail
     password: str = Field(min_length=8)
 
 
@@ -31,9 +33,10 @@ class UserRead(BaseModel):
     )
 
     id: int
-    email: EmailStr
+    email: LocalEmail
     is_active: bool
     is_read_only: bool
+    avatar_url: str | None = None
     created_at: datetime
 
 
@@ -58,9 +61,10 @@ class UserWithRolesRead(BaseModel):
     )
 
     id: int
-    email: EmailStr
+    email: LocalEmail
     is_active: bool
     is_read_only: bool
+    avatar_url: str | None = None
     created_at: datetime
     roles: list[str]
 
@@ -88,7 +92,7 @@ class RefreshRequest(BaseModel):
         json_schema_extra={"examples": [{"refresh_token": "8iQ2z...opaque-token...x9F"}]}
     )
 
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class AccessTokenResponse(BaseModel):
@@ -116,7 +120,7 @@ class LogoutRequest(BaseModel):
         json_schema_extra={"examples": [{"refresh_token": "8iQ2z...opaque-token...x9F"}]}
     )
 
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class PasswordResetRequest(BaseModel):
@@ -124,7 +128,7 @@ class PasswordResetRequest(BaseModel):
         json_schema_extra={"examples": [{"email": "analyst@retailops.local"}]}
     )
 
-    email: EmailStr
+    email: LocalEmail
 
 
 class PasswordResetConfirm(BaseModel):

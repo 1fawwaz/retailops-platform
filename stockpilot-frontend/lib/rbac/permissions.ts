@@ -25,6 +25,7 @@ export type Resource =
   | "forecasts"
   | "analytics"
   | "reports"
+  | "recommendations"
   | "notifications"
   | "audit_logs"
   | "settings"
@@ -47,6 +48,7 @@ const ALL_RESOURCES: Resource[] = [
   "forecasts",
   "analytics",
   "reports",
+  "recommendations",
   "notifications",
   "audit_logs",
   "settings",
@@ -82,17 +84,17 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     "purchase_order:read",
     "purchase_order:create",
     "purchase_order:receive",
-    ...readOnly(["analytics", "dashboard", "profile"]),
+    ...readOnly(["analytics", "reports", "recommendations", "forecasts", "dashboard", "profile"]),
   ]),
   procurement: new Set([
     ...fullAccess(["suppliers", "purchase_order"]),
-    ...readOnly(["inventory", "forecasts", "dashboard", "profile"]),
+    ...readOnly(["inventory", "forecasts", "recommendations", "dashboard", "profile"]),
   ]),
   sales: new Set([
     ...fullAccess(["sales", "customers"]),
     ...readOnly(["products", "inventory", "dashboard", "profile"]),
   ]),
-  analyst: new Set(readOnly(["dashboard", "analytics", "reports", "forecasts", "profile"])),
+  analyst: new Set(readOnly(["dashboard", "analytics", "reports", "forecasts", "recommendations", "profile"])),
   viewer: new Set(readOnly(["dashboard", "profile"])),
 };
 

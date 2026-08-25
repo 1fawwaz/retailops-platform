@@ -10,6 +10,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test-key-not-for-production")
 os.environ.setdefault("GROQ_API_KEY", "test-key-not-for-production")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-0123456789")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
+os.environ["LLM_PRIMARY_PROVIDER"] = "groq"
 
 import settings as _settings_module  # noqa: E402
 

@@ -1,11 +1,12 @@
-import { EmptyState } from "../../../components/ui/EmptyState";
+import { Suspense } from "react";
+import { ReportsContent } from "./ReportsContent";
 
 // docs/PRODUCT-SPEC.md §24 Reports / §15 / BUILD.md Stage 8.
+// Wired to real GET /analytics/* endpoints.
 export default function ReportsPage() {
   return (
-    <EmptyState
-      title="Reports"
-      description="Exportable standard reports will appear here once Stage 8 wires report generation."
-    />
+    <Suspense fallback={null}>
+      <ReportsContent />
+    </Suspense>
   );
 }

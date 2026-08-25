@@ -222,10 +222,19 @@ export function ProductDetailContent({ sku }: { sku: string }) {
         )}
       </div>
 
-      <p className="text-[13px] text-[var(--color-text-mid)]">
-        No image is available — StockPilot Core has not yet chosen an object-storage provider (see{" "}
-        <code className="font-mono">docs/BUILD.md</code> Module 2).
-      </p>
+      {product.data?.image_url ? (
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] font-medium text-[var(--color-text-dark)]">Product Image:</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={product.data.image_url} alt={product.data.description ?? product.data.sku} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+        </div>
+      ) : (
+        <p className="text-[13px] text-[var(--color-text-mid)]">
+          No image uploaded — Upload product images via Cloudinary integration on edit.
+        </p>
+      )}
+
     </div>
   );
 }
+

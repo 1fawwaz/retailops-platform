@@ -1,12 +1,12 @@
-import { EmptyState } from "../../../components/ui/EmptyState";
+import { Suspense } from "react";
+import { NotificationsContent } from "./NotificationsContent";
 
 // docs/PRODUCT-SPEC.md §24 Notifications / §16 / BUILD.md Stage 9.
-// See docs/stockpilot-gaps.md #4: StockPilot Core has no Notifications API today.
+// Wired to real GET /notifications endpoint.
 export default function NotificationsPage() {
   return (
-    <EmptyState
-      title="Notifications"
-      description="System-generated alerts will appear here once StockPilot Core has a Notifications API to build against."
-    />
+    <Suspense fallback={null}>
+      <NotificationsContent />
+    </Suspense>
   );
 }

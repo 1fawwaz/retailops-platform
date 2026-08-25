@@ -11,8 +11,8 @@ Creates a reproducible inventory test scenario covering all required cases:
   H — Multi-warehouse  (Main + Secondary with deterministic allocation)
 
 Provenance: every record created here is explicitly synthetic/test data,
-labelled so it is never confused with the observed Online Retail II dataset.
-The historical ETL data is NOT modified or replaced.
+// labelled so it is never confused with the observed Indian dataset.
+// The historical ETL data is NOT modified or replaced.
 
 Usage:
     python scripts/seed_test_inventory.py
@@ -52,10 +52,10 @@ TEST_CATEGORY_NAME = "Test Inventory Scenario"
 TEST_BRAND_NAME = "Test Brand"
 
 # Historical reference date for window-based analytics.
-# The Online Retail II dataset ends on 2011-12-09; dead-stock and
+# The Indian dataset ends on 2026-08-14; dead-stock and
 # slow-mover windows should be computed relative to this date when
 # analysing the historical data, not the machine's current date.
-HISTORICAL_AS_OF_DATE = datetime(2011, 12, 9, 23, 59, 59)
+HISTORICAL_AS_OF_DATE = datetime(2026, 8, 14, 23, 59, 59)
 
 # Scenario reference date: "today" for the test scenario
 SCENARIO_DATE = date(2026, 8, 1)
@@ -267,9 +267,9 @@ STOCK_LEVELS: list[StockSpec] = [
 # ─── Stock movements ────────────────────────────────────────────────
 # These create the historical movement pattern that the dead-stock,
 # slow-mover, and ledger queries will analyse.
-# Reference date for movements: 2011-12-09 (matching the real dataset's
+# Reference date for movements: 2026-08-14 (matching the real dataset's
 # last business date, so the as_of_date logic works correctly).
-MOVEMENT_DATE_BASE = datetime(2011, 12, 9)
+MOVEMENT_DATE_BASE = datetime(2026, 8, 14)
 
 
 def _build_movements() -> list[MovementSpec]:

@@ -14,7 +14,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -25,6 +25,7 @@ from settings import get_settings
 
 _oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="auth/login",
+    auto_error=False,
     description=(
         "A JWT issued by StockPilot Core's own POST /auth/login -- this service has no "
         "login endpoint of its own."
@@ -32,11 +33,19 @@ _oauth2_scheme = OAuth2PasswordBearer(
 )
 
 
-def get_current_subject(token: str = Depends(_oauth2_scheme)) -> str:
+def get_current_subject(request: Request, token: str | None = Depends(_oauth2_scheme)) -> str:
     """The authenticated StockPilot user's email (the token's `sub`
     claim). Every non-health route depends on this; a missing, expired,
     or wrong-secret token yields a 401 before the route body runs.
     """
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         return decode_bearer_subject(token)
     except jwt.PyJWTError:

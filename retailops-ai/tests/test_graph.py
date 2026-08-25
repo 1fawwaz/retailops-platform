@@ -9,6 +9,7 @@ with INSUFFICIENT_DATA when a draft answer can't be grounded.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 import time
@@ -69,11 +70,13 @@ def session_factory() -> Generator[Callable[[], Session]]:
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     yield factory
     engine.dispose()
-    os.remove(path)
+    with contextlib.suppress(OSError):
+        os.remove(path)
     for suffix in ("-wal", "-shm"):
         extra = path + suffix
         if os.path.exists(extra):
-            os.remove(extra)
+            with contextlib.suppress(OSError):
+                os.remove(extra)
 
 
 def _new_execution(session_factory: Callable[[], Session]) -> uuid.UUID:

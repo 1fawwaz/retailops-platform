@@ -18,20 +18,19 @@ from models.stock_movement import StockMovement
 from services.notifications import check_low_stock_crossing
 
 
-def _latest_stock_level_by_warehouse_subquery() -> Subquery:
+def _latest_stock_level_by_warehouse_subquery(as_of: date | None = None) -> Subquery:
     """Per (sku, warehouse) stock_levels row with the most recent
-    as_of_date. A SKU can have one current row per warehouse now that
+    as_of_date on or before as_of. A SKU can have one current row per warehouse now that
     stock is location-scoped (docs/BUILD.md Backend Module 4).
     """
-    latest_dates = (
-        select(
-            StockLevel.sku.label("sku"),
-            StockLevel.warehouse_id.label("warehouse_id"),
-            func.max(StockLevel.as_of_date).label("max_date"),
-        )
-        .group_by(StockLevel.sku, StockLevel.warehouse_id)
-        .subquery()
+    select_dates = select(
+        StockLevel.sku.label("sku"),
+        StockLevel.warehouse_id.label("warehouse_id"),
+        func.max(StockLevel.as_of_date).label("max_date"),
     )
+    if as_of is not None:
+        select_dates = select_dates.where(StockLevel.as_of_date <= as_of)
+    latest_dates = select_dates.group_by(StockLevel.sku, StockLevel.warehouse_id).subquery()
     return (
         select(
             StockLevel.sku.label("sku"),
@@ -49,14 +48,11 @@ def _latest_stock_level_by_warehouse_subquery() -> Subquery:
     )
 
 
-def latest_stock_level_subquery() -> Subquery:
-    """Per-SKU total quantity_on_hand: each warehouse's own latest row,
-    summed. With a single warehouse (today's only real case) this is
-    numerically identical to the pre-Module-4 single-location query --
-    it only starts summing across locations once a second warehouse
-    genuinely has stock.
+def latest_stock_level_subquery(as_of: date | None = None) -> Subquery:
+    """Per-SKU total quantity_on_hand: each warehouse's own latest row
+    on or before as_of, summed.
     """
-    per_warehouse = _latest_stock_level_by_warehouse_subquery()
+    per_warehouse = _latest_stock_level_by_warehouse_subquery(as_of=as_of)
     return (
         select(
             per_warehouse.c.sku.label("sku"),
@@ -68,11 +64,11 @@ def latest_stock_level_subquery() -> Subquery:
     )
 
 
-def get_current_stock(db: Session, sku: str) -> int | None:
-    """Most recent total quantity_on_hand for a single SKU across every
+def get_current_stock(db: Session, sku: str, as_of: date | None = None) -> int | None:
+    """Total quantity_on_hand as of an optional date for a single SKU across every
     warehouse, or None if it has no stock_levels rows yet.
     """
-    per_warehouse = _latest_stock_level_by_warehouse_subquery()
+    per_warehouse = _latest_stock_level_by_warehouse_subquery(as_of=as_of)
     stmt = select(func.sum(per_warehouse.c.quantity_on_hand)).where(per_warehouse.c.sku == sku)
     return db.execute(stmt).scalar_one_or_none()
 
@@ -95,10 +91,11 @@ def list_stock(
     category: str | None = None,
     low_stock: bool | None = None,
     search: str | None = None,
+    as_of: date | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[StockRow]:
-    latest = latest_stock_level_subquery()
+    latest = latest_stock_level_subquery(as_of=as_of)
     is_low_stock_expr = case(
         (
             Product.reorder_point.is_not(None)

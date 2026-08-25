@@ -50,8 +50,8 @@ roles:
 
 fallback:
   provider: gemini
-  model: gemini-3.5-flash # verified live: tool calls, structured output, streaming, and REAL usable
-  # quota on this account -- gemini-3.1-pro-preview's quota is hard-zero, see comment above
+  model: gemini-3.6-flash
+
 
 budgets:
   # Replan-loop cap (was 12, cut to 2, measured live run12): each

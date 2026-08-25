@@ -127,3 +127,16 @@ def test_forecast_sku_uses_gbm_when_selected_and_history_is_sufficient(
     finally:
         forecast_service.MODEL_PATH = original_model_path
         forecast_service.load_gbm_model.cache_clear()
+
+
+def test_forecast_sku_confidence_method(db_session: Session) -> None:
+    # 1. Thin history (less than 30 days) -> global_fallback
+    _seed_sales(db_session, "THIN-1", days=10)
+    artifact = _artifact()
+    result = forecast_sku(db_session, "THIN-1", horizon_days=7, artifact=artifact)
+    assert result.confidence_method == "global_fallback"
+
+    # 2. Sufficient history (30+ days) -> per_sku
+    _seed_sales(db_session, "SUFF-1", days=40)
+    result_suff = forecast_sku(db_session, "SUFF-1", horizon_days=7, artifact=artifact)
+    assert result_suff.confidence_method == "per_sku"

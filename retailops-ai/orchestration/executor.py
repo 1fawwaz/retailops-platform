@@ -46,6 +46,45 @@ from orchestration.models.message import Message
 from orchestration.state import ExecutionState, new_execution_state
 from orchestration.validator import resolve_citations
 
+_INSUFFICIENT_DATA_PREFIX = "INSUFFICIENT_DATA:"
+_DEGRADED_PREFIX = "INCOMPLETE:"
+
+
+def _sanitize_errors(errors: list[str]) -> list[str]:
+    """Client-facing error entries must never carry a raw provider
+    exception body (which can embed e.g. a Gemini 429/quota payload).
+    Every entry the graph produces is f"<agent>: <exception>"; replace the
+    exception detail with standardized plain copy, keeping the agent tag.
+    The full raw text remains in the persisted Execution.errors trace.
+    """
+    safe: list[str] = []
+    for entry in errors:
+        agent, sep, _detail = entry.partition(": ")
+        if sep:
+            safe.append(f"{agent}: could not reach any configured LLM provider after retries.")
+        else:
+            safe.append(entry)
+    return safe
+
+
+def _sanitize_answer(answer: str | None) -> str | None:
+    """Map internal degradation markers that can become final_answer to
+    plain-language copy before they reach a chat UI. Raw failure detail
+    stays in the persisted trace (citation_failures / Execution.errors).
+    """
+    if answer is None:
+        return None
+    stripped = answer.strip()
+    if stripped.startswith(_INSUFFICIENT_DATA_PREFIX):
+        return (
+            "This answer is incomplete: some figures could not be verified against the "
+            "live data for this execution, so they have been left out rather than "
+            "guessed. Please rephrase the question or try again."
+        )
+    if stripped.startswith(_DEGRADED_PREFIX):
+        return stripped[len(_DEGRADED_PREFIX) :].strip()
+    return answer
+
 
 def _setup_execution(
     query: str,
@@ -284,20 +323,55 @@ def build_query_response_fields(
         if execution.final_answer
         else []
     )
+    latest_replan = state["replan_history"][-1] if state["replan_history"] else {}
+    sql_duration_ms = sum(
+        int(entry.get("latency_ms") or 0)
+        for entry in state["tool_ledger"]
+        if isinstance(entry, dict)
+    )
+    llm_duration_ms = sum(
+        int((t.get("end", 0) - t.get("start", 0)) * 1000)
+        for t in state["timings"].values()
+        if isinstance(t, dict) and "end" in t and "start" in t
+    )
+    selected_tools = sorted(
+        list(
+            {
+                str(entry.get("tool_name"))
+                for entry in state["tool_ledger"]
+                if entry.get("tool_name")
+            }
+        )
+    )
+
+    telemetry = {
+        "replan_reason": latest_replan.get("next_action"),
+        "missing_fields": latest_replan.get("missing", []),
+        "retry_count": len(state["replan_history"]),
+        "selected_tools": selected_tools,
+        "latency": {
+            "sql_duration_ms": sql_duration_ms,
+            "llm_duration_ms": llm_duration_ms,
+            "total_duration_ms": sql_duration_ms + llm_duration_ms,
+            "timings_by_node": state["timings"],
+        },
+    }
+
     return {
         "execution_id": execution.id,
         "conversation_id": execution.conversation_id,
         "status": execution.status,
-        "answer": execution.final_answer,
+        "answer": _sanitize_answer(execution.final_answer),
         "plan": state["plan"],
         "agent_results": state["agent_results"],
         "tool_ledger": state["tool_ledger"],
         "provenance_map": state["provenance_map"],
         "replan_rounds": len(state["replan_history"]),
         "citation_attempts": len(state["citation_failures"]),
-        "errors": state["errors"],
+        "errors": _sanitize_errors(state["errors"]),
         "total_tokens": execution.total_tokens,
         "serving": _serving_models_by_agent(state["execution_id"], session_factory),
+        "telemetry": telemetry,
         # Task F4 ("citation drill-down"): where each numeric token in the
         # final answer resolves to, so the frontend can render a clickable
         # citation chip per docs/DESIGN-SPEC.md's own component rule.

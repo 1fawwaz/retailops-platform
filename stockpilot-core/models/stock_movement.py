@@ -17,11 +17,6 @@ class StockMovement(Base):
     __table_args__ = (
         Index("ix_stock_movements_sku_movement_date", "sku", "movement_date"),
         CheckConstraint(
-            "movement_type IN ('sale', 'purchase_order', 'opening_balance', "
-            "'transfer', 'adjustment')",
-            name="ck_stock_movements_movement_type",
-        ),
-        CheckConstraint(
             "provenance IN ('observed', 'derived')",
             name="ck_stock_movements_provenance",
         ),

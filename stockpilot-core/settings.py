@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # only so a missing env var in a real deployment fails closed
     # (no browser access), not open (allow-all).
     cors_allowed_origins: str = "http://localhost:3000"
+    cookie_domain: str | None = None
+    cookie_secure: bool = False
+    cookie_samesite: str = "lax"
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

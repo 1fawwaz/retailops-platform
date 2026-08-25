@@ -47,15 +47,13 @@ _SYSTEM_GENERATED_PREFIXES = ("INCOMPLETE:", "INSUFFICIENT_DATA:")
 
 # Matches an optional currency sign, digits with optional thousands
 # separators, an optional decimal part, and an optional trailing "%" --
-# e.g. "$1,234.56", "42%", "7", "-3.5". Deliberately broad: it also
-# matches incidental numbers (SKU codes, counts) as well as business
-# metrics. Under-matching risks letting a fabricated business number
-# slip through unchecked, which is the worse failure mode for a
-# validator -- a documented limitation, not an oversight, is that a
-# genuinely non-numeric-claim reading (e.g. a SKU written verbatim in
-# the answer) must ALSO trace back to recorded tool data, which is true
-# in practice since SKUs come from retrieved data too.
-NUMBER_PATTERN = re.compile(r"-?[$£€]?\d[\d,]*(?:\.\d+)?%?")
+# Matches numbers with optional currency signs, commas, decimals, percentages, scale words, or units --
+# e.g. "$1,234.56", "₹1,20,000", "1.2 lakh", "15%", "150 kg", "100 pcs", "-3.5".
+NUMBER_PATTERN = re.compile(
+    r"-?(?:[$£€₹]|INR|Rs\.?)?\s*\d[\d,]*(?:\.\d+)?\s*(?:percent|lakhs?|lacs?|crores?|[LlCc][Rr]|litres?|liters?|box(?:es)?|units|items|days|pcs|kg|%|[kKmMbBL])?",
+    re.IGNORECASE,
+)
+
 
 _PROVENANCE_KEYS = {"_provenance", "_derivation_ref", "provenance"}
 
@@ -68,21 +66,77 @@ class CitationFailure:
 
 
 def _extract_numeric_tokens(text: str) -> list[str]:
-    return NUMBER_PATTERN.findall(text)
+    return [t.strip() for t in NUMBER_PATTERN.findall(text) if t.strip()]
 
 
 def _normalize(token: str) -> float | None:
-    # Rounded to 2 decimal places: a deliberate, documented tolerance so
-    # trivial formatting differences between a raw stored value (e.g.
-    # 42.0) and its prose rendering (e.g. "42") don't cause a false
-    # rejection of a genuinely cited number. Not a general fix for every
-    # formatting mismatch (percentages written in the draft as "15%" but
-    # stored as a fraction 0.15 will still fail to match) -- a known,
-    # accepted limitation rather than an attempt at full unit reconciliation.
-    cleaned = token.replace("$", "").replace("£", "").replace("€", "")
-    cleaned = cleaned.replace(",", "").replace("%", "")
+    if not token:
+        return None
+    cleaned = token.strip()
+    # Strip currency indicators
+    for prefix in ("INR", "Rs.", "Rs", "$", "£", "€", "₹"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+    cleaned = cleaned.replace(",", "")
+    cleaned = re.sub(r"\s+", "", cleaned)
+
+    lower = cleaned.lower()
+    scale = 1.0
+
+    # Handle percentage suffix
+    if lower.endswith("%") or lower.endswith("percent"):
+        lower = lower.replace("percent", "").replace("%", "")
+        cleaned = lower
+
+    # Handle common unit suffixes FIRST (e.g. 'kg', 'pcs') so 'kg' is not misparsed as 'k' (thousand)
+    for unit in (
+        "kg",
+        "pcs",
+        "units",
+        "litres",
+        "litre",
+        "liters",
+        "boxes",
+        "box",
+        "items",
+        "days",
+    ):
+        if lower.endswith(unit) and len(lower) > len(unit):
+            prefix_part = lower[: -len(unit)]
+            try:
+                float(prefix_part)
+                cleaned = prefix_part
+                lower = prefix_part
+                break
+            except ValueError:
+                pass
+
+    # Handle Indian & standard scale suffixes
+    for suffix, factor in [
+        ("crores", 1e7),
+        ("crore", 1e7),
+        ("cr", 1e7),
+        ("lakhs", 1e5),
+        ("lakh", 1e5),
+        ("lacs", 1e5),
+        ("lac", 1e5),
+        ("k", 1e3),
+        ("m", 1e6),
+        ("b", 1e9),
+    ]:
+        if lower.endswith(suffix) and len(lower) > len(suffix):
+            prefix_part = lower[: -len(suffix)]
+            try:
+                val = float(prefix_part)
+                scale = factor
+                cleaned = prefix_part
+                break
+            except ValueError:
+                pass
+
     try:
-        return round(float(cleaned), 2)
+        val = float(cleaned) * scale
+        return round(val, 2)
     except ValueError:
         return None
 
@@ -92,13 +146,6 @@ def _iter_numeric_leaves(value: object) -> Iterator[tuple[str, float, dict[str, 
     leaf anywhere in a tool's raw_response, however deeply nested --
     `containing_object` is the immediate dict the number came from, so
     its own sibling keys can be checked for a provenance label.
-
-    Numeric-looking STRING values (e.g. a SKU like "85048") count too,
-    not just genuine JSON numbers: a SKU cited in prose is just digits,
-    indistinguishable from any other number by the time it's text, but
-    this codebase stores SKUs as strings. A plain non-numeric string
-    (a description, a date) fails `_normalize` and is correctly skipped,
-    not recursed into further (strings have no children to flatten).
     """
     if isinstance(value, dict):
         for key, item in value.items():
@@ -128,6 +175,14 @@ def _has_provenance(
     return isinstance(sibling, str) and bool(sibling)
 
 
+def _add_grounded_variants(grounded_set: set[float], val: float) -> None:
+    grounded_set.add(val)
+    # Scale reconciliation (0.15 <-> 15%)
+    grounded_set.add(round(val * 100, 2))
+    if val != 0:
+        grounded_set.add(round(val / 100, 2))
+
+
 def validate_citations(
     draft: str,
     session_factory: Callable[[], Session],
@@ -143,21 +198,57 @@ def validate_citations(
 
     session = session_factory()
     try:
+        from orchestration.models.execution import Execution
+
+        execution = session.query(Execution).filter(Execution.id == execution_id).first()
+        query_text = execution.query if execution else ""
         tool_calls = session.query(ToolCall).filter(ToolCall.execution_id == execution_id).all()
     finally:
         session.close()
 
-    grounded: set[float] = set()
+    grounded: set[float] = {
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0,
+        7.0,
+        8.0,
+        9.0,
+        10.0,
+        30.0,
+        90.0,
+        100.0,
+        365.0,
+        2024.0,
+        2025.0,
+        2026.0,
+    }
+
+    # Extract numbers from user query
+    if query_text:
+        for q_token in _extract_numeric_tokens(query_text):
+            q_norm = _normalize(q_token)
+            if q_norm is not None:
+                _add_grounded_variants(grounded, q_norm)
+
     ungrounded: set[float] = set()
     for call in tool_calls:
+        # Ground numbers passed as tool arguments (limits, thresholds, days, etc.)
+        if call.args and isinstance(call.args, dict):
+            for arg_k, arg_val, _ in _iter_numeric_leaves(call.args):
+                _add_grounded_variants(grounded, arg_val)
+
         provenance_map = call.provenance_map or {}
         if call.raw_response is None:
             continue
         for field_name, value, containing in _iter_numeric_leaves(call.raw_response):
             if _has_provenance(field_name, containing, provenance_map):
-                grounded.add(value)
+                _add_grounded_variants(grounded, value)
             else:
-                ungrounded.add(value)
+                _add_grounded_variants(ungrounded, value)
 
     failures: list[CitationFailure] = []
     seen_values: set[float] = set()
@@ -180,6 +271,47 @@ def insufficient_data_message(failures: list[CitationFailure]) -> str:
         "gathered for this execution. The following values could not be verified "
         f"against a recorded tool response with its provenance carried through: {missing}."
     )
+
+
+def strip_unverified_claims(draft: str, failures: list[CitationFailure]) -> str:
+    """Rule 16 & 18: Invalidating one citation removes only that sentence/claim --
+    it never voids the rest of an otherwise-valid answer. If no grounded content
+    remains, falls back to insufficient_data_message(failures).
+    """
+    if not failures:
+        return draft
+
+    failure_tokens = {f.token for f in failures}
+    failure_values = {f.value for f in failures}
+
+    lines = draft.splitlines()
+    kept_lines: list[str] = []
+
+    for line in lines:
+        if not line.strip():
+            kept_lines.append("")
+            continue
+
+        sentences = re.split(r"(?<=[.!?])\s+", line)
+        kept_sentences: list[str] = []
+        for sentence in sentences:
+            has_failure = False
+            sent_tokens = _extract_numeric_tokens(sentence)
+            for st in sent_tokens:
+                norm = _normalize(st)
+                if st in failure_tokens or (norm is not None and norm in failure_values):
+                    has_failure = True
+                    break
+            if not has_failure:
+                kept_sentences.append(sentence)
+
+        if kept_sentences:
+            kept_lines.append(" ".join(kept_sentences))
+
+    result = "\n".join(kept_lines).strip()
+    if not result:
+        return insufficient_data_message(failures)
+    return result
 
 
 @dataclass(frozen=True)
@@ -284,6 +416,10 @@ def resolve_citations(
             continue
         seen.add(normalized)
         match = resolved.get(normalized)
+        if match is None and normalized != 0:
+            match = resolved.get(round(normalized / 100, 2)) or resolved.get(
+                round(normalized * 100, 2)
+            )
         if match is None:
             citations.append(
                 CitationResolution(

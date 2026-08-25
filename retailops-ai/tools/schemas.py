@@ -128,8 +128,11 @@ class GetPeriodComparisonArgs(BaseModel):
 
 
 class ForecastDemandArgs(BaseModel):
-    skus: list[str] = Field(min_length=1, description="SKUs to forecast demand for.")
-    horizon_days: int = Field(ge=1, le=90, description="Days ahead to forecast.")
+    skus: list[str] = Field(
+        default_factory=list,
+        description="SKUs to forecast demand for. If empty, top low-stock SKUs are automatically selected.",
+    )
+    horizon_days: int = Field(default=30, ge=1, le=90, description="Days ahead to forecast.")
 
 
 class GetForecastAccuracyArgs(BaseModel):

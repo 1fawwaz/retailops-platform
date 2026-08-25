@@ -47,6 +47,7 @@ class SkuForecast(ProvenanceMixin):
     training_window_start: date | None
     training_window_end: date | None
     data_quality: str
+    confidence_method: str = "global_fallback"
 
 
 SKU_FORECAST_PROVENANCE = {

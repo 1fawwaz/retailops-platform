@@ -15,8 +15,8 @@ def test_get_settings_returns_defaults(client: TestClient) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["currency"] == "GBP"
-    assert body["timezone"] == "Europe/London"
+    assert body["currency"] == "INR"
+    assert body["timezone"] == "Asia/Kolkata"
     assert body["low_stock_notifications_enabled"] is True
 
 
@@ -27,7 +27,7 @@ def test_update_settings(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["currency"] == "USD"
-    assert response.json()["timezone"] == "Europe/London"  # unchanged
+    assert response.json()["timezone"] == "Asia/Kolkata"  # unchanged
 
 
 def test_non_admin_cannot_view_or_update_settings(client: TestClient) -> None:

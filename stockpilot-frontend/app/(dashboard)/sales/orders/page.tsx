@@ -1,12 +1,12 @@
-import { EmptyState } from "../../../../components/ui/EmptyState";
+import { Suspense } from "react";
+import { SalesOrdersContent } from "./SalesOrdersContent";
 
-// docs/PRODUCT-SPEC.md §24 Sales / BUILD.md Stage 6.
-// See docs/stockpilot-gaps.md #4: StockPilot Core has no Sales/Orders API today.
+// docs/PRODUCT-SPEC.md §24 Sales / BUILD.md Stage 7.
+// Wired to real GET /sales-orders (status filter, server-side pagination).
 export default function SalesOrdersPage() {
   return (
-    <EmptyState
-      title="Orders"
-      description="Sales orders will appear here once StockPilot Core has a Sales API to build Stage 6 against."
-    />
+    <Suspense fallback={null}>
+      <SalesOrdersContent />
+    </Suspense>
   );
 }

@@ -112,7 +112,7 @@ describe("ProductDetailContent", () => {
 
     renderWithClient();
 
-    expect(await screen.findByText("£4.99")).toBeInTheDocument();
+    expect(await screen.findByText("₹4.99")).toBeInTheDocument();
     expect(screen.getByText("Decorations")).toBeInTheDocument();
     expect(await screen.findByText("unit_cost")).toBeInTheDocument();
     expect(await screen.findByText(/Acme Wholesale Co/)).toBeInTheDocument();

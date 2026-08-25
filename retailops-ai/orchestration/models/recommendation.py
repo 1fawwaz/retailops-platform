@@ -41,7 +41,7 @@ class Recommendation(Base):
             name="ck_recommendations_priority",
         ),
         CheckConstraint(
-            "status IN ('pending', 'accepted', 'rejected')",
+            "status IN ('pending', 'accepted', 'rejected', 'snoozed')",
             name="ck_recommendations_status",
         ),
     )

@@ -60,19 +60,19 @@ function clearSession(): void {
  */
 async function silentRefresh(): Promise<string | null> {
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
   try {
     const response = await fetch(buildUrl("/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "include",
+      body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
     });
     if (!response.ok) return null;
     const parsed = accessTokenResponseSchema.parse(await response.json());
     // SEC-02: /auth/refresh rotates the refresh token -- persist the new
     // one or the next silent refresh would present an already-used token.
-    setRefreshToken(parsed.refresh_token);
-    setAccessToken(parsed.access_token);
+    if (parsed.refresh_token) setRefreshToken(parsed.refresh_token);
+    if (parsed.access_token) setAccessToken(parsed.access_token);
     return parsed.access_token;
   } catch {
     return null;
@@ -119,7 +119,12 @@ async function doFetch<T>(path: string, options: RequestOptions, isRetry: boolea
 
   let response: Response;
   try {
-    response = await fetch(buildUrl(path, params), { method, headers, body: requestBody });
+    response = await fetch(buildUrl(path, params), {
+      method,
+      headers,
+      body: requestBody,
+      credentials: "include",
+    });
   } catch (cause) {
     throw networkAppError(cause);
   }

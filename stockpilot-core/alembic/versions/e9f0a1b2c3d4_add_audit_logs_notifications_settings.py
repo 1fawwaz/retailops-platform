@@ -62,8 +62,8 @@ def upgrade() -> None:
     op.create_table(
         "settings",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("currency", sa.String(), server_default="GBP", nullable=False),
-        sa.Column("timezone", sa.String(), server_default="Europe/London", nullable=False),
+        sa.Column("currency", sa.String(), server_default="INR", nullable=False),
+        sa.Column("timezone", sa.String(), server_default="Asia/Kolkata", nullable=False),
         sa.Column(
             "low_stock_notifications_enabled", sa.Boolean(), server_default="true", nullable=False
         ),
@@ -83,8 +83,8 @@ def upgrade() -> None:
         settings_table,
         [
             {
-                "currency": "GBP",
-                "timezone": "Europe/London",
+                "currency": "INR",
+                "timezone": "Asia/Kolkata",
                 "low_stock_notifications_enabled": True,
             }
         ],

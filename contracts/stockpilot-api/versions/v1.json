@@ -98,11 +98,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LogoutRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LogoutRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "204": {
@@ -132,11 +139,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RefreshRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RefreshRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1308,6 +1322,24 @@
               ],
               "title": "Search"
             }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO date for historical point-in-time stock query",
+              "title": "As Of"
+            },
+            "description": "ISO date for historical point-in-time stock query"
           },
           {
             "name": "limit",
@@ -5637,14 +5669,18 @@
       "LogoutRequest": {
         "properties": {
           "refresh_token": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Refresh Token"
           }
         },
         "type": "object",
-        "required": [
-          "refresh_token"
-        ],
         "title": "LogoutRequest",
         "examples": [
           {
@@ -6246,6 +6282,17 @@
               }
             ],
             "title": "Safety Stock"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
           }
         },
         "type": "object",
@@ -6375,10 +6422,98 @@
             ],
             "title": "Safety Stock"
           },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "warehouse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "inventory_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inventory Value"
+          },
+          "supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier"
           },
           "quantity_on_hand": {
             "anyOf": [
@@ -6706,10 +6841,98 @@
             ],
             "title": "Safety Stock"
           },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "warehouse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouse"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "inventory_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inventory Value"
+          },
+          "supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier"
           }
         },
         "type": "object",
@@ -6845,6 +7068,17 @@
               }
             ],
             "title": "Safety Stock"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
           }
         },
         "type": "object",
@@ -7298,14 +7532,18 @@
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Refresh Token"
           }
         },
         "type": "object",
-        "required": [
-          "refresh_token"
-        ],
         "title": "RefreshRequest",
         "examples": [
           {
@@ -7730,9 +7968,9 @@
         "title": "SettingsRead",
         "examples": [
           {
-            "currency": "GBP",
+            "currency": "INR",
             "low_stock_notifications_enabled": true,
-            "timezone": "Europe/London",
+            "timezone": "Asia/Kolkata",
             "updated_at": "2026-01-01T00:00:00Z"
           }
         ]
@@ -7777,7 +8015,7 @@
         "title": "SettingsUpdate",
         "examples": [
           {
-            "currency": "GBP"
+            "currency": "INR"
           }
         ]
       },
@@ -7844,6 +8082,11 @@
           "data_quality": {
             "type": "string",
             "title": "Data Quality"
+          },
+          "confidence_method": {
+            "type": "string",
+            "title": "Confidence Method",
+            "default": "global_fallback"
           }
         },
         "type": "object",
@@ -8762,6 +9005,17 @@
             "type": "boolean",
             "title": "Is Read Only"
           },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -8805,6 +9059,17 @@
           "is_read_only": {
             "type": "boolean",
             "title": "Is Read Only"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
           },
           "created_at": {
             "type": "string",

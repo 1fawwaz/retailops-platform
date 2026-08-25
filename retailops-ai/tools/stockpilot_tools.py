@@ -23,6 +23,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from typing import TypeVar
 
 from langchain_core.tools import StructuredTool
@@ -55,6 +56,8 @@ from tools.schemas import (
 )
 
 ArgsT = TypeVar("ArgsT", bound=BaseModel)
+
+current_agent_step_id: ContextVar[int | None] = ContextVar("current_agent_step_id", default=None)
 
 
 def _extract_provenance(value: object) -> JsonDict:
@@ -95,6 +98,7 @@ def _build_tool(
             session.add(
                 ToolCall(
                     execution_id=execution_id,
+                    agent_step_id=current_agent_step_id.get(),
                     tool_name=name,
                     args=args_model.model_dump(mode="json"),
                     raw_response=(to_jsonable(result) if error is None else {"error": str(error)}),
@@ -285,7 +289,15 @@ def build_stockpilot_tools(
             "window, and data-quality flag for each requested SKU, over the "
             "given horizon.",
             ForecastDemandArgs,
-            lambda c, a: c.forecast_demand(a.skus, a.horizon_days),
+            lambda c, a: c.forecast_demand(
+                a.skus
+                if a.skus
+                else (
+                    [p.sku for p in c.get_low_stock(limit=10)]
+                    or [p.sku for p in c.list_products(limit=5)]
+                ),
+                a.horizon_days,
+            ),
         ),
         tool(
             "get_forecast_accuracy",

@@ -7,10 +7,11 @@ in the database.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from collections.abc import Callable, Generator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import httpx2
@@ -22,11 +23,16 @@ from sqlalchemy.orm import Session, sessionmaker
 from agents.replan import ReplanJudgement
 from clients.stockpilot import StockPilotClient
 from llm.providers.gemini import StructuredResult
-from orchestration.executor import run_execution, run_execution_streaming
+from orchestration.executor import (
+    build_query_response_fields,
+    run_execution,
+    run_execution_streaming,
+)
 from orchestration.models import Base
 from orchestration.models.conversation import Conversation
 from orchestration.models.execution import Execution
 from orchestration.models.message import Message
+from orchestration.state import new_execution_state
 from prompts.loader import load_prompt
 
 AGENT_NAMES = ("planner", "inventory", "forecast", "analytics", "report", "decision")
@@ -48,11 +54,13 @@ def session_factory() -> Generator[Callable[[], Session]]:
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     yield factory
     engine.dispose()
-    os.remove(path)
+    with contextlib.suppress(OSError):
+        os.remove(path)
     for suffix in ("-wal", "-shm"):
         extra = path + suffix
         if os.path.exists(extra):
-            os.remove(extra)
+            with contextlib.suppress(OSError):
+                os.remove(extra)
 
 
 def _client() -> StockPilotClient:
@@ -505,3 +513,88 @@ def test_run_execution_streaming_attributes_tool_names_to_the_calling_agent(
     assert by_agent["analytics"] == []
     assert by_agent["report"] == []
     assert by_agent["decision"] == []
+
+
+def test_empty_decision_answer_is_replaced_with_a_flagged_fallback(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Issue #4 regression test: a Decision model that returns an empty
+    string (no tool calls, no prose) must produce a non-empty, flagged
+    final answer and a completed execution -- never a blank bubble.
+    """
+    prompt_to_name = {load_prompt(name).text: name for name in AGENT_NAMES}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        if name == "decision":
+            return _ai_message("")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_sufficient_judgement),
+    ):
+        result = run_execution(
+            "Summarize the stock position.", client=_client(), session_factory=session_factory
+        )
+
+    final_answer = result["final_answer"]
+    assert final_answer is not None and final_answer.strip()
+    assert final_answer.startswith("INCOMPLETE:")
+    assert "empty response" in final_answer
+
+    session = session_factory()
+    try:
+        execution = session.query(Execution).one()
+    finally:
+        session.close()
+
+    assert execution.status == "completed"
+    assert execution.final_answer == final_answer
+
+
+def test_query_response_fields_maps_internal_codes_and_provider_errors_to_plain_copy(
+    session_factory: Callable[[], Session],
+) -> None:
+    """Boundary hardening: build_query_response_fields() must map
+    INSUFFICIENT_DATA markers and raw provider exception bodies to
+    plain-language copy in the client-facing response, while the persisted
+    Execution row keeps the full raw trace.
+    """
+    session = session_factory()
+    conversation = Conversation()
+    session.add(conversation)
+    session.commit()
+    execution = Execution(
+        query="q",
+        conversation_id=conversation.id,
+        status="completed",
+        final_answer="INSUFFICIENT_DATA: '999' (not_found); '99' (missing_provenance)",
+    )
+    session.add(execution)
+    session.commit()
+    execution_id = execution.id
+    session.close()
+
+    state = new_execution_state(
+        execution_id=execution_id,
+        query="q",
+        budgets={"max_tool_iterations": 2},
+    )
+    state["errors"] = [
+        "planner: All providers in the fallback chain failed: Gemini quota exceeded "
+        "429 RESOURCE_EXHAUSTED"
+    ]
+    state["final_answer"] = execution.final_answer
+
+    fields = build_query_response_fields(state, session_factory)
+
+    assert "INSUFFICIENT_DATA" not in cast(str, fields["answer"])
+    assert "not_found" not in cast(str, fields["answer"])
+    assert "missing_provenance" not in cast(str, fields["answer"])
+    assert cast(str, fields["answer"]).startswith("This answer is incomplete:")
+    assert "429" not in fields["errors"][0]
+    assert fields["errors"][0] == (
+        "planner: could not reach any configured LLM provider after retries."
+    )
+    assert state["errors"][0].endswith("RESOURCE_EXHAUSTED"), "raw trace kept in state/DB"

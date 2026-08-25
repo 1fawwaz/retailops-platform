@@ -69,7 +69,7 @@ describe("ProductsContent", () => {
     renderWithClient();
 
     expect(await screen.findByText("85048")).toBeInTheDocument();
-    expect(screen.getByText("£4.99")).toBeInTheDocument();
+    expect(screen.getByText("₹4.99")).toBeInTheDocument();
   });
 
   it("shows the genuinely-empty state when there are no filters and no products", async () => {
@@ -145,11 +145,12 @@ describe("ProductsContent", () => {
     expect(screen.getByRole("link", { name: "New product" })).toBeInTheDocument();
   });
 
-  it("discloses that product images are unavailable", async () => {
+  it("discloses that product images are supported via Cloudinary", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([])));
 
     renderWithClient();
 
-    expect(await screen.findByText(/Product images are not available/)).toBeInTheDocument();
+    expect(await screen.findByText(/Product images supported via Cloudinary/)).toBeInTheDocument();
   });
 });
+

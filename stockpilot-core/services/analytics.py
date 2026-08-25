@@ -255,10 +255,13 @@ def get_abc_classification(
         stmt = stmt.where(condition)
     per_sku = stmt.subquery()
 
-    running_total = func.sum(per_sku.c.revenue).over(
-        order_by=per_sku.c.revenue.desc(), rows=(None, 0)
+    from sqlalchemy import Float
+    from sqlalchemy import cast as sql_cast
+
+    running_total = sql_cast(
+        func.sum(per_sku.c.revenue).over(order_by=per_sku.c.revenue.desc(), rows=(None, 0)), Float
     )
-    grand_total = func.sum(per_sku.c.revenue).over()
+    grand_total = sql_cast(func.sum(per_sku.c.revenue).over(), Float)
     cumulative_pct_expr = running_total / grand_total
 
     ranked_stmt = select(per_sku.c.sku, per_sku.c.revenue, cumulative_pct_expr).order_by(
@@ -267,17 +270,15 @@ def get_abc_classification(
 
     rows: list[AbcRow] = []
     for sku, revenue, cumulative_pct in db.execute(ranked_stmt):
-        revenue = float(revenue)
-        cumulative_pct = float(cumulative_pct)
-        if cumulative_pct <= a_threshold:
+        rev_val = float(revenue) if revenue is not None else 0.0
+        pct_val = float(cumulative_pct) if cumulative_pct is not None else 0.0
+        if pct_val <= a_threshold:
             abc_class = "A"
-        elif cumulative_pct <= b_threshold:
+        elif pct_val <= b_threshold:
             abc_class = "B"
         else:
             abc_class = "C"
-        rows.append(
-            AbcRow(sku=sku, revenue=revenue, cumulative_pct=cumulative_pct, abc_class=abc_class)
-        )
+        rows.append(AbcRow(sku=sku, revenue=rev_val, cumulative_pct=pct_val, abc_class=abc_class))
     return rows
 
 

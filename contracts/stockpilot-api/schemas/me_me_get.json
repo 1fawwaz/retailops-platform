@@ -68,6 +68,17 @@
           "type": "boolean",
           "title": "Is Read Only"
         },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avatar Url"
+        },
         "created_at": {
           "type": "string",
           "format": "date-time",

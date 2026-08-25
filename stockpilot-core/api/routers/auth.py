@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,7 @@ from services.users import (
     get_user_by_email,
     set_password,
 )
+from settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -79,8 +80,41 @@ def register(
     return UserRead.model_validate(user)
 
 
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+
+    settings = get_settings()
+    samesite_val = (
+        settings.cookie_samesite if settings.cookie_samesite in ("lax", "strict", "none") else "lax"
+    )
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=samesite_val,  # type: ignore[arg-type]
+        domain=settings.cookie_domain,
+        max_age=settings.jwt_access_token_expire_minutes * 60,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=samesite_val,  # type: ignore[arg-type]
+        domain=settings.cookie_domain,
+        max_age=settings.refresh_token_expire_days * 86400,
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    settings = get_settings()
+    response.delete_cookie("access_token", domain=settings.cookie_domain)
+    response.delete_cookie("refresh_token", domain=settings.cookie_domain)
+
+
 @router.post("/login", response_model=Token)
 def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
     _: None = Depends(_login_limiter),
@@ -94,30 +128,61 @@ def login(
         )
     access_token = create_access_token(subject=user.email)
     refresh_token = issue_refresh_token(db, user)
+    _set_auth_cookies(response, access_token, refresh_token)
     return Token(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(data: LogoutRequest, db: Session = Depends(get_db)) -> Response:
+def logout(
+    request: Request,
+    response: Response,
+    data: LogoutRequest | None = None,
+    db: Session = Depends(get_db),
+) -> Response:
     # Idempotent by design (docs/ARCHITECTURE.md §6): revoking an
     # already-revoked or unknown token still returns 204, never a
     # 404/409 a client has to special-case.
-    revoke_refresh_token(db, data.refresh_token)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    token_str = (
+        data.refresh_token
+        if (data and data.refresh_token)
+        else request.cookies.get("refresh_token")
+    )
+    if token_str:
+        revoke_refresh_token(db, token_str)
+    _clear_auth_cookies(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
-def refresh(data: RefreshRequest, db: Session = Depends(get_db)) -> AccessTokenResponse:
+def refresh(
+    request: Request,
+    response: Response,
+    data: RefreshRequest | None = None,
+    db: Session = Depends(get_db),
+) -> AccessTokenResponse:
     # SEC-02: refresh tokens are single-use and rotated. A replayed
     # (already-rotated) token revokes the user's whole session family.
-    result = rotate_refresh_token(db, data.refresh_token)
+    token_str = (
+        data.refresh_token
+        if (data and data.refresh_token)
+        else request.cookies.get("refresh_token")
+    )
+    if not token_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    result = rotate_refresh_token(db, token_str)
     if result is None:
+        _clear_auth_cookies(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
     user, new_refresh_token = result
     access_token = create_access_token(subject=user.email)
+    _set_auth_cookies(response, access_token, new_refresh_token)
     return AccessTokenResponse(access_token=access_token, refresh_token=new_refresh_token)
 
 

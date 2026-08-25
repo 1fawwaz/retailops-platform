@@ -103,7 +103,7 @@ describe("SupplierDetailContent", () => {
     expect(await screen.findByText("Acme Wholesale Co")).toBeInTheDocument();
     expect(screen.getByText("7d")).toBeInTheDocument();
     expect(await screen.findByText("85%")).toBeInTheDocument();
-    expect(screen.getByText("£1,201")).toBeInTheDocument();
+    expect(screen.getByText("₹1,201")).toBeInTheDocument();
   });
 
   it("shows a not-found empty state for a nonexistent supplier", async () => {

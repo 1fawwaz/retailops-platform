@@ -1,12 +1,12 @@
-import { EmptyState } from "../../../components/ui/EmptyState";
+import { Suspense } from "react";
+import { AuditLogsContent } from "./AuditLogsContent";
 
 // docs/PRODUCT-SPEC.md §24 Audit Logs / BUILD.md Stage 9.
-// See docs/stockpilot-gaps.md #4: StockPilot Core has no Audit Log API today.
+// Wired to real GET /audit-logs endpoint.
 export default function AuditLogsPage() {
   return (
-    <EmptyState
-      title="Audit Logs"
-      description="A chronological record of business-record changes will appear here once StockPilot Core has an Audit Log API to build against."
-    />
+    <Suspense fallback={null}>
+      <AuditLogsContent />
+    </Suspense>
   );
 }

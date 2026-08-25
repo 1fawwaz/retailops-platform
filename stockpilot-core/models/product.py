@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from models.base import Base
@@ -17,6 +17,19 @@ class Product(Base):
 
     sku: Mapped[str] = mapped_column(primary_key=True)
     description: Mapped[str | None] = mapped_column()
+
+    barcode: Mapped[str | None] = mapped_column(String(13), unique=True)
+    name: Mapped[str | None] = mapped_column(String(160))
+    gst_percent: Mapped[float | None] = mapped_column(Numeric(4, 2))
+    hsn_code: Mapped[str | None] = mapped_column(String(8))
+    shelf_life_days: Mapped[int | None] = mapped_column(Integer)
+    weight_grams: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    reorder_quantity: Mapped[int | None] = mapped_column(Integer)
+    eoq: Mapped[int | None] = mapped_column(Integer)
+    abc_class: Mapped[str | None] = mapped_column(String(1))
+    xyz_class: Mapped[str | None] = mapped_column(String(1))
+    behavior_pattern: Mapped[str | None] = mapped_column(String(20))
+    active: Mapped[bool | None] = mapped_column(Boolean)
 
     category_id: Mapped[int | None] = mapped_column(
         ForeignKey("categories.id"),
@@ -45,5 +58,6 @@ class Product(Base):
         Integer,
         comment="derived: data-derivation.md#reorder-point",
     )
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

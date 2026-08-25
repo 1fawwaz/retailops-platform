@@ -16,6 +16,7 @@ export const productSchema = z.object({
   sale_price: z.number().nullable(),
   reorder_point: z.number().int().nullable(),
   safety_stock: z.number().int().nullable(),
+  image_url: z.string().nullable().optional(),
   created_at: z.string(),
 });
 export type Product = z.infer<typeof productSchema>;
@@ -77,5 +78,7 @@ export const productFormSchema = z.object({
   sale_price: optionalAmount,
   reorder_point: optionalId,
   safety_stock: optionalId,
+  image_url: z.string().nullable().optional(),
 });
 export type ProductFormValues = z.infer<typeof productFormSchema>;
+

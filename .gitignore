@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 data/
 __pycache__/
 *.pyc
@@ -22,3 +24,10 @@ Thumbs.db
 
 .claude/
 .kilo/
+
+*.txt
+po_*.json
+receive_*.json
+register_*.json
+login_*.json
+

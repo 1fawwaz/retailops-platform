@@ -1,11 +1,12 @@
-import { EmptyState } from "../../../components/ui/EmptyState";
+import { Suspense } from "react";
+import { ForecastsContent } from "./ForecastsContent";
 
 // docs/PRODUCT-SPEC.md §24 Forecasts / BUILD.md Stage 7.
+// Wired to real POST /forecast/demand endpoint.
 export default function ForecastsPage() {
   return (
-    <EmptyState
-      title="Forecasts"
-      description="Demand forecasts with labeled prediction intervals will appear here once Stage 7 wires forecast charts."
-    />
+    <Suspense fallback={null}>
+      <ForecastsContent />
+    </Suspense>
   );
 }

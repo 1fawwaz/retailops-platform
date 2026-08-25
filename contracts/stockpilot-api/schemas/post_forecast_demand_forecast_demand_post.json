@@ -68,6 +68,11 @@
         "data_quality": {
           "type": "string",
           "title": "Data Quality"
+        },
+        "confidence_method": {
+          "type": "string",
+          "title": "Confidence Method",
+          "default": "global_fallback"
         }
       },
       "type": "object",

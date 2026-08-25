@@ -134,13 +134,27 @@ def get_stock(
     category: str | None = Query(default=None),
     low_stock: bool | None = Query(default=None),
     search: str | None = Query(default=None),
+    as_of: str | None = Query(
+        default=None, description="ISO date for historical point-in-time stock query"
+    ),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[StockItem]:
+    from datetime import date as _date
+
+    as_of_parsed: _date | None = None
+    if as_of is not None:
+        as_of_parsed = _date.fromisoformat(as_of)
     rows = list_stock(
-        db, category=category, low_stock=low_stock, search=search, limit=limit, offset=offset
+        db,
+        category=category,
+        low_stock=low_stock,
+        search=search,
+        as_of=as_of_parsed,
+        limit=limit,
+        offset=offset,
     )
     return [_to_stock_item(row) for row in rows]
 

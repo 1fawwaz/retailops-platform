@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DashboardContent } from "./DashboardContent";
 import { setToken, clearToken } from "../../../lib/auth/token";
+import { formatCurrency } from "../../../lib/format";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
@@ -63,9 +64,9 @@ describe("DashboardContent", () => {
 
     renderWithQueryClient(<DashboardContent />);
 
-    expect(await screen.findByText("£801,103")).toBeInTheDocument();
+    expect(await screen.findByText(formatCurrency(801102.97))).toBeInTheDocument();
     expect(await screen.findByText("+14.4% vs. prior month")).toBeInTheDocument();
-    expect(await screen.findByText("£297,512")).toBeInTheDocument();
+    expect(await screen.findByText(formatCurrency(297512.1))).toBeInTheDocument();
     expect(await screen.findByText("0")).toBeInTheDocument();
   });
 
@@ -103,7 +104,7 @@ describe("DashboardContent", () => {
       ).toBeInTheDocument(),
     );
     // The other two cards still render despite Revenue's failure.
-    expect(await screen.findByText("£10")).toBeInTheDocument();
+    expect(await screen.findByText(formatCurrency(10))).toBeInTheDocument();
   });
 
   it("always discloses the missing Purchase Orders / activity feed data, rather than omitting it silently", () => {

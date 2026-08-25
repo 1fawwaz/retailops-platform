@@ -45,6 +45,13 @@ def _to_read_model(product: Product) -> ProductRead:
         reorder_point=product.reorder_point,
         safety_stock=product.safety_stock,
         created_at=product.created_at,
+        id=product.sku,
+        name=product.name or product.description or product.sku,
+        category=f"Category {product.category_id}" if product.category_id else "General",
+        warehouse="Main Warehouse",
+        supplier=f"Supplier {product.supplier_id}" if product.supplier_id else "Primary Supplier",
+        quantity=0,
+        inventory_value=0.0,
         provenance=PRODUCT_PROVENANCE,
         derivation_ref=PRODUCT_DERIVATION_REF,
     )

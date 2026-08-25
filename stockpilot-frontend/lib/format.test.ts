@@ -7,32 +7,32 @@ import {
 } from "./format";
 
 describe("formatCurrency", () => {
-  it("formats a positive value in GBP with no decimals", () => {
-    expect(formatCurrency(297512.1)).toBe("£297,512");
+  it("formats a positive value in INR with no decimals", () => {
+    expect(formatCurrency(297512.1)).toBe("₹2,97,512");
   });
 
   it("formats zero", () => {
-    expect(formatCurrency(0)).toBe("£0");
+    expect(formatCurrency(0)).toBe("₹0");
   });
 });
 
 describe("formatCurrencyPrecise", () => {
   it("formats a per-unit price with exactly two decimals", () => {
-    expect(formatCurrencyPrecise(4.99)).toBe("£4.99");
+    expect(formatCurrencyPrecise(4.99)).toBe("₹4.99");
   });
 
-  it("does not round a sub-£1 price down to £0", () => {
-    expect(formatCurrencyPrecise(0.49)).toBe("£0.49");
+  it("does not round a sub-₹1 price down to ₹0", () => {
+    expect(formatCurrencyPrecise(0.49)).toBe("₹0.49");
   });
 
-  it("pads a whole-pound value to two decimals", () => {
-    expect(formatCurrencyPrecise(5)).toBe("£5.00");
+  it("pads a whole-rupee value to two decimals", () => {
+    expect(formatCurrencyPrecise(5)).toBe("₹5.00");
   });
 });
 
 describe("formatInteger", () => {
   it("adds thousands separators", () => {
-    expect(formatInteger(128400)).toBe("128,400");
+    expect(formatInteger(128400)).toBe("1,28,400");
   });
 });
 

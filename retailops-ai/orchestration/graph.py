@@ -93,7 +93,10 @@ from agents.replan import ReplanJudgement
 from llm.providers.gemini import LLMUnavailableError
 from orchestration.models.tool_call import ToolCall
 from orchestration.state import ExecutionState
-from orchestration.validator import insufficient_data_message, validate_citations
+from orchestration.validator import (
+    strip_unverified_claims,
+    validate_citations,
+)
 
 RETRIEVAL_AGENT_NAMES = ("inventory", "forecast", "analytics")
 # "Fail once -> regenerate. Fail twice -> INSUFFICIENT_DATA" per spec --
@@ -617,6 +620,19 @@ def _make_synthesis_node(
         ended = time.monotonic()
 
         content = _content_str(response)
+        if is_final and not content.strip():
+            # Issue #4's live root cause: a Decision model that returns an
+            # empty/whitespace string (no tool calls, no prose) previously
+            # became final_answer="" -- the validator passed it (no numeric
+            # tokens), the execution was marked "failed", and the chat UI
+            # rendered an empty bubble. Route it through the same flagged
+            # degradation path as an LLM outage so the user always gets
+            # copy, never a blank answer.
+            content = (
+                f"{LLM_DEGRADED_ANSWER_PREFIX} the {agent.name} step returned an empty "
+                "response without calling a tool. This answer is flagged incomplete "
+                "rather than fabricated -- retry the request."
+            )
         update = {
             "agent_results": {agent.name: content},
             "timings": {agent.name: {"start": started, "end": ended}},
@@ -660,7 +676,7 @@ def _make_validator_node(session_factory: Callable[[], Session], execution_id: u
         }
         update: dict[str, object] = {"citation_failures": [record]}
         if failures and attempt >= MAX_CITATION_ATTEMPTS:
-            update["final_answer"] = insufficient_data_message(failures)
+            update["final_answer"] = strip_unverified_claims(draft, failures)
         return update
 
     return node

@@ -11,6 +11,8 @@
 export interface ListParams {
   search?: string;
   category?: string;
+  status?: string;
+  lowStock?: boolean;
   limit?: number;
   offset?: number;
 }

@@ -121,6 +121,9 @@ def _sku_daily_totals(db: Session, sku: str) -> pd.Series:
     return pd.Series(quantities, index=dates)
 
 
+MIN_HISTORY_DAYS_FOR_PER_SKU_CONFIDENCE = 30
+
+
 @dataclass(frozen=True)
 class SkuForecastResult:
     sku: str
@@ -131,6 +134,7 @@ class SkuForecastResult:
     training_window_start: date | None
     training_window_end: date | None
     data_quality: str
+    confidence_method: str = "global_fallback"
 
 
 def forecast_sku(
@@ -147,6 +151,7 @@ def forecast_sku(
             training_window_start=None,
             training_window_end=None,
             data_quality="no_history",
+            confidence_method="global_fallback",
         )
 
     end_date = pd.Timestamp(daily_totals.index.max())
@@ -166,7 +171,15 @@ def forecast_sku(
         model_used = "moving_average"
 
     point_estimate = float(daily_forecast.mean())
-    lower, upper = confidence_interval(point_estimate, artifact.residual_std)
+    if history_days >= MIN_HISTORY_DAYS_FOR_PER_SKU_CONFIDENCE:
+        sku_std = float(history.std())
+        res_std = sku_std if (sku_std is not None and sku_std > 0) else artifact.residual_std
+        confidence_method = "per_sku"
+    else:
+        res_std = artifact.residual_std
+        confidence_method = "global_fallback"
+
+    lower, upper = confidence_interval(point_estimate, res_std)
 
     return SkuForecastResult(
         sku=sku,
@@ -177,6 +190,7 @@ def forecast_sku(
         training_window_start=history.index.min().date(),
         training_window_end=history.index.max().date(),
         data_quality=data_quality,
+        confidence_method=confidence_method,
     )
 
 

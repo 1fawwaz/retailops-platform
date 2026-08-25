@@ -110,7 +110,10 @@ export default function ChatPage() {
           ...current,
           {
             role: "assistant",
-            content: finalAnswer ?? "No answer was produced for this query.",
+            content:
+              finalAnswer && finalAnswer.trim()
+                ? finalAnswer
+                : "No answer was produced for this query.",
             citations: finalCitations,
             executionId: finalExecutionId ?? undefined,
           },

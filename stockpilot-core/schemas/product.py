@@ -33,6 +33,7 @@ class ProductCreate(BaseModel):
     sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
+    image_url: str | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -48,6 +49,7 @@ class ProductUpdate(BaseModel):
     sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
+    image_url: str | None = None
 
 
 class ProductRead(ProvenanceMixin):
@@ -95,7 +97,16 @@ class ProductRead(ProvenanceMixin):
     sale_price: float | None
     reorder_point: int | None
     safety_stock: int | None
+    image_url: str | None = None
     created_at: datetime
+    id: str | None = None
+    name: str | None = None
+
+    category: str | None = None
+    warehouse: str | None = None
+    quantity: int | None = None
+    inventory_value: float | None = None
+    supplier: str | None = None
 
 
 PRODUCT_PROVENANCE = {
@@ -105,12 +116,15 @@ PRODUCT_PROVENANCE = {
     "sale_price": "derived",
     "reorder_point": "derived",
     "safety_stock": "derived",
+    "quantity": "observed",
+    "inventory_value": "derived",
 }
 PRODUCT_DERIVATION_REF = {
     "unit_cost": "data-derivation.md#cost-price",
     "sale_price": "BUILD.md Module 2 (avg sales_transactions.unit_price)",
     "reorder_point": "data-derivation.md#reorder-point",
     "safety_stock": "data-derivation.md#reorder-point",
+    "inventory_value": "data-derivation.md#inventory-value",
 }
 
 

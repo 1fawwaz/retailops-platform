@@ -19,6 +19,7 @@ the eight specific queries Task 4.5 names, nothing more.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from collections.abc import Callable, Generator
@@ -58,11 +59,13 @@ def session_factory() -> Generator[Callable[[], Session]]:
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     yield factory
     engine.dispose()
-    os.remove(path)
+    with contextlib.suppress(OSError):
+        os.remove(path)
     for suffix in ("-wal", "-shm"):
         extra = path + suffix
         if os.path.exists(extra):
-            os.remove(extra)
+            with contextlib.suppress(OSError):
+                os.remove(extra)
 
 
 def _client(handler: Handler) -> StockPilotClient:
@@ -613,3 +616,194 @@ def test_query_needing_absent_data_refuses_cleanly(
     # on the first attempt, not degrade to INSUFFICIENT_DATA.
     assert len(result["citation_failures"]) == 1
     assert result["citation_failures"][0]["passed"] is True
+
+
+def _stock_item() -> dict[str, object]:
+    return {
+        "sku": "85048",
+        "description": "Glass Ball",
+        "category": "Christmas",
+        "quantity_on_hand": 100,
+        "reorder_point": 40,
+        "safety_stock": 10,
+        "as_of_date": "2026-07-01",
+        "is_low_stock": False,
+        "_provenance": {
+            "sku": "observed",
+            "quantity_on_hand": "derived",
+            "reorder_point": "derived",
+            "safety_stock": "derived",
+        },
+        "_derivation_ref": {},
+    }
+
+
+def _stock_by_warehouse_handler(request: httpx2.Request) -> httpx2.Response:
+    """Handler for stock-by-warehouse queries that returns stock data."""
+    path = request.url.path
+    if path == "/auth/login":
+        return _login()
+    if path == "/inventory/stock":
+        return httpx2.Response(200, json=[_stock_item()])
+    if path == "/products":
+        return httpx2.Response(200, json=[_product("85048")])
+    if path == "/warehouses":
+        return httpx2.Response(
+            200, json=[{"id": 1, "name": "Main Warehouse", "created_at": "2026-01-01T00:00:00Z"}]
+        )
+    if path == "/inventory/valuation":
+        return httpx2.Response(
+            200,
+            json={
+                "by_category": [
+                    {
+                        "category": "Christmas",
+                        "quantity_on_hand": 100,
+                        "inventory_value": 215.0,
+                        "_provenance": {
+                            "quantity_on_hand": "derived",
+                            "inventory_value": "derived",
+                        },
+                        "_derivation_ref": {},
+                    }
+                ],
+                "total_quantity_on_hand": 100,
+                "total_inventory_value": 215.0,
+                "_provenance": {
+                    "total_quantity_on_hand": "derived",
+                    "total_inventory_value": "derived",
+                },
+                "_derivation_ref": {},
+            },
+        )
+    raise AssertionError(f"unexpected request: {request.method} {path}")
+
+
+def test_query_show_stock_by_warehouse(session_factory: Callable[[], Session]) -> None:
+    """'Show stock by warehouse' must execute without clarification,
+    using defaults: all warehouses, per-SKU breakdown."""
+    prompt_to_name = _prompt_to_name()
+    calls: dict[str, int] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        if name == "inventory" and calls[name] == 1:
+            return _tool_call_message("get_stock", {})
+        if name == "inventory":
+            return _ai_message("Stock by warehouse: SKU 85048 (Glass Ball) has 100 units.")
+        if name == "decision":
+            return _ai_message("Stock by warehouse: SKU 85048 (Glass Ball) has 100 units.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        result = run_execution(
+            "Show stock by warehouse",
+            client=_client(_stock_by_warehouse_handler),
+            session_factory=session_factory,
+        )
+
+    assert result["final_answer"] is not None
+    assert "85048" in result["final_answer"]
+    assert "100" in result["final_answer"]
+    assert not result["errors"]
+
+
+def test_query_warehouse_inventory(session_factory: Callable[[], Session]) -> None:
+    """'Warehouse inventory' must execute without clarification."""
+    prompt_to_name = _prompt_to_name()
+    calls: dict[str, int] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        if name == "inventory" and calls[name] == 1:
+            return _tool_call_message("get_stock", {})
+        if name == "inventory":
+            return _ai_message("Warehouse inventory: SKU 85048 (Glass Ball) has 100 units.")
+        if name == "decision":
+            return _ai_message("Warehouse inventory: SKU 85048 (Glass Ball) has 100 units.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        result = run_execution(
+            "Warehouse inventory",
+            client=_client(_stock_by_warehouse_handler),
+            session_factory=session_factory,
+        )
+
+    assert result["final_answer"] is not None
+    assert "85048" in result["final_answer"]
+    assert not result["errors"]
+
+
+def test_query_inventory_by_warehouse(session_factory: Callable[[], Session]) -> None:
+    """'Inventory by warehouse' must execute without clarification."""
+    prompt_to_name = _prompt_to_name()
+    calls: dict[str, int] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        if name == "inventory" and calls[name] == 1:
+            return _tool_call_message("get_stock", {})
+        if name == "inventory":
+            return _ai_message("Inventory by warehouse: SKU 85048 (Glass Ball) has 100 units.")
+        if name == "decision":
+            return _ai_message("Inventory by warehouse: SKU 85048 (Glass Ball) has 100 units.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        result = run_execution(
+            "Inventory by warehouse",
+            client=_client(_stock_by_warehouse_handler),
+            session_factory=session_factory,
+        )
+
+    assert result["final_answer"] is not None
+    assert "85048" in result["final_answer"]
+    assert not result["errors"]
+
+
+def test_query_warehouse_stock_summary(session_factory: Callable[[], Session]) -> None:
+    """'Warehouse stock summary' must execute without clarification,
+    aggregating by warehouse automatically."""
+    prompt_to_name = _prompt_to_name()
+    calls: dict[str, int] = {}
+
+    def fake_generate(*, model: str, messages: list[Any], tools: Any = None) -> AIMessage:
+        name = prompt_to_name[messages[0].content]
+        calls[name] = calls.get(name, 0) + 1
+        if name == "inventory" and calls[name] == 1:
+            return _tool_call_message("get_stock", {})
+        if name == "inventory" and calls[name] == 2:
+            return _tool_call_message("get_inventory_valuation", {})
+        if name == "inventory":
+            return _ai_message("Warehouse stock summary: 100 units, total value $215.00.")
+        if name == "decision":
+            return _ai_message("Warehouse stock summary: 100 units, total value $215.00.")
+        return _ai_message(f"{name} answer")
+
+    with (
+        patch("agents.base.generate", side_effect=fake_generate),
+        patch("agents.base.generate_structured", side_effect=_always_sufficient),
+    ):
+        result = run_execution(
+            "Warehouse stock summary",
+            client=_client(_stock_by_warehouse_handler),
+            session_factory=session_factory,
+        )
+
+    assert result["final_answer"] is not None
+    assert "100" in result["final_answer"]
+    assert "215" in result["final_answer"]
+    assert not result["errors"]

@@ -43,6 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Forecasts", href: "/forecasts", permission: "forecasts:read" },
       { label: "Analytics", href: "/analytics", permission: "analytics:read" },
       { label: "Reports", href: "/reports", permission: "reports:read" },
+      { label: "Recommendations", href: "/recommendations", permission: "recommendations:read" },
     ],
   },
   {

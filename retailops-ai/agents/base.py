@@ -25,6 +25,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from langchain_core.messages import (
@@ -48,7 +49,7 @@ from orchestration.models.agent_step import AgentStep
 from prompts.loader import LoadedPrompt, load_prompt
 from serialization import to_jsonable
 from tools.derived_tools import build_derived_tools
-from tools.stockpilot_tools import build_stockpilot_tools
+from tools.stockpilot_tools import build_stockpilot_tools, current_agent_step_id
 
 # A retriever gets at most this many tool rounds before the loop forces
 # a text-only wrap-up. Lowered 4 -> 2 with the Stage 3 timeout fix,
@@ -331,6 +332,14 @@ class Agent:
         2+ for a later targeted retry of this same agent.
         """
         started = time.monotonic()
+        step_id = self._create_agent_step(
+            session_factory=session_factory,
+            execution_id=execution_id,
+            query=query,
+            iteration=iteration,
+        )
+        ctx_token = current_agent_step_id.set(step_id)
+
         messages: list[BaseMessage] = [
             SystemMessage(content=self.prompt.text),
             HumanMessage(content=query),
@@ -423,6 +432,8 @@ class Agent:
         except Exception as exc:  # noqa: BLE001 -- recorded below, then re-raised unchanged
             status = "failed"
             error = exc
+        finally:
+            current_agent_step_id.reset(ctx_token)
 
         if error is None and self.tools and tool_calls_made and response is not None:
             # Guarantee the fetched evidence survives into the returned and
@@ -435,14 +446,13 @@ class Agent:
         latency_ms = int((time.monotonic() - started) * 1000)
         self._persist_step(
             session_factory=session_factory,
-            execution_id=execution_id,
+            step_id=step_id,
             query=query,
             response=response,
             tool_calls_made=tool_calls_made,
             status=status,
             error=error,
             latency_ms=latency_ms,
-            iteration=iteration,
         )
 
         if error is not None:
@@ -479,6 +489,14 @@ class Agent:
                 f"invoke_streaming() is only for tool-less agents; {self.name!r} has tools"
             )
         started = time.monotonic()
+        step_id = self._create_agent_step(
+            session_factory=session_factory,
+            execution_id=execution_id,
+            query=query,
+            iteration=iteration,
+        )
+        ctx_token = current_agent_step_id.set(step_id)
+
         messages: list[BaseMessage] = [
             SystemMessage(content=self.prompt.text),
             HumanMessage(content=query),
@@ -505,6 +523,8 @@ class Agent:
         except Exception as exc:  # noqa: BLE001 -- recorded below, then re-raised unchanged
             status = "failed"
             error = exc
+        finally:
+            current_agent_step_id.reset(ctx_token)
 
         latency_ms = int((time.monotonic() - started) * 1000)
         response = (
@@ -520,14 +540,13 @@ class Agent:
         )
         self._persist_step(
             session_factory=session_factory,
-            execution_id=execution_id,
+            step_id=step_id,
             query=query,
             response=response,
             tool_calls_made=[],
             status=status,
             error=error,
             latency_ms=latency_ms,
-            iteration=iteration,
         )
 
         if error is not None:
@@ -552,6 +571,14 @@ class Agent:
         `output["parsed"]` instead of free text.
         """
         started = time.monotonic()
+        step_id = self._create_agent_step(
+            session_factory=session_factory,
+            execution_id=execution_id,
+            query=query,
+            iteration=iteration,
+        )
+        ctx_token = current_agent_step_id.set(step_id)
+
         messages: list[BaseMessage] = [
             SystemMessage(content=self.prompt.text),
             HumanMessage(content=query),
@@ -567,6 +594,8 @@ class Agent:
         except Exception as exc:  # noqa: BLE001 -- recorded below, then re-raised unchanged
             status = "failed"
             error = exc
+        finally:
+            current_agent_step_id.reset(ctx_token)
 
         latency_ms = int((time.monotonic() - started) * 1000)
         output: dict[str, Any] = (
@@ -574,17 +603,15 @@ class Agent:
         )
         if error is not None:
             output["error"] = str(error)
-        self._write_agent_step(
+        self._update_agent_step(
             session_factory=session_factory,
-            execution_id=execution_id,
-            query=query,
+            step_id=step_id,
             output=output,
             usage=result.usage_metadata if result is not None else None,
             provider=result.provider if result is not None else None,
             model_id=result.model if result is not None else self.model_id,
             status=status,
             latency_ms=latency_ms,
-            iteration=iteration,
         )
 
         if error is not None:
@@ -615,18 +642,45 @@ class Agent:
                 content = f"Error calling {name}: {exc}"
         return ToolMessage(content=content, tool_call_id=call_id, name=name)
 
-    def _persist_step(
+    def _create_agent_step(
         self,
         *,
         session_factory: Callable[[], Session],
         execution_id: uuid.UUID,
+        query: str,
+        iteration: int,
+    ) -> int:
+        session = session_factory()
+        try:
+            step = AgentStep(
+                execution_id=execution_id,
+                agent_name=self.name,
+                iteration=iteration,
+                input={"query": query},
+                output=None,
+                provider=None,
+                model_id=self.model_id,
+                prompt_version_hash=self.prompt.content_hash,
+                status="running",
+            )
+            session.add(step)
+            session.commit()
+            session.refresh(step)
+            return step.id
+        finally:
+            session.close()
+
+    def _persist_step(
+        self,
+        *,
+        session_factory: Callable[[], Session],
+        step_id: int,
         query: str,
         response: AIMessage | None,
         tool_calls_made: list[dict[str, object]],
         status: str,
         error: Exception | None,
         latency_ms: int,
-        iteration: int,
     ) -> None:
         output: dict[str, Any] = {"tool_calls_made": tool_calls_made}
         if response is not None:
@@ -634,74 +688,49 @@ class Agent:
         if error is not None:
             output["error"] = str(error)
         usage = response.usage_metadata if response is not None else None
-        # Stage 6 Task 6.4: response_metadata carries which provider/model
-        # ACTUALLY served this call (llm/providers/gemini.py::
-        # _response_to_ai_message, groq.py's own equivalent, and
-        # invoke_streaming()'s own AIMessage construction above all set
-        # it) -- can differ from self.model_id once a fallback fires, so
-        # this is read from the response, never assumed to be the
-        # configured primary.
         metadata = response.response_metadata if response is not None else {}
         provider = metadata.get("provider") if metadata else None
         served_model = metadata.get("model") if metadata else None
-        self._write_agent_step(
+        self._update_agent_step(
             session_factory=session_factory,
-            execution_id=execution_id,
-            query=query,
+            step_id=step_id,
             output=output,
             usage=usage,
             provider=provider,
             model_id=served_model or self.model_id,
             status=status,
             latency_ms=latency_ms,
-            iteration=iteration,
         )
 
-    def _write_agent_step(
+    def _update_agent_step(
         self,
         *,
         session_factory: Callable[[], Session],
-        execution_id: uuid.UUID,
-        query: str,
+        step_id: int,
         output: dict[str, Any],
-        # langchain_core's AIMessage.usage_metadata is a UsageMetadata
-        # TypedDict (with non-int fields like input_token_details) and
-        # StructuredResult's is a plain dict[str, int] -- Mapping[str, Any]
-        # is the real common shape of the two; only ["input_tokens"] and
-        # ["output_tokens"] (always int in both) are ever read below.
         usage: Mapping[str, Any] | None,
-        # Stage 6 Task 6.4: which provider/model actually served this
-        # call. `provider` is None only when the call failed outright
-        # (every provider in the chain was exhausted -- nobody "served"
-        # it); `model_id` still falls back to self.model_id (the
-        # configured primary) in that case, since a step row needs SOME
-        # model_id and the configured one is the most honest choice
-        # available when nothing actually served the request.
         provider: str | None,
         model_id: str,
         status: str,
         latency_ms: int,
-        iteration: int,
     ) -> None:
         session = session_factory()
         try:
-            session.add(
-                AgentStep(
-                    execution_id=execution_id,
-                    agent_name=self.name,
-                    iteration=iteration,
-                    input={"query": query},
-                    output=output,
-                    provider=provider,
-                    model_id=model_id,
-                    prompt_version_hash=self.prompt.content_hash,
-                    prompt_tokens=usage["input_tokens"] if usage else None,
-                    completion_tokens=usage["output_tokens"] if usage else None,
-                    latency_ms=latency_ms,
-                    status=status,
+            step = session.query(AgentStep).filter(AgentStep.id == step_id).first()
+            if step is not None:
+                step.output = output
+                step.provider = provider
+                step.model_id = model_id
+                step.prompt_tokens = (
+                    usage["input_tokens"] if (usage and "input_tokens" in usage) else None
                 )
-            )
-            session.commit()
+                step.completion_tokens = (
+                    usage["output_tokens"] if (usage and "output_tokens" in usage) else None
+                )
+                step.latency_ms = latency_ms
+                step.status = status
+                step.completed_at = datetime.now(UTC)
+                session.commit()
         finally:
             session.close()
 

@@ -12,11 +12,12 @@ from services.rbac import get_resolved_permissions
 from services.security import decode_access_token
 from services.users import get_user_by_email
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     credentials_error = HTTPException(
@@ -24,6 +25,11 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise credentials_error
+
     try:
         email = decode_access_token(token)
     except jwt.PyJWTError:

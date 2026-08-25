@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict
+
+from schemas.email import LocalEmail
 
 
 class CustomerCreate(BaseModel):
@@ -18,7 +20,7 @@ class CustomerCreate(BaseModel):
     )
 
     name: str
-    email: EmailStr | None = None
+    email: LocalEmail | None = None
     phone: str | None = None
     country: str | None = None
 
@@ -27,7 +29,7 @@ class CustomerUpdate(BaseModel):
     model_config = ConfigDict(json_schema_extra={"examples": [{"phone": "+44 20 7946 0000"}]})
 
     name: str | None = None
-    email: EmailStr | None = None
+    email: LocalEmail | None = None
     phone: str | None = None
     country: str | None = None
 
