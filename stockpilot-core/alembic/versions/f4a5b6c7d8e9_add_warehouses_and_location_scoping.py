@@ -40,18 +40,12 @@ def upgrade() -> None:
         "warehouses", sa.column("id", sa.Integer()), sa.column("name", sa.String())
     )
     op.bulk_insert(warehouses_table, [{"name": MAIN_WAREHOUSE_NAME}])
-    main_warehouse_id = (
-        op.get_bind()
-        .execute(
-            sa.text("SELECT id FROM warehouses WHERE name = :name"), {"name": MAIN_WAREHOUSE_NAME}
-        )
-        .scalar_one()
-    )
-
     # stock_levels: add nullable, backfill, then enforce NOT NULL
     op.add_column("stock_levels", sa.Column("warehouse_id", sa.Integer(), nullable=True))
     op.execute(
-        sa.text("UPDATE stock_levels SET warehouse_id = :wid").bindparams(wid=main_warehouse_id)
+        sa.text(
+            "UPDATE stock_levels SET warehouse_id = (SELECT id FROM warehouses WHERE name = :name)"
+        ).bindparams(name=MAIN_WAREHOUSE_NAME)
     )
     op.alter_column("stock_levels", "warehouse_id", nullable=False)
     op.create_foreign_key(
@@ -71,7 +65,10 @@ def upgrade() -> None:
     # stock_movements: add nullable, backfill, then enforce NOT NULL
     op.add_column("stock_movements", sa.Column("warehouse_id", sa.Integer(), nullable=True))
     op.execute(
-        sa.text("UPDATE stock_movements SET warehouse_id = :wid").bindparams(wid=main_warehouse_id)
+        sa.text(
+            "UPDATE stock_movements "
+            "SET warehouse_id = (SELECT id FROM warehouses WHERE name = :name)"
+        ).bindparams(name=MAIN_WAREHOUSE_NAME)
     )
     op.alter_column("stock_movements", "warehouse_id", nullable=False)
     op.create_foreign_key(

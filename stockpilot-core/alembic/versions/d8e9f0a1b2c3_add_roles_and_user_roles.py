@@ -6,6 +6,7 @@ Create Date: 2026-08-01 00:00:00.000000
 
 """
 
+import json
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -104,18 +105,15 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_user_roles_user_id"), "user_roles", ["user_id"], unique=False)
 
-    roles_table = sa.table(
-        "roles",
-        sa.column("name", sa.String()),
-        sa.column("permissions", sa.JSON()),
-    )
-    op.bulk_insert(
-        roles_table,
-        [
-            {"name": name, "permissions": permissions}
-            for name, permissions in _DEFAULT_ROLE_PERMISSIONS.items()
-        ],
-    )
+    # Use explicit JSON literals instead of ``op.bulk_insert``. Alembic's
+    # offline renderer cannot render Python lists for a generic JSON column,
+    # while these static JSON literals work for both PostgreSQL execution and
+    # ``alembic upgrade --sql`` output.
+    for name, permissions in _DEFAULT_ROLE_PERMISSIONS.items():
+        permissions_json = json.dumps(permissions).replace("'", "''")
+        op.execute(
+            f"INSERT INTO roles (name, permissions) VALUES ('{name}', '{permissions_json}'::json)"
+        )
 
 
 def downgrade() -> None:

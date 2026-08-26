@@ -13,35 +13,57 @@ from __future__ import annotations
 
 import contextlib
 import os
+import sys
 import tempfile
+import time
+from collections.abc import Generator
 from typing import Any
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+SERVICE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if SERVICE_ROOT not in sys.path:
+    sys.path.insert(0, SERVICE_ROOT)
 
-from evals.scenarios.fixtures import product_payload, supplier_payload
-from orchestration.executor import build_query_response_fields, run_execution
-from orchestration.models import Base
-from orchestration.validator import validate_citations
+# ruff: noqa: E402  — must come after sys.path manipulation above
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+
+from evals.scenarios.fixtures import (  # type: ignore[import-not-found]  # noqa: E402
+    product_payload,
+    supplier_payload,
+)
+from orchestration.executor import (  # type: ignore[import-not-found]  # noqa: E402
+    build_query_response_fields,
+    run_execution,
+)
+from orchestration.models import Base  # type: ignore[import-not-found]  # noqa: E402
+from orchestration.validator import (  # type: ignore[import-not-found]  # noqa: E402
+    validate_citations,
+)
 
 CORE_PRODUCTION_QUERIES = [
-    {"name": "Low stock list", "query": "show low stock list"},
-    {"name": "Dead stock", "query": "show dead stock"},
-    {"name": "Stock by warehouse", "query": "stock by warehouse"},
-    {"name": "Inventory valuation", "query": "inventory valuation"},
-    {"name": "Top suppliers", "query": "top suppliers by revenue"},
-    {"name": "Revenue this month", "query": "revenue this month"},
-    {"name": "Forecast demand", "query": "forecast demand for next 30 days"},
+    {"name": "Low stock list", "query": "show low stock list", "budget_s": 2.0},
+    {"name": "Dead stock", "query": "show dead stock", "budget_s": 2.0},
+    {"name": "Stock by warehouse", "query": "stock by warehouse", "budget_s": 2.0},
+    {"name": "Inventory valuation", "query": "inventory valuation", "budget_s": 2.0},
+    {"name": "Top suppliers", "query": "top suppliers by revenue", "budget_s": 2.0},
+    {"name": "Revenue this month", "query": "revenue this month", "budget_s": 2.0},
+    {"name": "Forecast demand", "query": "forecast demand for next 30 days", "budget_s": 3.0},
+    {"name": "ABC analysis", "query": "run ABC analysis on inventory", "budget_s": 2.0},
+    {
+        "name": "Indian-currency query",
+        "query": "show total inventory value in lakhs INR",
+        "budget_s": 2.0,
+    },
 ]
 
 
 class MockStockPilotClient:
     def __init__(self) -> None:
-        self.products = [
+        self.products: list[dict[str, Any]] = [
             product_payload("SKU-001", quantity_on_hand=5, reorder_point=20, unit_cost=150.0),
             product_payload("SKU-002", quantity_on_hand=150, reorder_point=30, unit_cost=50.0),
         ]
-        self.suppliers = [
+        self.suppliers: list[dict[str, Any]] = [
             supplier_payload(7, name="Acme Wholesale", lead_time_days=5),
         ]
 
@@ -106,7 +128,7 @@ class MockStockPilotClient:
 
 
 @contextlib.contextmanager
-def setup_temp_db():
+def setup_temp_db() -> Generator[sessionmaker, None, None]:  # type: ignore[type-arg]
     fd, path = tempfile.mkstemp(suffix=".sqlite3")
     os.close(fd)
     engine = create_engine(f"sqlite:///{path}", connect_args={"timeout": 30})
@@ -124,9 +146,6 @@ def setup_temp_db():
             extra = path + suffix
             if os.path.exists(extra):
                 os.remove(extra)
-
-
-import time
 
 
 def main() -> None:
