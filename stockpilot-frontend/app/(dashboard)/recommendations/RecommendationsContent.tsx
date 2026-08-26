@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { RecommendationCard, type Recommendation } from "../../../components/ui/RecommendationCard";
 import { getToken } from "../../../lib/auth/token";
 
-const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "http://localhost:8001";
+const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "https://retailops-ai.onrender.com";
 
 type FilterPriority = "all" | Recommendation["priority"];
 type FilterStatus = "all" | "pending" | "actioned";

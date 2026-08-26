@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useUsers, useCreateUser, useAssignRole, useRevokeRole } from "../../../../hooks/useUsers";
 import { DataTable, type DataTableColumn } from "../../../../components/data-table/DataTable";
 import { EmptyState } from "../../../../components/ui/EmptyState";
@@ -26,8 +25,8 @@ export function UsersSettingsContent() {
 
   const canCreate = useCan("users:create");
   const createUser = useCreateUser();
-  const assignRole = useAssignRole();
-  const revokeRole = useRevokeRole();
+  const _assignRole = useAssignRole();
+  const _revokeRole = useRevokeRole();
   const { data, isPending, isError, error } = useUsers({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
 
   async function handleCreate(event: React.FormEvent) {
@@ -36,17 +35,9 @@ export function UsersSettingsContent() {
       await createUser.mutateAsync(createForm);
       setShowCreateModal(false);
       setCreateForm({ email: "", password: "", full_name: "" });
-    } catch (err) {
+    } catch (_err) {
       // Error handled by form
     }
-  }
-
-  async function handleAssignRole(userId: number, roleId: number) {
-    await assignRole.mutateAsync({ userId, roleId });
-  }
-
-  async function handleRevokeRole(userId: number, roleId: number) {
-    await revokeRole.mutateAsync({ userId, roleId });
   }
 
   return (

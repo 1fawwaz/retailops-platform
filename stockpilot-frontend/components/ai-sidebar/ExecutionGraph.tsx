@@ -83,6 +83,7 @@ function ExecutionGraphInner({ graph }: { graph: ExecutionGraphState }) {
 
   const { nodes, edges } = useMemo(
     () => layout(graph.nodes, graph.edges),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodeIdKey, edgeIdKey, statusKey],
   );
 

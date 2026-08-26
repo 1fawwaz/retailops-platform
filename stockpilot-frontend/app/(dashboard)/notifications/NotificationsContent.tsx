@@ -25,7 +25,7 @@ export function NotificationsContent() {
   const markAllRead = useMarkAllNotificationsRead();
   const { data, isPending, isError, error, refetch } = useNotifications({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
 
-  async function handleMarkRead(id: number, isRead: boolean) {
+  async function _handleMarkRead(id: number, isRead: boolean) {
     await markRead.mutateAsync({ id, isRead });
     refetch();
   }

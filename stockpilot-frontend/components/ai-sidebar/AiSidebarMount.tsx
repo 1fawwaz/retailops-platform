@@ -13,7 +13,7 @@ import { CitationText } from "./CitationText";
 import { ProvenanceDrawer } from "./ProvenanceDrawer";
 import { getToken } from "../../lib/auth/token";
 
-const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "http://localhost:8001";
+const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "https://retailops-ai.onrender.com";
 
 export function AiSidebarMount() {
   const [isOpen, setIsOpen] = useState(false);

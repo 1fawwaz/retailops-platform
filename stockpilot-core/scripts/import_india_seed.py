@@ -102,7 +102,7 @@ def track_progress(generator, file_name, total_rows):
 
 
 def get_total_lines(filename):
-    with open(filename, encoding="utf-8") as f:
+    with open(filename, encoding="utf-8", errors="replace") as f:
         return sum(1 for _ in f) - 1
 
 
@@ -111,7 +111,7 @@ def import_table(conn, table_name, columns, csv_file, row_mapper):
     total_lines = get_total_lines(filepath)
 
     def gen():
-        with open(filepath, encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 yield row_mapper(row)
@@ -267,7 +267,7 @@ def import_all():
 
     # We need to map product_id to sku for later tables. Wait! Since we use COPY, if we map product_id -> sku, we need it in memory.
     product_id_to_sku = {}
-    with open(DATA_DIR / "products.csv", encoding="utf-8") as f:
+    with open(DATA_DIR / "products.csv", encoding="utf-8", errors="replace") as f:
         for r in csv.DictReader(f):
             product_id_to_sku[r["id"]] = r["sku"]
 

@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listUsers, createUser, assignRole, revokeRole } from "../lib/api/users";
 import type { ListParams } from "../lib/api/list-params";
-import type { UserWithRoles, UserCreateValues } from "../lib/validation/users";
+import type { UserCreateValues } from "../lib/validation/users";
 
 export function useUsers(options?: ListParams) {
   return useQuery({

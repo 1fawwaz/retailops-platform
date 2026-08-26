@@ -1,7 +1,6 @@
 import { apiFetch } from "./client";
 import {
   settingsSchema,
-  settingsFormSchema,
   type Settings,
   type SettingsFormValues,
 } from "../validation/settings";

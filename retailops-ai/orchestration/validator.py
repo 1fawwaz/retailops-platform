@@ -47,7 +47,8 @@ _SYSTEM_GENERATED_PREFIXES = ("INCOMPLETE:", "INSUFFICIENT_DATA:")
 
 # Matches an optional currency sign, digits with optional thousands
 # separators, an optional decimal part, and an optional trailing "%" --
-# Matches numbers with optional currency signs, commas, decimals, percentages, scale words, or units --
+# Matches numbers with optional currency signs, commas, decimals, percentages,
+# scale words, or units --
 # e.g. "$1,234.56", "₹1,20,000", "1.2 lakh", "15%", "150 kg", "100 pcs", "-3.5".
 NUMBER_PATTERN = re.compile(
     r"-?(?:[$£€₹]|INR|Rs\.?)?\s*\d[\d,]*(?:\.\d+)?\s*(?:percent|lakhs?|lacs?|crores?|[LlCc][Rr]|litres?|liters?|box(?:es)?|units|items|days|pcs|kg|%|[kKmMbBL])?",
@@ -88,7 +89,8 @@ def _normalize(token: str) -> float | None:
         lower = lower.replace("percent", "").replace("%", "")
         cleaned = lower
 
-    # Handle common unit suffixes FIRST (e.g. 'kg', 'pcs') so 'kg' is not misparsed as 'k' (thousand)
+    # Handle common unit suffixes FIRST (e.g. 'kg', 'pcs')
+    # so 'kg' is not misparsed as 'k' (thousand)
     for unit in (
         "kg",
         "pcs",
@@ -238,7 +240,7 @@ def validate_citations(
     for call in tool_calls:
         # Ground numbers passed as tool arguments (limits, thresholds, days, etc.)
         if call.args and isinstance(call.args, dict):
-            for arg_k, arg_val, _ in _iter_numeric_leaves(call.args):
+            for _arg_k, arg_val, _ in _iter_numeric_leaves(call.args):
                 _add_grounded_variants(grounded, arg_val)
 
         provenance_map = call.provenance_map or {}

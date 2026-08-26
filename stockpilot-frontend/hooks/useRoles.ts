@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listRoles, getRole, createRole, updateRole } from "../lib/api/roles";
 import type { ListParams } from "../lib/api/list-params";
-import type { Role, RoleFormValues } from "../lib/validation/roles";
+import type { RoleFormValues } from "../lib/validation/roles";
 
 export function useRoles(options?: ListParams) {
   return useQuery({

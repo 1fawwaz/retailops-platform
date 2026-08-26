@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useSalesOrder, useConfirmSalesOrder, useCancelSalesOrder, useFulfillSalesOrder } from "../../../../../hooks/useSalesOrders";
 import { useCan } from "../../../../../lib/rbac";
 import { EmptyState } from "../../../../../components/ui/EmptyState";
@@ -33,7 +31,6 @@ function statusBadge(status: string) {
 }
 
 export function SalesOrderDetailContent({ id }: { id: number }) {
-  const router = useRouter();
   const order = useSalesOrder(id);
   const confirmOrder = useConfirmSalesOrder();
   const cancelOrder = useCancelSalesOrder();

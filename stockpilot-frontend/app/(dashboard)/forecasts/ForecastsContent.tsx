@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useForecast } from "../../../hooks/useForecast";
 import { DataTable, type DataTableColumn } from "../../../components/data-table/DataTable";
 import { EmptyState } from "../../../components/ui/EmptyState";
-import { formatInteger, formatPercent } from "../../../lib/format";
 import { AppError } from "../../../lib/api/errors";
 
 interface ForecastRow {

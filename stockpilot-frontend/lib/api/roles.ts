@@ -3,7 +3,6 @@ import type { ListParams } from "./list-params";
 import {
   roleSchema,
   roleListResponseSchema,
-  roleFormSchema,
   type Role,
   type RoleFormValues,
 } from "../validation/roles";

@@ -12,7 +12,7 @@ import {
   fulfillSalesOrder,
 } from "../lib/api/salesOrders";
 import type { ListParams } from "../lib/api/list-params";
-import type { SalesOrder, SalesOrderFormValues } from "../lib/validation/salesOrders";
+import type { SalesOrderFormValues } from "../lib/validation/salesOrders";
 
 export function useSalesOrders(options: ListParams) {
   return useQuery({

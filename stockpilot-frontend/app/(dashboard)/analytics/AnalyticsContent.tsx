@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRevenue, useProfit, useTurnover, useAbc, useTopProducts, useBottomProducts, usePeriodComparison, useSupplierRollup, usePurchaseOrderKpis, useDeadStock, useSlowMovers, useInventoryValuation } from "../../../hooks/useAnalytics";
-import { DataTable, type DataTableColumn } from "../../../components/data-table/DataTable";
-import { EmptyState } from "../../../components/ui/EmptyState";
+import { DataTable } from "../../../components/data-table/DataTable";
 import { formatCurrencyPrecise, formatInteger, formatPercent } from "../../../lib/format";
 import { AppError } from "../../../lib/api/errors";
 

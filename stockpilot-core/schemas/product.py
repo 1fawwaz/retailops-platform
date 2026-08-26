@@ -33,7 +33,6 @@ class ProductCreate(BaseModel):
     sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
-    image_url: str | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -49,7 +48,6 @@ class ProductUpdate(BaseModel):
     sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
-    image_url: str | None = None
 
 
 class ProductRead(ProvenanceMixin):
@@ -97,7 +95,6 @@ class ProductRead(ProvenanceMixin):
     sale_price: float | None
     reorder_point: int | None
     safety_stock: int | None
-    image_url: str | None = None
     created_at: datetime
     id: str | None = None
     name: str | None = None

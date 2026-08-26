@@ -36,7 +36,6 @@ class UserRead(BaseModel):
     email: LocalEmail
     is_active: bool
     is_read_only: bool
-    avatar_url: str | None = None
     created_at: datetime
 
 
@@ -64,7 +63,6 @@ class UserWithRolesRead(BaseModel):
     email: LocalEmail
     is_active: bool
     is_read_only: bool
-    avatar_url: str | None = None
     created_at: datetime
     roles: list[str]
 

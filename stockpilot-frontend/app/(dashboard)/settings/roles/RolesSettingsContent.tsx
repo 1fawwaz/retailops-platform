@@ -62,7 +62,7 @@ export function RolesSettingsContent() {
       await createRole.mutateAsync(formValues);
       setShowCreateModal(false);
       setFormValues({ name: "", permissions: [] });
-    } catch (err) {
+    } catch (_err) {
       // Error handled by form
     }
   }
@@ -73,7 +73,7 @@ export function RolesSettingsContent() {
       await updateRole.mutateAsync({ id: editingRole.id, values: formValues });
       setEditingRole(null);
       setFormValues({ name: "", permissions: [] });
-    } catch (err) {
+    } catch (_err) {
       // Error handled by form
     }
   }

@@ -9,7 +9,7 @@ type FetchState =
   | { status: "error"; message: string }
   | { status: "ready"; toolCall: ToolCallEntry | null };
 
-const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "http://localhost:8001";
+const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "https://retailops-ai.onrender.com";
 
 function generateSQLSource(toolName: string, args: Record<string, unknown> | null | undefined): string {
   if (!toolName) return "—";

@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listNotifications, markNotificationRead, markAllNotificationsRead } from "../lib/api/notifications";
 import type { ListParams } from "../lib/api/list-params";
-import type { Notification } from "../lib/validation/notifications";
+
 
 export function useNotifications(options?: ListParams) {
   return useQuery({

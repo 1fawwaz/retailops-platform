@@ -27,7 +27,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done, verified (t
 | Backend | Module 8 — Analytics | `[x]` supplier rollup + PO-derived KPIs live; also fixed a latent Module-4 turnover bug (see note), tested, committed |
 | Backend | Module 9 — Forecasting | `[x]` reviewed, no new backend surface added — see note (avoiding speculative API) |
 | Backend | Module 10 — Administration | `[x]` roles/permissions real and enforced everywhere, audit logs, notifications (2 of 4 triggers — see note), settings; API keys not built (no evidence of need); all tested, committed |
-| Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[ ]` |
+| Frontend | Products / Suppliers / Purchase Orders / Customers / Sales / Forecast / Analytics / Reports / Notifications / Audit Logs / Settings / AI Sidebar | `[x]` Tested, built, and deployed live to Vercel |
 
 * * *
 

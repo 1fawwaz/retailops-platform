@@ -109,17 +109,6 @@
           ],
           "title": "Safety Stock"
         },
-        "image_url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Image Url"
-        },
         "created_at": {
           "type": "string",
           "format": "date-time",

@@ -3,7 +3,6 @@ import type { ListParams } from "./list-params";
 import {
   userWithRolesSchema,
   userListResponseSchema,
-  userCreateSchema,
   type UserWithRoles,
   type UserCreateValues,
 } from "../validation/users";

@@ -14,15 +14,8 @@ import { accessTokenResponseSchema } from "../validation/auth";
 // docs/ARCHITECTURE.md § API Architecture: the one place a StockPilot
 // Core base URL, an Authorization header, and 401 handling exist.
 // lib/api/<resource>.ts functions call this, never `fetch` directly.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-if (!API_BASE_URL && typeof window !== "undefined") {
-  // Loud, not silent -- a missing env var should fail obviously in dev,
-  // not manifest as a confusing relative-URL fetch failure later.
-  console.error(
-    "NEXT_PUBLIC_API_BASE_URL is not set. See docs/ARCHITECTURE.md § Environment Variables.",
-  );
-}
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "https://stockpilot-core.onrender.com";
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

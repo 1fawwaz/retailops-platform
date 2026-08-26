@@ -58,6 +58,4 @@ class Product(Base):
         Integer,
         comment="derived: data-derivation.md#reorder-point",
     )
-    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

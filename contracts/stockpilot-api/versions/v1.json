@@ -6282,17 +6282,6 @@
               }
             ],
             "title": "Safety Stock"
-          },
-          "image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Url"
           }
         },
         "type": "object",
@@ -6421,17 +6410,6 @@
               }
             ],
             "title": "Safety Stock"
-          },
-          "image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Url"
           },
           "created_at": {
             "type": "string",
@@ -6841,17 +6819,6 @@
             ],
             "title": "Safety Stock"
           },
-          "image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Url"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -7068,17 +7035,6 @@
               }
             ],
             "title": "Safety Stock"
-          },
-          "image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Url"
           }
         },
         "type": "object",
@@ -9005,17 +8961,6 @@
             "type": "boolean",
             "title": "Is Read Only"
           },
-          "avatar_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avatar Url"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -9059,17 +9004,6 @@
           "is_read_only": {
             "type": "boolean",
             "title": "Is Read Only"
-          },
-          "avatar_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avatar Url"
           },
           "created_at": {
             "type": "string",

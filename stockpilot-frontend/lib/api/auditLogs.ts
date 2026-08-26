@@ -1,7 +1,5 @@
 import { apiFetch } from "./client";
-import type { ListParams } from "./list-params";
 import {
-  auditLogSchema,
   auditLogListResponseSchema,
   type AuditLog,
   type AuditLogFilters,

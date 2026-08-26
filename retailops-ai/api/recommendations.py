@@ -93,7 +93,10 @@ def record_recommendation_action(
             )
             session.execute(
                 sa.text(
-                    "CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, permission TEXT, method TEXT, path TEXT, outcome TEXT, created_at DATETIME)"
+                    "CREATE TABLE IF NOT EXISTS audit_logs ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, "
+                    "permission TEXT, method TEXT, path TEXT, outcome TEXT, "
+                    "created_at DATETIME)"
                 )
             )
             user_exists = session.execute(

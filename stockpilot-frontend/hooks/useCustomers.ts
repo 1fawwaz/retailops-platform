@@ -10,7 +10,7 @@ import {
   getCustomerOrders,
 } from "../lib/api/customers";
 import type { ListParams } from "../lib/api/list-params";
-import type { Customer, CustomerFormValues } from "../lib/validation/customers";
+import type { CustomerFormValues } from "../lib/validation/customers";
 
 export function useCustomers(options: ListParams) {
   return useQuery({

@@ -1,19 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { useSettings } from "../../../../hooks/useSettings";
-import { useUpdateSettings } from "../../../../hooks/useSettings";
-import { EmptyState } from "../../../../components/ui/EmptyState";
 import { AppError } from "../../../../lib/api/errors";
 
 export function ProfileSettingsContent() {
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // For profile, we'll just show the current user info
-  // In a real app, this would fetch the current user's profile
   const settings = useSettings();
-  const updateSettings = useUpdateSettings();
 
   if (settings.isPending) {
     return (

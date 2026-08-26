@@ -2,11 +2,9 @@
 
 import { useState } from "react";
 import { Form } from "../../../../components/forms/Form";
-import { FormField } from "../../../../components/forms/FormField";
 import { FormSelectField } from "../../../../components/forms/FormSelectField";
 import { useCustomers } from "../../../../hooks/useCustomers";
 import { useWarehouses } from "../../../../hooks/useWarehouses";
-import { useProducts } from "../../../../hooks/useProducts";
 import {
   salesOrderFormSchema,
   type SalesOrderFormValues,
@@ -20,10 +18,9 @@ export interface SalesOrderFormProps {
   onSubmit: (values: SalesOrderFormValues) => Promise<void>;
 }
 
-export function SalesOrderForm({ mode, defaultValues, submitLabel, onSubmit }: SalesOrderFormProps) {
+export function SalesOrderForm({ mode: _mode, defaultValues, submitLabel, onSubmit }: SalesOrderFormProps) {
   const customers = useCustomers({ limit: 1000, offset: 0 });
   const warehouses = useWarehouses();
-  const products = useProducts({ limit: 1000, offset: 0 });
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 

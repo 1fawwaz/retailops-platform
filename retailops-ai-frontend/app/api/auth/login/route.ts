@@ -21,13 +21,10 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ detail: "Email and password are required." }, { status: 400 });
   }
 
-  const stockpilotBaseUrl = process.env.STOCKPILOT_BASE_URL;
-  if (!stockpilotBaseUrl) {
-    return NextResponse.json(
-      { detail: "Server misconfigured: STOCKPILOT_BASE_URL is not set." },
-      { status: 500 },
-    );
-  }
+  const stockpilotBaseUrl =
+    process.env.STOCKPILOT_BASE_URL ||
+    process.env.NEXT_PUBLIC_STOCKPILOT_API_URL ||
+    "https://stockpilot-core.onrender.com";
 
   const form = new URLSearchParams();
   form.set("username", body.email);

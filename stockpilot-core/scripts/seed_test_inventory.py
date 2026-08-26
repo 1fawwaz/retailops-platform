@@ -443,6 +443,15 @@ def seed_test_inventory() -> None:
         print("Clearing existing test inventory data...")
         _clear_test_data(session)
 
+        # Sync sequences in case raw SQL inserted explicit IDs
+        for seq_table in ["warehouses", "suppliers", "categories", "brands"]:
+            session.execute(
+                text(
+                    f"SELECT setval('{seq_table}_id_seq', (SELECT COALESCE(MAX(id), 0) + 1 FROM {seq_table}), false)"
+                )
+            )
+        session.commit()
+
         # ── Warehouses ─────────────────────────────────────────────
         print("Ensuring warehouses exist...")
         main_wh = session.scalar(text("SELECT id FROM warehouses WHERE name = 'Main Warehouse'"))

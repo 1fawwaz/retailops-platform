@@ -1,4 +1,4 @@
-import type { AgentStreamEvent, AgentQueryResponse } from "./types";
+import type { AgentStreamEvent } from "./types";
 
 export type NodeStatus = "idle" | "running" | "complete" | "error" | "replanned";
 
