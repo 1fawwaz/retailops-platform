@@ -17,7 +17,7 @@ from orchestration.models import (
 )
 
 
-def test_all_eight_memory_tables_exist(db_session: Session) -> None:
+def test_all_nine_memory_tables_exist(db_session: Session) -> None:
     from orchestration.models.base import Base
 
     assert set(Base.metadata.tables) == {
@@ -29,6 +29,7 @@ def test_all_eight_memory_tables_exist(db_session: Session) -> None:
         "reports",
         "recommendations",
         "eval_runs",
+        "rag_documents",
     }
 
 

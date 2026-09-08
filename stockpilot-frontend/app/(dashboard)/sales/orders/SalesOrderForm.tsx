@@ -18,7 +18,7 @@ export interface SalesOrderFormProps {
   onSubmit: (values: SalesOrderFormValues) => Promise<void>;
 }
 
-export function SalesOrderForm({ mode: _mode, defaultValues, submitLabel, onSubmit }: SalesOrderFormProps) {
+export function SalesOrderForm({ defaultValues, submitLabel, onSubmit }: SalesOrderFormProps) {
   const customers = useCustomers({ limit: 1000, offset: 0 });
   const warehouses = useWarehouses();
   const [submitError, setSubmitError] = useState<string | null>(null);

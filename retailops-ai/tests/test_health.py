@@ -14,8 +14,19 @@ client = TestClient(app)
 def test_health_returns_200_ok() -> None:
     response = client.get("/health")
 
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "retailops-ai"
+
+
+def test_root_returns_200_ok() -> None:
+    response = client.get("/")
+
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data["status"] == "online"
+    assert "RetailOps AI" in data["service"]
+    assert data["docs"] == "/docs"
 
 
 def _stockpilot_client(handler: Callable[[httpx2.Request], httpx2.Response]) -> StockPilotClient:

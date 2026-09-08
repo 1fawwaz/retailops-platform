@@ -4,6 +4,7 @@ from orchestration.models.conversation import Conversation
 from orchestration.models.eval_run import EvalRun
 from orchestration.models.execution import Execution
 from orchestration.models.message import Message
+from orchestration.models.rag_document import RagDocument
 from orchestration.models.recommendation import Recommendation
 from orchestration.models.report import Report
 from orchestration.models.tool_call import ToolCall
@@ -15,6 +16,7 @@ __all__ = [
     "EvalRun",
     "Execution",
     "Message",
+    "RagDocument",
     "Recommendation",
     "Report",
     "ToolCall",

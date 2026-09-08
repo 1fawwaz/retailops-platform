@@ -195,7 +195,13 @@ def upgrade() -> None:
     op.add_column(
         "customers", sa.Column("avg_basket_inr", sa.Numeric(precision=10, scale=2), nullable=True)
     )
-    op.create_foreign_key(None, "customers", "categories", ["preferred_category_id"], ["id"])
+    op.create_foreign_key(
+        "fk_customers_preferred_category_id_categories",
+        "customers",
+        "categories",
+        ["preferred_category_id"],
+        ["id"],
+    )
     op.add_column("products", sa.Column("barcode", sa.String(length=13), nullable=True))
     op.add_column("products", sa.Column("name", sa.String(length=160), nullable=True))
     op.add_column(
@@ -219,7 +225,7 @@ def upgrade() -> None:
         comment="derived: backfilled from the SKU's average observed sales_transactions.unit_price (docs/BUILD.md Backend Module 2); user-editable going forward via PUT /products/{sku}",
         existing_nullable=True,
     )
-    op.create_unique_constraint(None, "products", ["barcode"])
+    op.create_unique_constraint("uq_products_barcode", "products", ["barcode"])
     op.add_column("suppliers", sa.Column("city", sa.String(length=60), nullable=True))
     op.add_column("suppliers", sa.Column("state", sa.String(length=40), nullable=True))
     op.add_column("suppliers", sa.Column("pin_code", sa.String(length=6), nullable=True))
@@ -289,7 +295,7 @@ def downgrade() -> None:
     op.drop_column("suppliers", "pin_code")
     op.drop_column("suppliers", "state")
     op.drop_column("suppliers", "city")
-    op.drop_constraint(None, "products", type_="unique")
+    op.drop_constraint("uq_products_barcode", "products", type_="unique")
     op.alter_column(
         "products",
         "sale_price",
@@ -310,7 +316,9 @@ def downgrade() -> None:
     op.drop_column("products", "gst_percent")
     op.drop_column("products", "name")
     op.drop_column("products", "barcode")
-    op.drop_constraint(None, "customers", type_="foreignkey")
+    op.drop_constraint(
+        "fk_customers_preferred_category_id_categories", "customers", type_="foreignkey"
+    )
     op.drop_column("customers", "avg_basket_inr")
     op.drop_column("customers", "purchase_frequency")
     op.drop_column("customers", "lifetime_value_inr")

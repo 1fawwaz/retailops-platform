@@ -593,8 +593,7 @@ def test_query_response_fields_maps_internal_codes_and_provider_errors_to_plain_
     assert "not_found" not in cast(str, fields["answer"])
     assert "missing_provenance" not in cast(str, fields["answer"])
     assert cast(str, fields["answer"]).startswith("This answer is incomplete:")
-    assert "429" not in fields["errors"][0]
-    assert fields["errors"][0] == (
-        "planner: could not reach any configured LLM provider after retries."
-    )
+    errors = cast(list[str], fields["errors"])
+    assert "429" not in errors[0]
+    assert errors[0] == ("planner: could not reach any configured LLM provider after retries.")
     assert state["errors"][0].endswith("RESOURCE_EXHAUSTED"), "raw trace kept in state/DB"

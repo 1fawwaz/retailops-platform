@@ -1,9 +1,11 @@
 import json
+import os
+import urllib.error
 import urllib.parse
 import urllib.request
 
 
-def test_login(url, email, password):
+def test_login(url: str, email: str, password: str) -> None:
     data = urllib.parse.urlencode({"username": email, "password": password}).encode("utf-8")
     req = urllib.request.Request(
         f"{url}/auth/login",
@@ -14,9 +16,8 @@ def test_login(url, email, password):
     try:
         with urllib.request.urlopen(req) as resp:
             body = json.loads(resp.read().decode("utf-8"))
-            print(
-                f"SUCCESS on {url}: access_token received (length={len(body.get('access_token', ''))})"
-            )
+            token_len = len(body.get("access_token", ""))
+            print(f"SUCCESS on {url}: access_token received (length={token_len})")
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8")
         print(f"HTTPError {e.code} on {url}: {err_body}")
@@ -25,12 +26,11 @@ def test_login(url, email, password):
 
 
 if __name__ == "__main__":
+    demo_email = os.getenv("DEMO_USER_EMAIL", "demo@retailops.local")
+    demo_password = os.getenv("DEMO_USER_PASSWORD", "demo-password-placeholder")
+
     print("Testing local API...")
-    test_login("http://localhost:8000", "demo@retailops.local", "_awv1jRthdu2YNJzao9CyA")
-    test_login("http://localhost:8000", "test@test.com", "testpassword123")
+    test_login("http://localhost:8000", demo_email, demo_password)
 
     print("\nTesting production API (Render)...")
-    test_login(
-        "https://stockpilot-core.onrender.com", "demo@retailops.local", "_awv1jRthdu2YNJzao9CyA"
-    )
-    test_login("https://stockpilot-core.onrender.com", "test@test.com", "testpassword123")
+    test_login("https://stockpilot-core.onrender.com", demo_email, demo_password)

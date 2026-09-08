@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import type { CitationEntry, ExecutionTraceResponse, ToolCallEntry } from "../../lib/types";
 import { getToken } from "../../lib/auth/token";
 
+import { getAiBaseUrl } from "../../lib/api/aiClient";
+
 type FetchState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; toolCall: ToolCallEntry | null };
-
-const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "https://retailops-ai.onrender.com";
 
 function generateSQLSource(toolName: string, args: Record<string, unknown> | null | undefined): string {
   if (!toolName) return "—";
@@ -121,7 +121,7 @@ export function ProvenanceDrawer({
     }
 
 
-    fetch(`${AI_BASE_URL}/agent/execution/${executionId}`, {
+    fetch(`${getAiBaseUrl()}/agent/execution/${executionId}`, {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,

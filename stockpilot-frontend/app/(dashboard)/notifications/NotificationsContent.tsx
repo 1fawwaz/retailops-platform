@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } from "../../../hooks/useNotifications";
+import { useNotifications, useMarkAllNotificationsRead } from "../../../hooks/useNotifications";
 import { DataTable, type DataTableColumn } from "../../../components/data-table/DataTable";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { AppError } from "../../../lib/api/errors";
@@ -21,14 +21,8 @@ export function NotificationsContent() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
 
-  const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
   const { data, isPending, isError, error, refetch } = useNotifications({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
-
-  async function _handleMarkRead(id: number, isRead: boolean) {
-    await markRead.mutateAsync({ id, isRead });
-    refetch();
-  }
 
   async function handleMarkAllRead() {
     await markAllRead.mutateAsync();

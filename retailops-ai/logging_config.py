@@ -85,3 +85,10 @@ def bind_execution_id(execution_id: str) -> contextvars.Token[str | None]:
 
 def reset_execution_id(token: contextvars.Token[str | None]) -> None:
     execution_id_var.reset(token)
+
+
+def set_execution_id_safe(execution_id: str | None) -> None:
+    """Safely set or clear the execution_id context variable without
+    relying on token reset across async/thread-pool boundaries.
+    """
+    execution_id_var.set(execution_id)

@@ -12,6 +12,8 @@ this service's own outage.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends
@@ -22,6 +24,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from api.deps import get_db_session_factory, get_stockpilot_client
 from clients.stockpilot import StockPilotClient, StockPilotUnavailableError
 
+SERVICE_ROOT = Path(__file__).resolve().parent.parent
+
 router = APIRouter(tags=["health"])
 
 
@@ -31,9 +35,33 @@ class DeepHealthResponse(BaseModel):
     stockpilot: str
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def _get_app_version() -> str:
+    pyproject = SERVICE_ROOT / "pyproject.toml"
+    if pyproject.exists():
+        for line in pyproject.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("version ="):
+                return line.split("=")[1].strip().strip('"').strip("'")
+    return "0.1.0"
+
+
+APP_VERSION = _get_app_version()
+
+
+class HealthResponse(BaseModel):
+    status: str = "healthy"
+    service: str = "retailops-ai"
+    version: str
+    timestamp: str
+
+
+@router.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    return HealthResponse(
+        status="healthy",
+        service="retailops-ai",
+        version=APP_VERSION,
+        timestamp=datetime.now(UTC).isoformat(),
+    )
 
 
 @router.get("/health/deep", response_model=DeepHealthResponse)

@@ -85,7 +85,11 @@ def record_recommendation_action(
         recommendation.decided_at = datetime.now(UTC)
 
         # Support SQLite tests dynamically
-        if session.bind.dialect.name == "sqlite":
+        bind = session.bind
+        dialect = getattr(bind, "dialect", None) if bind is not None else None
+        is_sqlite = dialect is not None and dialect.name == "sqlite"
+
+        if is_sqlite:
             session.execute(
                 sa.text(
                     "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE)"
@@ -122,12 +126,12 @@ def record_recommendation_action(
         session.execute(
             sa.text(
                 "INSERT INTO audit_logs (user_id, permission, method, path, outcome, created_at) "
-                "VALUES (:user_id, :permission, :method, :path, :outcome, NOW())"
+                "VALUES (:user_id, :permission, :method, :path, :outcome, datetime('now'))"
             )
-            if session.bind.dialect.name != "sqlite"
+            if is_sqlite
             else sa.text(
                 "INSERT INTO audit_logs (user_id, permission, method, path, outcome, created_at) "
-                "VALUES (:user_id, :permission, :method, :path, :outcome, datetime('now'))"
+                "VALUES (:user_id, :permission, :method, :path, :outcome, NOW())"
             ),
             {
                 "user_id": user_id,

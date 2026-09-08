@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useUsers, useCreateUser, useAssignRole, useRevokeRole } from "../../../../hooks/useUsers";
+import { useUsers, useCreateUser } from "../../../../hooks/useUsers";
 import { DataTable, type DataTableColumn } from "../../../../components/data-table/DataTable";
 import { EmptyState } from "../../../../components/ui/EmptyState";
 import { useCan } from "../../../../lib/rbac";
@@ -25,8 +25,6 @@ export function UsersSettingsContent() {
 
   const canCreate = useCan("users:create");
   const createUser = useCreateUser();
-  const _assignRole = useAssignRole();
-  const _revokeRole = useRevokeRole();
   const { data, isPending, isError, error } = useUsers({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
 
   async function handleCreate(event: React.FormEvent) {
@@ -35,7 +33,7 @@ export function UsersSettingsContent() {
       await createUser.mutateAsync(createForm);
       setShowCreateModal(false);
       setCreateForm({ email: "", password: "", full_name: "" });
-    } catch (_err) {
+    } catch {
       // Error handled by form
     }
   }

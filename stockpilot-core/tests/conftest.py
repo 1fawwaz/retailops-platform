@@ -1,10 +1,10 @@
 import os
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("JWT_SECRET", "test-secret-key-not-for-production")
-os.environ.setdefault("JWT_ALGORITHM", "HS256")
-os.environ.setdefault("DEMO_USER_EMAIL", "demo@retailops.local")
-os.environ.setdefault("DEMO_USER_PASSWORD", "test-demo-password")
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["JWT_SECRET"] = "test-secret-key-not-for-production"
+os.environ["JWT_ALGORITHM"] = "HS256"
+os.environ["DEMO_USER_EMAIL"] = "demo@retailops.local"
+os.environ["DEMO_USER_PASSWORD"] = "test-demo-password"
 
 from collections.abc import Generator  # noqa: E402
 

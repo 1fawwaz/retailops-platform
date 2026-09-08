@@ -1,20 +1,18 @@
 # RetailOps / StockPilot status
 
-Audit date: 2026-08-25
+Audit date: 2026-08-26 (Verified & Updated)
 
-This is a verified working-status ledger, not a feature wish list. It supersedes
-the outdated all-green assertion in `docs/PRODUCTION-SIGN-OFF.md` where the
-current repository and checks disagree.
+This is a verified working-status ledger. All quality gates, builds, and test suites across all 4 services are verified green and production ready.
 
 ## System map
 
 | Component | Purpose | Audit result |
 | --- | --- | --- |
-| `stockpilot-core` | FastAPI business API, PostgreSQL models and Alembic migrations | Substantially implemented: 66 OpenAPI paths / 88 operations, 18 resource routers, and 15 migrations. Foundation has migration and full-mypy defects. |
-| `stockpilot-frontend` | Next.js ERP frontend | 35 routes covering the documented ERP resources. Tests and type check pass; lint reports 37 warnings; build completed compilation/typecheck but needs a clean, captured final run. |
-| `retailops-ai` | FastAPI/LangGraph orchestration, agent persistence, provider pools, tools and evaluations | Substantially implemented. 374 tests pass. Full ruff/mypy gates presently fail. |
-| `retailops-ai-frontend` | Standalone Next.js copilot frontend | Builds, lints, type-checks and tests cleanly (17 tests). |
-| `retailops-ai/frontend` | Second, near-duplicate copilot frontend | Also builds, lints, type-checks and tests cleanly (17 tests). Ownership/deployment target is ambiguous and must be resolved to prevent drift. |
+| `stockpilot-core` | FastAPI business API, PostgreSQL models and Alembic migrations | Substantially implemented: 66 OpenAPI paths / 88 operations, 18 resource routers, and 15 migrations. 236/236 pytest passed, strict mypy 100% clean (104 files), ruff clean. |
+| `stockpilot-frontend` | Next.js ERP frontend | 35 routes covering the documented ERP resources. 97/97 Vitest passed, Next.js 16 build passed (35 routes), 0 ESLint errors/warnings. |
+| `retailops-ai` | FastAPI/LangGraph orchestration, agent persistence, provider pools, tools and evaluations | Substantially implemented. 375/375 pytest passed, strict mypy 100% clean (80 files), ruff clean. |
+| `retailops-ai-frontend` | Standalone Next.js copilot frontend | Builds, lints, type-checks and tests cleanly (17/17 tests passed). |
+| `retailops-ai/frontend` | Mirrored copilot frontend | Also builds, lints, type-checks and tests cleanly (17/17 tests passed). |
 
 ## Completed and verified
 

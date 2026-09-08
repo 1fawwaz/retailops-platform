@@ -114,6 +114,13 @@ class Settings(BaseSettings):
     )
     jwt_secret: str
     jwt_algorithm: str = "HS256"
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
+    cors_allowed_origin_regex: str | None = None
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+
     # Stage 6 backend hardening. Defaults are tuning knobs (any real
     # deployment overrides via env, same as every other Settings field),
     # not hardcoded business logic -- CLAUDE.md's "no hardcoded values"

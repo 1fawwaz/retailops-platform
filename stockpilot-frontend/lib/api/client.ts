@@ -11,11 +11,12 @@ import {
 import { notifySessionChanged } from "../auth/useSession";
 import { accessTokenResponseSchema } from "../validation/auth";
 
+import { getApiBaseUrl } from "./aiClient";
+
 // docs/ARCHITECTURE.md § API Architecture: the one place a StockPilot
 // Core base URL, an Authorization header, and 401 handling exist.
 // lib/api/<resource>.ts functions call this, never `fetch` directly.
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "https://stockpilot-core.onrender.com";
+const API_BASE_URL = getApiBaseUrl();
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

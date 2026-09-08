@@ -27,13 +27,10 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ detail: "Malformed request body." }, { status: 400 });
   }
 
-  const retailopsBaseUrl = process.env.RETAILOPS_BASE_URL;
-  if (!retailopsBaseUrl) {
-    return NextResponse.json(
-      { detail: "Server misconfigured: RETAILOPS_BASE_URL is not set." },
-      { status: 500 },
-    );
-  }
+  const retailopsBaseUrl =
+    process.env.RETAILOPS_BASE_URL ||
+    process.env.NEXT_PUBLIC_AI_BASE_URL ||
+    "http://localhost:8001";
 
   const acceptHeader = request.headers.get("accept") ?? "application/json";
 

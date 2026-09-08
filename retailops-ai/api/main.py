@@ -3,11 +3,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api import agent, health, recommendations, workflows
 from api.errors import unhandled_exception_handler
 from llm.providers.startup import validate_configured_models
 from logging_config import configure_logging
+from settings import get_settings
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -27,6 +29,23 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="RetailOps AI", lifespan=_lifespan)
 
+ai_settings = get_settings()
+logger.info(
+    "RetailOps AI starting with allowed origins: %s (regex: %s), StockPilot Core: %s",
+    ai_settings.cors_allowed_origins_list,
+    ai_settings.cors_allowed_origin_regex,
+    ai_settings.stockpilot_base_url,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ai_settings.cors_allowed_origins_list,
+    allow_origin_regex=ai_settings.cors_allowed_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Stage 6 backend hardening: the last line of defense before a raw
 # exception (and whatever sensitive detail it carries) would otherwise
 # reach an HTTP response body -- see api/errors.py's own docstring for
@@ -38,3 +57,13 @@ app.include_router(agent.router)
 app.include_router(health.router)
 app.include_router(recommendations.router)
 app.include_router(workflows.router)
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "service": "RetailOps AI Agent Service",
+        "status": "online",
+        "docs": "/docs",
+        "health": "/health",
+    }

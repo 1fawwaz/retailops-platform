@@ -16,7 +16,7 @@ export interface CustomerFormProps {
   onSubmit: (values: CustomerFormValues) => Promise<void>;
 }
 
-export function CustomerForm({ mode: _mode, defaultValues, submitLabel, onSubmit }: CustomerFormProps) {
+export function CustomerForm({ defaultValues, submitLabel, onSubmit }: CustomerFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 

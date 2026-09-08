@@ -9,7 +9,7 @@ from services.security import hash_password
 from settings import get_settings
 
 
-def main():
+def main() -> None:
     settings = get_settings()
     engine = create_engine(settings.database_url)
     with engine.begin() as conn:

@@ -20,6 +20,7 @@ from evals.scenarios.s07_api_unavailable import SCENARIO as S07_API_UNAVAILABLE
 from evals.scenarios.s08_prompt_injection import SCENARIO as S08_PROMPT_INJECTION
 from evals.scenarios.s09_ambiguous_question import SCENARIO as S09_AMBIGUOUS_QUESTION
 from evals.scenarios.s10_unanswerable_question import SCENARIO as S10_UNANSWERABLE_QUESTION
+from evals.scenarios.s11_operational_policy_rag import SCENARIO as S11_OPERATIONAL_POLICY_RAG
 
 ALL_SCENARIOS: list[Scenario] = [
     S01_NORMAL_OPERATIONS,
@@ -32,4 +33,5 @@ ALL_SCENARIOS: list[Scenario] = [
     S08_PROMPT_INJECTION,
     S09_AMBIGUOUS_QUESTION,
     S10_UNANSWERABLE_QUESTION,
+    S11_OPERATIONAL_POLICY_RAG,
 ]

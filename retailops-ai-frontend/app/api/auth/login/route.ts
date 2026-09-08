@@ -23,8 +23,9 @@ export async function POST(request: Request): Promise<Response> {
 
   const stockpilotBaseUrl =
     process.env.STOCKPILOT_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.NEXT_PUBLIC_STOCKPILOT_API_URL ||
-    "https://stockpilot-core.onrender.com";
+    "http://localhost:8000";
 
   const form = new URLSearchParams();
   form.set("username", body.email);

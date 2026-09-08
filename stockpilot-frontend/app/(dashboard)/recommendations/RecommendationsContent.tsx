@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { RecommendationCard, type Recommendation } from "../../../components/ui/RecommendationCard";
+import { getAiBaseUrl } from "../../../lib/api/aiClient";
 import { getToken } from "../../../lib/auth/token";
-
-const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "https://retailops-ai.onrender.com";
 
 type FilterPriority = "all" | Recommendation["priority"];
 type FilterStatus = "all" | "pending" | "actioned";
@@ -31,7 +30,7 @@ export function RecommendationsContent() {
     }
 
 
-    fetch(`${AI_BASE_URL}/recommendations`, {
+    fetch(`${getAiBaseUrl()}/recommendations`, {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
@@ -69,7 +68,7 @@ export function RecommendationsContent() {
     const backendStatus = decision === "accept" ? "accepted" : decision === "reject" ? "rejected" : "snoozed";
 
     try {
-      const response = await fetch(`${AI_BASE_URL}/recommendations/${id}/action`, {
+      const response = await fetch(`${getAiBaseUrl()}/recommendations/${id}/action`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

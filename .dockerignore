@@ -1,0 +1,41 @@
+# Root-level .dockerignore — applies when Docker build context is the repo root.
+# Keeps images small by excluding dev artifacts from both services.
+
+# Python virtualenvs (huge — never needed inside Docker)
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.coverage
+**/*.egg-info/
+
+# Never bake local .env files into images — secrets come from Render env vars
+**/.env
+**/.env.local
+
+# Node / frontend build artifacts (not needed for backend builds)
+stockpilot-frontend/
+retailops-ai-frontend/
+retailops-ai/frontend/
+**/node_modules/
+**/.next/
+
+# Editor / OS noise
+.git/
+.kilo/
+.claude/
+**/.DS_Store
+**/Thumbs.db
+
+# Test data and scratch files
+data/
+login_body.txt
+login_viewer.txt
+po_body*.json
+po_update*.json
+receive_body*.json
+register_body*.json
+register_viewer*.json

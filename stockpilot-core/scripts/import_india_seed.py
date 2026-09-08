@@ -2,8 +2,10 @@ import csv
 import os
 import sys
 import time
-from datetime import datetime
+from collections.abc import Callable, Iterator
+from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 try:
     import psutil
@@ -33,7 +35,7 @@ DATA_DIR = LATEST_DIR if LATEST_DIR.exists() else TEMP_DIR
 print(f"Using dataset from: {DATA_DIR}")
 
 
-def p_int(val):
+def p_int(val: Any) -> int | None:
     if not val:
         return None
     try:
@@ -42,7 +44,7 @@ def p_int(val):
         return None
 
 
-def p_float(val):
+def p_float(val: Any) -> float | None:
     if not val:
         return None
     try:
@@ -51,32 +53,33 @@ def p_float(val):
         return None
 
 
-def p_bool(val):
+def p_bool(val: Any) -> bool:
     if not val:
         return False
     return str(val).lower() in ("true", "1", "t", "y", "yes")
 
 
-def p_str(val):
-    return val if val else None
+def p_str(val: Any) -> str | None:
+    return str(val) if val else None
 
 
-def p_dt(val):
+def p_dt(val: Any) -> datetime | date | None:
     if not val:
         return None
-    if " " in val:
+    s_val = str(val)
+    if " " in s_val:
         try:
-            return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+            return datetime.strptime(s_val, "%Y-%m-%d %H:%M:%S")
         except Exception:
             return None
     else:
         try:
-            return datetime.strptime(val, "%Y-%m-%d").date()
+            return datetime.strptime(s_val, "%Y-%m-%d").date()
         except Exception:
             return None
 
 
-def track_progress(generator, file_name, total_rows):
+def track_progress(generator: Iterator[Any], file_name: str, total_rows: int) -> Iterator[Any]:
     start_time = time.time()
     last_print = start_time
     rows = 0
@@ -101,16 +104,22 @@ def track_progress(generator, file_name, total_rows):
     print(f"[{file_name}] Completed! {rows} rows in {time.time() - start_time:.1f}s")
 
 
-def get_total_lines(filename):
+def get_total_lines(filename: Path | str) -> int:
     with open(filename, encoding="utf-8", errors="replace") as f:
         return sum(1 for _ in f) - 1
 
 
-def import_table(conn, table_name, columns, csv_file, row_mapper):
+def import_table(
+    conn: Any,
+    table_name: str,
+    columns: list[str],
+    csv_file: str,
+    row_mapper: Callable[[dict[str, str]], tuple[Any, ...]],
+) -> None:
     filepath = DATA_DIR / csv_file
     total_lines = get_total_lines(filepath)
 
-    def gen():
+    def gen() -> Iterator[tuple[Any, ...]]:
         with open(filepath, encoding="utf-8", errors="replace") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -130,10 +139,11 @@ def import_table(conn, table_name, columns, csv_file, row_mapper):
         print(f"Validated {table_name}: {count} total rows in DB.")
 
 
-def import_all():
+def import_all() -> None:
     engine = get_engine()
     raw_conn = engine.raw_connection()
     conn = raw_conn.driver_connection
+    assert conn is not None, "Failed to get driver connection"
 
     print("Terminating existing connections to stockpilot DB...", flush=True)
     with conn.cursor() as cur:

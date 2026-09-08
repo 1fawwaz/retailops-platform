@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from agents.base import build_agents
 from clients.stockpilot import StockPilotClient
-from logging_config import bind_execution_id, reset_execution_id
+from logging_config import bind_execution_id, reset_execution_id, set_execution_id_safe
 from model_config import get_model_config
 from orchestration.graph import RETRIEVAL_AGENT_NAMES, build_execution_graph
 from orchestration.memory import load_conversation_context
@@ -490,78 +490,77 @@ def run_execution_streaming(
         query, client, session_factory, conversation_id, streaming=True
     )
 
-    # Deliberately NOT bind_execution_id() here, unlike run_execution()'s
-    # identical-looking call -- tried it, and it broke live: a
-    # contextvars.Token is only valid to .reset() in the SAME Context it
-    # was created in, and Starlette's StreamingResponse drives a sync
-    # generator's successive next() calls through run_in_threadpool,
-    # which is not guaranteed to reuse one Context across those calls.
-    # Confirmed by a real ValueError ("token ... was created in a
-    # different Context") surfacing through this very function's own
-    # test suite. Log lines emitted while a streaming execution runs
-    # won't carry execution_id until a safe mechanism for a
-    # thread-crossing generator is found -- a known, honest gap, not a
-    # silently swallowed one.
+    set_execution_id_safe(str(execution_id))
+    yield {
+        "type": "init",
+        "execution_id": str(execution_id),
+        "conversation_id": str(conversation_id),
+    }
+
     previous_agent_results: dict[str, str] = {}
     previous_replan_rounds = 0
     previous_citation_attempts = 0
     previous_tool_ledger_len = 0
     final_state: ExecutionState = state
 
-    for mode, chunk in graph.stream(state, stream_mode=["custom", "values"]):
-        if mode == "custom":
-            yield dict(cast(dict[str, object], chunk))
-            continue
+    try:
+        for mode, chunk in graph.stream(state, stream_mode=["custom", "values"]):
+            set_execution_id_safe(str(execution_id))
+            if mode == "custom":
+                yield dict(cast(dict[str, object], chunk))
+                continue
 
-        current = cast(ExecutionState, chunk)
-        final_state = current
+            current = cast(ExecutionState, chunk)
+            final_state = current
 
-        # tool_ledger is strictly append-only (operator.add reducer,
-        # orchestration/state.py), so a length-based slice is a safe way
-        # to isolate just the entries new THIS tick -- each is tagged
-        # with its owning agent (Task F3, orchestration/graph.py), which
-        # is what makes attributing them correctly possible even when
-        # more than one retrieval agent completes in the same superstep
-        # (round 1's concurrent fan-out).
-        new_ledger_entries = current["tool_ledger"][previous_tool_ledger_len:]
-        previous_tool_ledger_len = len(current["tool_ledger"])
+            # tool_ledger is strictly append-only (operator.add reducer,
+            # orchestration/state.py), so a length-based slice is a safe way
+            # to isolate just the entries new THIS tick -- each is tagged
+            # with its owning agent (Task F3, orchestration/graph.py), which
+            # is what makes attributing them correctly possible even when
+            # more than one retrieval agent completes in the same superstep
+            # (round 1's concurrent fan-out).
+            new_ledger_entries = current["tool_ledger"][previous_tool_ledger_len:]
+            previous_tool_ledger_len = len(current["tool_ledger"])
 
-        changed_agents = {
-            name: content
-            for name, content in current["agent_results"].items()
-            if previous_agent_results.get(name) != content
-        }
-        if changed_agents:
-            serving = _serving_models_by_agent(execution_id, session_factory)
-            for name in sorted(changed_agents):
-                served = serving.get(name, {})
-                tool_names = [
-                    str(entry["tool_name"])
-                    for entry in new_ledger_entries
-                    if entry.get("agent") == name
-                ]
-                yield {
-                    "type": "agent_completed",
-                    "agent": name,
-                    "output": changed_agents[name],
-                    "provider": served.get("provider"),
-                    "model": served.get("model"),
-                    "duration_ms": _agent_duration_ms(current, name),
-                    "iteration": _agent_iteration(current, name),
-                    "tool_names": tool_names,
-                }
-        previous_agent_results = dict(current["agent_results"])
+            changed_agents = {
+                name: content
+                for name, content in current["agent_results"].items()
+                if previous_agent_results.get(name) != content
+            }
+            if changed_agents:
+                serving = _serving_models_by_agent(execution_id, session_factory)
+                for name in sorted(changed_agents):
+                    served = serving.get(name, {})
+                    tool_names = [
+                        str(entry["tool_name"])
+                        for entry in new_ledger_entries
+                        if entry.get("agent") == name
+                    ]
+                    yield {
+                        "type": "agent_completed",
+                        "agent": name,
+                        "output": changed_agents[name],
+                        "provider": served.get("provider"),
+                        "model": served.get("model"),
+                        "duration_ms": _agent_duration_ms(current, name),
+                        "iteration": _agent_iteration(current, name),
+                        "tool_names": tool_names,
+                    }
+            previous_agent_results = dict(current["agent_results"])
 
-        if len(current["replan_history"]) > previous_replan_rounds:
-            judgement = current["replan_history"][-1]
-            yield {"type": "replan_judgement", **judgement}
-            previous_replan_rounds = len(current["replan_history"])
+            if len(current["replan_history"]) > previous_replan_rounds:
+                judgement = current["replan_history"][-1]
+                yield {"type": "replan_judgement", **judgement}
+                previous_replan_rounds = len(current["replan_history"])
 
-        if len(current["citation_failures"]) > previous_citation_attempts:
-            check = current["citation_failures"][-1]
-            yield {"type": "citation_check", **check}
-            previous_citation_attempts = len(current["citation_failures"])
+            if len(current["citation_failures"]) > previous_citation_attempts:
+                check = current["citation_failures"][-1]
+                yield {"type": "citation_check", **check}
+                previous_citation_attempts = len(current["citation_failures"])
 
-    _persist_execution_result(final_state, conversation_id, execution_id, session_factory)
-    fields = build_query_response_fields(final_state, session_factory)
-    yield {"type": "done", **fields}
+        _persist_execution_result(final_state, conversation_id, execution_id, session_factory)
+        fields = build_query_response_fields(final_state, session_factory)
+        yield {"type": "done", **fields}
+    finally:
+        set_execution_id_safe(None)

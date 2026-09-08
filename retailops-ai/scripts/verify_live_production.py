@@ -17,7 +17,9 @@ import sys
 import tempfile
 import time
 from collections.abc import Generator
-from typing import Any
+from typing import Any, cast
+
+from clients.stockpilot import StockPilotClient
 
 SERVICE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if SERVICE_ROOT not in sys.path:
@@ -27,16 +29,16 @@ if SERVICE_ROOT not in sys.path:
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-from evals.scenarios.fixtures import (  # type: ignore[import-not-found]  # noqa: E402
+from evals.scenarios.fixtures import (  # noqa: E402
     product_payload,
     supplier_payload,
 )
-from orchestration.executor import (  # type: ignore[import-not-found]  # noqa: E402
+from orchestration.executor import (  # noqa: E402
     build_query_response_fields,
     run_execution,
 )
-from orchestration.models import Base  # type: ignore[import-not-found]  # noqa: E402
-from orchestration.validator import (  # type: ignore[import-not-found]  # noqa: E402
+from orchestration.models import Base  # noqa: E402
+from orchestration.validator import (  # noqa: E402
     validate_citations,
 )
 
@@ -158,14 +160,16 @@ def main() -> None:
 
     with setup_temp_db() as session_factory:
         for idx, item in enumerate(CORE_PRODUCTION_QUERIES, 1):
-            name = item["name"]
-            query = item["query"]
+            name = str(item["name"])
+            query = str(item["query"])
             print(f"\n[{idx}/7] Verifying query: {name!r} ({query!r})")
 
-            state = run_execution(query, client=client, session_factory=session_factory)
+            state = run_execution(
+                query, client=cast(StockPilotClient, client), session_factory=session_factory
+            )
             fields = build_query_response_fields(state, session_factory)
 
-            answer = fields["answer"] or ""
+            answer = str(fields["answer"] or "")
             failures = validate_citations(answer, session_factory, state["execution_id"])
 
             # Verifications
@@ -179,10 +183,11 @@ def main() -> None:
             assert len(failures) == 0, f"FAILED [{name}]: Citation failures detected: {failures}"
             assert fields.get("telemetry"), f"FAILED [{name}]: Missing telemetry metadata!"
 
+            telemetry = cast(dict[str, Any], fields["telemetry"])
             print(f"  [OK] Answer generated ({len(answer)} chars)")
             print("  [OK] 100% Grounded (0 ungrounded citation failures)")
             print(
-                f"  [OK] Telemetry recorded (Replan rounds: {fields['replan_rounds']}, Tools: {fields['telemetry']['selected_tools']})"
+                f"  [OK] Telemetry recorded (Replan rounds: {fields['replan_rounds']}, Tools: {telemetry['selected_tools']})"
             )
             total_passed += 1
             time.sleep(2)

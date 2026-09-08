@@ -193,15 +193,15 @@ def test_baseline_round_trip(tmp_path: Path) -> None:
     assert load_baseline_accuracy(path) == 87.5
 
 
-def test_all_ten_named_scenarios_are_present_and_unique() -> None:
+def test_all_eleven_named_scenarios_are_present_and_unique() -> None:
     ids = [s.id for s in ALL_SCENARIOS]
-    assert len(ids) == 10
-    assert len(set(ids)) == 10
+    assert len(ids) == 11
+    assert len(set(ids)) == 11
     assert ids == sorted(ids)
 
 
 def test_the_full_named_suite_passes_every_scorer() -> None:
-    """The actual milestone check: every one of the ten spec-required
+    """The actual milestone check: every one of the eleven spec-required
     scenarios, run through the real evals/runner.py machinery (a fresh
     temp SQLite DB per scenario, the real graph or workflow, the real
     citation validator), passes grounding, accuracy, routing, replan,

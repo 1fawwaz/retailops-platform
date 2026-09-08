@@ -1,11 +1,16 @@
 services:
+  # ── StockPilot Core (FastAPI + Postgres) ─────────────────────────────────────
+  # Build context = repo root (retailops-platform/).
+  # Dockerfile lives at stockpilot-core/Dockerfile inside that context.
   - type: web
     name: stockpilot-core
     env: docker
+    # Render resolves dockerfilePath relative to the repo root
     dockerfilePath: ./stockpilot-core/Dockerfile
-    dockerContext: ./stockpilot-core
+    # The build context is the repo root so COPY stockpilot-core/ works
+    dockerContext: .
     plan: free
-    region: oregon
+    region: virginia
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -17,26 +22,24 @@ services:
       - key: DEMO_USER_EMAIL
         value: demo@retailops.local
       - key: DEMO_USER_PASSWORD
-        value: _awv1jRthdu2YNJzao9CyA
+        sync: false
       - key: CORS_ALLOWED_ORIGINS
-        value: https://stockpilot-frontend-zeta.vercel.app,https://retailops-ai-frontend.vercel.app
+        value: "https://stockpilot-frontend-zeta.vercel.app,https://retailops-ai-frontend.vercel.app,https://retailops-ai.onrender.com"
 
+  # ── RetailOps AI (LangGraph + Postgres) ─────────────────────────────────────
   - type: web
     name: retailops-ai
     env: docker
     dockerfilePath: ./retailops-ai/Dockerfile
-    dockerContext: ./retailops-ai
+    dockerContext: .
     plan: free
-    region: oregon
+    region: virginia
     healthCheckPath: /health
     envVars:
       - key: RETAILOPS_DATABASE_URL
         sync: false
       - key: STOCKPILOT_BASE_URL
-        fromService:
-          type: web
-          name: stockpilot-core
-          property: hostport
+        value: "https://stockpilot-core.onrender.com"
       - key: JWT_SECRET
         fromService:
           type: web
@@ -47,10 +50,12 @@ services:
       - key: STOCKPILOT_USERNAME
         value: demo@retailops.local
       - key: STOCKPILOT_PASSWORD
-        value: _awv1jRthdu2YNJzao9CyA
+        sync: false
       - key: GROQ_API_KEY_1
         sync: false
       - key: GEMINI_API_KEY_1
         sync: false
       - key: LLM_PRIMARY_PROVIDER
         value: gemini
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://stockpilot-frontend-zeta.vercel.app,https://retailops-ai-frontend.vercel.app"

@@ -13,7 +13,7 @@ import { CitationText } from "./CitationText";
 import { ProvenanceDrawer } from "./ProvenanceDrawer";
 import { getToken } from "../../lib/auth/token";
 
-const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_BASE_URL || "https://retailops-ai.onrender.com";
+import { getAiBaseUrl } from "../../lib/api/aiClient";
 
 export function AiSidebarMount() {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,9 +53,13 @@ export function AiSidebarMount() {
 
     const controller = new AbortController();
     abortController.current = controller;
+    // Step 3 / Amendment 1: 150s timeout ceiling until Step 7 optimizations are verified
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 150000);
 
     try {
-      const response = await fetch(`${AI_BASE_URL}/agent/query`, {
+      const response = await fetch(`${getAiBaseUrl()}/agent/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -94,18 +98,21 @@ export function AiSidebarMount() {
 
         switch (streamEvent.type) {
           case "token":
-            if (streamEvent.node === "decision") {
+            if (streamEvent.node === "decision" && !finalAnswer) {
               setStreamingText((current) => current + streamEvent.text);
             }
             break;
           case "citation_check":
-            if (!streamEvent.passed) {
+            if (!streamEvent.passed && !finalAnswer) {
               setStreamingText("");
             }
             break;
           case "error":
-            sawError = true;
-            setError(streamEvent.detail);
+            // Step 6: If finalAnswer has already arrived, do not overwrite/suppress it with a late stream error
+            if (!finalAnswer) {
+              sawError = true;
+              setError(streamEvent.detail);
+            }
             break;
           case "done":
             finalAnswer = streamEvent.answer;
@@ -118,15 +125,24 @@ export function AiSidebarMount() {
         }
       }
 
-      if (!sawError) {
+      if (finalAnswer && finalAnswer.trim()) {
+        // Step 6: Valid final answer locked -- render assistant message even if stream closed afterwards
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
-            content:
-              finalAnswer && finalAnswer.trim()
-                ? finalAnswer
-                : "No answer was produced for this query.",
+            content: finalAnswer,
+            citations: finalCitations,
+            executionId: finalExecutionId ?? undefined,
+          },
+        ]);
+        setError(null);
+      } else if (!sawError) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            content: "No answer was produced for this query.",
             citations: finalCitations,
             executionId: finalExecutionId ?? undefined,
           },
@@ -135,8 +151,11 @@ export function AiSidebarMount() {
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
         setError("Could not reach the AI service.");
+      } else if (!isSending) {
+        setError("Request timed out (150s exceeded).");
       }
     } finally {
+      clearTimeout(timeoutId);
       setStreamingText("");
       setIsSending(false);
       abortController.current = null;

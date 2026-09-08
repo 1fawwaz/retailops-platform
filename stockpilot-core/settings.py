@@ -22,7 +22,8 @@ class Settings(BaseSettings):
     # known frontend origins" -- comma-separated, defaults to local dev
     # only so a missing env var in a real deployment fails closed
     # (no browser access), not open (allow-all).
-    cors_allowed_origins: str = "http://localhost:3000"
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
+    cors_allowed_origin_regex: str | None = None
     cookie_domain: str | None = None
     cookie_secure: bool = False
     cookie_samesite: str = "lax"

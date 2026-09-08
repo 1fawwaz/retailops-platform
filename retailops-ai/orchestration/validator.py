@@ -35,6 +35,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from orchestration.models.agent_step import AgentStep
 from orchestration.models.tool_call import ToolCall
 
 # Mirrors orchestration/graph.py's own LLM_DEGRADED_ANSWER_PREFIX and this
@@ -388,6 +389,11 @@ def resolve_citations(
     session = session_factory()
     try:
         calls = session.query(ToolCall).filter(ToolCall.execution_id == execution_id).all()
+        step_ids = {call.agent_step_id for call in calls if call.agent_step_id is not None}
+        steps_by_id: dict[int, str] = {}
+        if step_ids:
+            steps = session.query(AgentStep).filter(AgentStep.id.in_(step_ids)).all()
+            steps_by_id = {s.id: s.agent_name for s in steps}
     finally:
         session.close()
 
@@ -396,6 +402,9 @@ def resolve_citations(
         if call.raw_response is None:
             continue
         provenance_map = call.provenance_map or {}
+        agent_name = agent_lookup.get(str(call.tool_call_id)) or (
+            steps_by_id.get(call.agent_step_id) if call.agent_step_id is not None else None
+        )
         for field_name, value, containing in _iter_numeric_leaves(call.raw_response):
             if value in resolved or not _has_provenance(field_name, containing, provenance_map):
                 continue
@@ -405,7 +414,7 @@ def resolve_citations(
                 value=value,
                 tool_call_id=str(call.tool_call_id),
                 tool_name=call.tool_name,
-                agent=agent_lookup.get(str(call.tool_call_id)),
+                agent=agent_name,
                 field_name=field_name,
                 provenance=str(label) if label else None,
             )
