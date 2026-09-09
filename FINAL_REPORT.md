@@ -39,7 +39,7 @@ All planned ERP and AI features are implemented, all backend APIs are fully docu
 |---|---|---|---|
 | **StockPilot Frontend (ERP)** | Vercel | https://stockpilot-frontend-zeta.vercel.app | ✅ LIVE |
 | **RetailOps AI Frontend** | Vercel | https://retailops-ai-frontend.vercel.app | ✅ LIVE |
-| **StockPilot Core API** | Render | https://stockpilot-core.onrender.com | ✅ LIVE (`/health`) |
+| **StockPilot Core API** | Render | https://retail-hta8.onrender.com | ✅ LIVE (`/health`) |
 | **RetailOps AI Backend** | Render | https://retailops-ai.onrender.com | ✅ LIVE (`/health`) |
 | **PostgreSQL Database** | Neon | `ep-dry-waterfall-a5v5649n.us-east-2.aws.neon.tech` | ✅ LIVE (`5432`) |
 

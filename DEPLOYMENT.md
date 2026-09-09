@@ -34,7 +34,7 @@
 |---|---|---|---|
 | StockPilot Frontend | Vercel | https://stockpilot-frontend-zeta.vercel.app | `/login` |
 | RetailOps AI Frontend | Vercel | https://retailops-ai-frontend.vercel.app | `/login` |
-| StockPilot Core API | Render | https://stockpilot-core.onrender.com | `/health` |
+| StockPilot Core API | Render | https://retail-hta8.onrender.com | `/health` |
 | RetailOps AI Backend | Render | https://retailops-ai.onrender.com | `/health` |
 | PostgreSQL Database | Neon | `ep-dry-waterfall-a5v5649n.us-east-2.aws.neon.tech` | `5432` |
 
