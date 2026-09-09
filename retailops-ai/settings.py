@@ -96,10 +96,22 @@ def _load_gemini_api_keys(env_file: Path) -> list[str]:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=SERVICE_ROOT / ".env", extra="ignore")
 
-    retailops_database_url: str
-    stockpilot_base_url: str
-    stockpilot_username: str
-    stockpilot_password: str
+    retailops_database_url: str = Field(
+        default_factory=lambda: (
+            os.environ.get("RETAILOPS_DATABASE_URL") or os.environ.get("DATABASE_URL") or ""
+        )
+    )
+    stockpilot_base_url: str = Field(
+        default_factory=lambda: os.environ.get(
+            "STOCKPILOT_BASE_URL", "https://retail-hta8.onrender.com"
+        )
+    )
+    stockpilot_username: str = Field(
+        default_factory=lambda: os.environ.get("STOCKPILOT_USERNAME", "admin@retailops.local")
+    )
+    stockpilot_password: str = Field(
+        default_factory=lambda: os.environ.get("STOCKPILOT_PASSWORD", "ProductionPassword123!")
+    )
     # An ordered rotation pool, mirroring groq_api_keys below (same
     # GEMINI_API_KEY / GEMINI_API_KEY_1 / GEMINI_API_KEY_2 / ... numbered
     # scheme as GROQ_API_KEY_N) -- llm/providers/gemini.py rotates to the

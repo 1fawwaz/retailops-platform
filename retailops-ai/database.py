@@ -16,6 +16,11 @@ def _normalized_database_url(url: str) -> str:
     a bare "postgresql://" scheme, defaulting to a psycopg2 DBAPI this
     project doesn't install (psycopg v3 only, per pyproject.toml).
     """
+    url = url.strip().strip("'").strip('"')
+    if url.startswith("psql "):
+        url = url[5:].strip().strip("'").strip('"')
+    if url.startswith("DATABASE_URL="):
+        url = url[13:].strip().strip("'").strip('"')
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url

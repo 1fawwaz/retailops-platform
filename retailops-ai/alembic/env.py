@@ -21,11 +21,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.environ.get("RETAILOPS_DATABASE_URL")
+database_url = os.environ.get("RETAILOPS_DATABASE_URL") or os.environ.get("DATABASE_URL")
 if not database_url:
     raise RuntimeError(
         "RETAILOPS_DATABASE_URL is not set. Copy .env.example to .env and fill it in."
     )
+database_url = database_url.strip().strip("'").strip('"')
+if database_url.startswith("psql "):
+    database_url = database_url[5:].strip().strip("'").strip('"')
+if database_url.startswith("DATABASE_URL="):
+    database_url = database_url[13:].strip().strip("'").strip('"')
 # See database.py::_normalized_database_url's own docstring -- managed
 # Postgres providers hand out a bare "postgresql://" scheme, which
 # defaults to a psycopg2 DBAPI this project doesn't install.

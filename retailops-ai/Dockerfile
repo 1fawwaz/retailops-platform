@@ -1,8 +1,6 @@
-# syntax=docker/dockerfile:1
 # ── retailops-ai ───────────────────────────────────────────────────────────────
-# Build context: repo root (retailops-platform/)
-# Dockerfile path: retailops-ai/Dockerfile
-# WORKDIR is /app/retailops-ai so all relative imports work as in local dev.
+# Build context: repo/retailops-platform/ (Monorepo root on Render)
+# Working directory for service: /app/retailops-ai
 FROM python:3.11-slim
 
 # System deps: libpq5 for psycopg binary
@@ -12,11 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# 1. Copy the service directory (includes pyproject.toml, alembic/, api/, agents/, etc.)
-COPY retailops-ai/ ./retailops-ai/
-
-# 2. Install production dependencies explicitly.
-#    The app code is NOT a package — it runs as flat modules from WORKDIR.
+# Install production dependencies explicitly
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir \
         "fastapi==0.140.8" \
@@ -37,10 +31,15 @@ RUN pip install --no-cache-dir --upgrade pip \
         "pyyaml==6.0.3" \
         "pyjwt==2.13.0"
 
+# Copy monorepo files into /app
+COPY . .
+
+# Set working directory to retailops-ai where alembic.ini, api/, agents/ live
 WORKDIR /app/retailops-ai
+
+ENV PYTHONPATH="/app/retailops-ai:/app"
 
 EXPOSE 8001
 
-# Run migrations then start the API server.
-# RETAILOPS_DATABASE_URL must be provided as an environment variable by Render.
-CMD alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8001}
+# Shell form so ${PORT:-8001} is expanded by sh — Render injects PORT at runtime
+CMD if [ -d "/app/retailops-ai" ]; then cd /app/retailops-ai; fi && alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8001}
