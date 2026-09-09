@@ -44,4 +44,4 @@ EXPOSE 8000
 
 # Run migrations then start the API server.
 # DATABASE_URL must be provided as an environment variable by Render.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000"]
+CMD alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}

@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
     password_reset_token_expire_minutes: int = 60
-    demo_user_email: str
-    demo_user_password: str
+    demo_user_email: str | None = None
+    demo_user_password: str | None = None
     etl_max_transactions: int | None = None
     # docs/ARCHITECTURE.md § Environment Variables / CORS: "allow only the
     # known frontend origins" -- comma-separated, defaults to local dev
