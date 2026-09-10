@@ -29,7 +29,11 @@ def _normalized_database_url(url: str) -> str:
 def get_engine() -> Engine:
     global _engine
     if _engine is None:
-        _engine = create_engine(_normalized_database_url(get_settings().retailops_database_url))
+        _engine = create_engine(
+            _normalized_database_url(get_settings().retailops_database_url),
+            pool_pre_ping=True,
+            pool_recycle=300,
+        )
     return _engine
 
 
