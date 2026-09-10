@@ -31,15 +31,16 @@ RUN pip install --no-cache-dir --upgrade pip \
         "pyyaml==6.0.3" \
         "pyjwt==2.13.0"
 
-# Copy monorepo files into /app
-COPY . .
+# Copy only the retailops-ai service directory (matches stockpilot-core pattern)
+COPY retailops-ai/ ./retailops-ai/
 
 # Set working directory to retailops-ai where alembic.ini, api/, agents/ live
 WORKDIR /app/retailops-ai
 
-ENV PYTHONPATH="/app/retailops-ai:/app"
+ENV PYTHONPATH="/app/retailops-ai"
 
 EXPOSE 8001
 
 # Shell form so ${PORT:-8001} is expanded by sh — Render injects PORT at runtime
-CMD if [ -d "/app/retailops-ai" ]; then cd /app/retailops-ai; fi && alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8001}
+# Use explicit -c flag so alembic always finds the config regardless of cwd
+CMD alembic -c /app/retailops-ai/alembic.ini upgrade head && exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8001}
