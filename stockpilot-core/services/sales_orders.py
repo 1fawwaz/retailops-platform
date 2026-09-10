@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from models.invoice import Invoice
 from models.sales_order import SalesOrder
 from models.sales_order_line import SalesOrderLine
+from models.sales_transaction import SalesTransaction
 from models.stock_movement import StockMovement
 from schemas.sales_order import SalesOrderCreate, SalesOrderUpdate
 from services.inventory import (
@@ -134,6 +135,17 @@ def fulfill_sales_order(db: Session, order: SalesOrder) -> SalesOrder:
                 movement_type="sale",
                 reference=f"SO #{order.id}",
                 provenance="observed",
+            )
+        )
+        db.add(
+            SalesTransaction(
+                invoice=f"INV-{order.id:06d}",
+                sku=line.sku,
+                quantity=line.quantity,
+                unit_price=float(line.unit_price),
+                customer_id=order.customer_id,
+                country="India",
+                invoice_date=now,
             )
         )
     order.status = "fulfilled"
