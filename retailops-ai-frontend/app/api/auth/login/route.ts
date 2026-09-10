@@ -21,11 +21,15 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ detail: "Email and password are required." }, { status: 400 });
   }
 
-  const stockpilotBaseUrl =
+  let stockpilotBaseUrl =
     process.env.STOCKPILOT_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.NEXT_PUBLIC_STOCKPILOT_API_URL ||
-    "http://localhost:8000";
+    (process.env.NODE_ENV === "production" ? "https://retail-hta8.onrender.com" : "http://localhost:8000");
+
+  if (stockpilotBaseUrl.includes("stockpilot-core.onrender.com")) {
+    stockpilotBaseUrl = "https://retail-hta8.onrender.com";
+  }
 
   const form = new URLSearchParams();
   form.set("username", body.email);

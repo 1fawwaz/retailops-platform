@@ -27,10 +27,14 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ detail: "Malformed request body." }, { status: 400 });
   }
 
-  const retailopsBaseUrl =
+  let retailopsBaseUrl =
     process.env.RETAILOPS_BASE_URL ||
     process.env.NEXT_PUBLIC_AI_BASE_URL ||
-    "http://localhost:8001";
+    (process.env.NODE_ENV === "production" ? "https://retailops-ai.onrender.com" : "http://localhost:8001");
+
+  if (retailopsBaseUrl.includes("localhost") && process.env.NODE_ENV === "production") {
+    retailopsBaseUrl = "https://retailops-ai.onrender.com";
+  }
 
   const acceptHeader = request.headers.get("accept") ?? "application/json";
 

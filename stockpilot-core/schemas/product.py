@@ -26,6 +26,8 @@ class ProductCreate(BaseModel):
 
     sku: str
     description: str | None = None
+    name: str | None = None
+    barcode: str | None = None
     category_id: int | None = None
     supplier_id: int | None = None
     brand_id: int | None = None
@@ -33,6 +35,16 @@ class ProductCreate(BaseModel):
     sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
+    reorder_quantity: int | None = None
+    eoq: int | None = None
+    gst_percent: float | None = None
+    hsn_code: str | None = None
+    shelf_life_days: int | None = None
+    weight_grams: float | None = None
+    abc_class: str | None = None
+    xyz_class: str | None = None
+    behavior_pattern: str | None = None
+    active: bool | None = True
 
 
 class ProductUpdate(BaseModel):
@@ -41,6 +53,8 @@ class ProductUpdate(BaseModel):
     )
 
     description: str | None = None
+    name: str | None = None
+    barcode: str | None = None
     category_id: int | None = None
     supplier_id: int | None = None
     brand_id: int | None = None
@@ -48,6 +62,16 @@ class ProductUpdate(BaseModel):
     sale_price: float | None = None
     reorder_point: int | None = None
     safety_stock: int | None = None
+    reorder_quantity: int | None = None
+    eoq: int | None = None
+    gst_percent: float | None = None
+    hsn_code: str | None = None
+    shelf_life_days: int | None = None
+    weight_grams: float | None = None
+    abc_class: str | None = None
+    xyz_class: str | None = None
+    behavior_pattern: str | None = None
+    active: bool | None = None
 
 
 class ProductRead(ProvenanceMixin):
@@ -98,6 +122,17 @@ class ProductRead(ProvenanceMixin):
     created_at: datetime
     id: str | None = None
     name: str | None = None
+    barcode: str | None = None
+    gst_percent: float | None = None
+    hsn_code: str | None = None
+    shelf_life_days: int | None = None
+    weight_grams: float | None = None
+    reorder_quantity: int | None = None
+    eoq: int | None = None
+    abc_class: str | None = None
+    xyz_class: str | None = None
+    behavior_pattern: str | None = None
+    active: bool | None = True
 
     category: str | None = None
     warehouse: str | None = None
