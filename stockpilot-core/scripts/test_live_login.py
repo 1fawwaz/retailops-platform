@@ -33,4 +33,4 @@ if __name__ == "__main__":
     test_login("http://localhost:8000", demo_email, demo_password)
 
     print("\nTesting production API (Render)...")
-    test_login("https://stockpilot-core.onrender.com", demo_email, demo_password)
+    test_login("https://retail-hta8.onrender.com", demo_email, demo_password)

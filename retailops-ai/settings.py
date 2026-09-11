@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVICE_ROOT = Path(__file__).resolve().parent
@@ -106,6 +106,14 @@ class Settings(BaseSettings):
             "STOCKPILOT_BASE_URL", "https://retail-hta8.onrender.com"
         )
     )
+
+    @field_validator("stockpilot_base_url", mode="before")
+    @classmethod
+    def _normalize_stockpilot_url(cls, v: object) -> object:
+        if isinstance(v, str) and "stockpilot-core.onrender.com" in v:
+            return "https://retail-hta8.onrender.com"
+        return v
+
     stockpilot_username: str = Field(
         default_factory=lambda: os.environ.get("STOCKPILOT_USERNAME", "admin@retailops.local")
     )

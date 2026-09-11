@@ -39,7 +39,7 @@ services:
       - key: RETAILOPS_DATABASE_URL
         sync: false
       - key: STOCKPILOT_BASE_URL
-        value: "https://stockpilot-core.onrender.com"
+        value: "https://retail-hta8.onrender.com"
       - key: JWT_SECRET
         fromService:
           type: web
@@ -48,7 +48,7 @@ services:
       - key: JWT_ALGORITHM
         value: HS256
       - key: STOCKPILOT_USERNAME
-        value: demo@retailops.local
+        value: admin@retailops.local
       - key: STOCKPILOT_PASSWORD
         sync: false
       - key: GROQ_API_KEY_1
