@@ -91,8 +91,11 @@ export default function ChatPage() {
             }
             break;
           case "error":
-            sawError = true;
-            setError(streamEvent.detail);
+            // If finalAnswer has already arrived, do not overwrite/suppress it with a late stream error
+            if (!finalAnswer) {
+              sawError = true;
+              setError(streamEvent.detail);
+            }
             break;
           case "done":
             finalAnswer = streamEvent.answer;
@@ -105,15 +108,23 @@ export default function ChatPage() {
         }
       }
 
-      if (!sawError) {
+      if (finalAnswer && finalAnswer.trim()) {
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
-            content:
-              finalAnswer && finalAnswer.trim()
-                ? finalAnswer
-                : "No answer was produced for this query.",
+            content: finalAnswer,
+            citations: finalCitations,
+            executionId: finalExecutionId ?? undefined,
+          },
+        ]);
+        setError(null);
+      } else if (!sawError) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            content: "No answer was produced for this query.",
             citations: finalCitations,
             executionId: finalExecutionId ?? undefined,
           },
