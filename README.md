@@ -1,5 +1,6 @@
 # RetailOps AI
 
+<!-- Phase 0 auto-deploy verification -->
 An autonomous multi-agent system that operates a retail business: given a goal ("maintain healthy inventory") or a question ("why did profit fall last month?"), it plans its own retrieval strategy, judges whether what it retrieved is sufficient, retrieves again if it isn't, and produces answers and ranked recommendations where every number traces back to the specific tool call and data field it came from — never to the language model. It is built as two independently deployable services communicating only over HTTP: **StockPilot Core**, a headless retail-operations API that is the agent's environment, and **RetailOps AI**, a LangGraph multi-agent layer (plus the only user-facing UI) that perceives and reasons over it.
 
 This README documents what is actually built and actually measured, per the project's own honesty rule — no metric appears below unless it was run and observed, and every section says how.
